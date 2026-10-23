@@ -6,6 +6,9 @@ Development:   python app.py          (debug OFF - never expose the Werkzeug deb
 Production:    python serve.py        (Waitress - see deploy/ for start-up scripts)
 """
 import logging
+import hmac
+import re
+import secrets
 import threading
 import os
 import time
@@ -102,6 +105,35 @@ def create_app():
     def _error_page(code, title, text, detail=None):
         # standalone page: must not touch the database (the database may be the thing that is down)
         return render_template("error.html", code=code, title=title, text=text, detail=detail), code
+
+    # ---- protection against forged requests (CSRF) ----------------------------------------------------------------------------------
+    # Without it a page on ANOTHER site could make a signed-in person's browser submit a form to this system (approve a user, record a payment ...).
+    # Every page that has a POST form gets a secret token inside the form (added here, once, for all forms); every POST must send it back.
+    app.config["CSRF_ENABLED"] = config.CSRF_ENABLED
+    form_tag = re.compile(r"(<form\b[^>]*\bmethod\s*=\s*[\"']?post[\"']?[^>]*>)", re.I)
+
+    def csrf_token():
+        token = session.get("csrf")
+        if not token:
+            token = session["csrf"] = secrets.token_hex(16)
+        return token
+
+    @app.before_request
+    def _csrf_check():
+        if request.method in ("POST", "PUT", "PATCH", "DELETE") and app.config.get("CSRF_ENABLED", True):
+            sent = request.form.get("csrf_token") or request.headers.get("X-CSRF-Token") or ""
+            if not sent or not hmac.compare_digest(sent, session.get("csrf", "")):
+                app.error_log.warning("csrf rejected %s %s", request.method, request.path)
+                return _error_page(400, "انتهت صلاحية الصفحة", "أعد تحميل الصفحة (F5) ثم حاول مرة أخرى. يحدث هذا إذا بقيت الصفحة مفتوحة طويلًا أو جاء الطلب من موقع آخر.")
+
+    @app.after_request
+    def _csrf_inject(resp):
+        if resp.mimetype == "text/html" and not resp.direct_passthrough and resp.status_code < 400:
+            html = resp.get_data(as_text=True)
+            if "<form" in html.lower():
+                field = '<input type="hidden" name="csrf_token" value="%s">' % csrf_token()
+                resp.set_data(form_tag.sub(lambda m: m.group(1) + field, html))
+        return resp
 
     @app.errorhandler(404)
     def _404(e):

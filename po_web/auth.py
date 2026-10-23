@@ -22,7 +22,15 @@ ROLE_TTL = 60             # seconds; any role edit also clears it at once
 
 # --------------------------------------------------------------------------- users
 USER_COLUMNS = ("[UserID], [Username], [PasswordHash], [FullName], [Email], [JobTitle], [Status], [RoleID], "
-                "[AvatarFile]")
+                "[AvatarFile], [SessionVersion]")
+
+
+def bump_session_version(user_id):
+    """Ends every sign-in that user already has open (password changed / role changed / account disabled). Returns the new number."""
+    rows = db.query("SELECT [SessionVersion] FROM [Users] WHERE [UserID] = ?", (user_id,))
+    new = ((rows[0].get("SessionVersion") or 0) if rows else 0) + 1
+    db.execute("UPDATE [Users] SET [SessionVersion] = ? WHERE [UserID] = ?", (new, user_id))
+    return new
 
 
 def find_user(username):
@@ -68,6 +76,9 @@ def current_user():
     rows = db.query("SELECT %s FROM [Users] WHERE [UserID] = ?" % USER_COLUMNS.replace("[PasswordHash], ", ""),
                     (session["user_id"],))
     user = rows[0] if rows else None
+    if user and (user.get("SessionVersion") or 0) != session.get("sv", 0):
+        session.clear()                                  # this sign-in was issued before the password / role / status of the account changed
+        user = None
     if user:
         role = load_role(user.get("RoleID"))
         user["RoleName"] = role["name"] if role else ""
