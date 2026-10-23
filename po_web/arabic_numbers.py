@@ -61,28 +61,42 @@ def number_to_arabic_words(n):
 
 
 def _noun_phrase(n, singular_alone, dual, plural, accusative_singular):
-    """Picks the right noun form for a small standalone count (1 / 2 / 3-10)
-    vs. any larger or compound amount (which always takes the standard
-    singular-accusative tamyiz form, regardless of its trailing digit -
-    "7003" is itself in the 11+/compound category, not a small number, even
-    though its last digit is 3)."""
+    """The count with its noun (riyal / halala).
+        1  -> «ريال واحد»      2 -> «ريالان»      3-10 -> «ثلاثة ريالات»
+        11-99 and numbers ending in 11-99 -> the noun in the accusative: «أحد عشر ريالاً»
+        a round hundred / thousand / million (100, 1000, 46000, 2000000 ...) -> the bare noun: «مائة ريال»، «ستة وأربعون ألف ريال»
+        a round 2 (200, 2000, 2000000)  -> the dual in construct form: «مائتا ريال»، «ألفا ريال»
+    The word choices inside the number itself («ثلاث مائة» ...) are the company's own printed style and are not changed."""
     if n == 1:
         return singular_alone
     if n == 2:
         return dual
+    words = number_to_arabic_words(n)
     if 3 <= n <= 10:
-        return number_to_arabic_words(n) + ' ' + plural
-    return number_to_arabic_words(n) + ' ' + accusative_singular
+        return words + ' ' + plural
+    bare = accusative_singular.rstrip('اً')
+    for tanween in ('ألفاً', 'مليوناً'):                  # «ألفاً ريالاً» is a double tanween: the scale word loses it before the noun
+        if words.endswith(tanween):
+            return words[:-2] + ' ' + bare
+    for dual_form in ('ألفان', 'مليونان', 'مائتان'):       # 2000 / 2,000,000 / 200 -> «ألفا ريال»
+        if words.endswith(dual_form):
+            return words[:-2] + 'ا ' + bare
+    if n >= 100 and n % 100 == 0:
+        return words + ' ' + bare
+    return words + ' ' + accusative_singular
 
 
 def amount_to_words(amount):
     """Full printed line for a SAR amount, e.g. 6999.98 ->
     'فقط ستة آلاف وتسع مائة وتسعة وتسعون ريالاً وثمانية وتسعون هللة لا غير'."""
     amount = round(float(amount or 0), 2)
+    if not (0 <= amount < 1_000_000_000):
+        raise ValueError("المبلغ خارج النطاق الذي يمكن كتابته بالحروف")
     riyals = int(amount)
     halalas = int(round((amount - riyals) * 100))
-    words = 'فقط ' + _noun_phrase(riyals, 'ريال واحد', 'ريالان', 'ريالات', 'ريالاً')
+    parts = []
+    if riyals or not halalas:                          # «صفر ريال» only when there is nothing else to say
+        parts.append(_noun_phrase(riyals, 'ريال واحد', 'ريالان', 'ريالات', 'ريالاً') if riyals else 'صفر ريال')
     if halalas:
-        words += ' و' + _noun_phrase(halalas, 'هللة واحدة', 'هللتان', 'هللات', 'هللة')
-    words += ' لا غير'
-    return words
+        parts.append(_noun_phrase(halalas, 'هللة واحدة', 'هللتان', 'هللات', 'هللة'))
+    return 'فقط ' + ' و'.join(parts) + ' لا غير'

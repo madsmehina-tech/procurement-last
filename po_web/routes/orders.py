@@ -8,6 +8,7 @@ from flask import abort, flash, redirect, render_template, request, send_file, u
 
 import archive
 import auth
+import money_guards as mg
 import db
 import items_service
 import masterdata
@@ -332,24 +333,29 @@ def _read_order(form, editing=None, create_project=True):
     else:                                              # the project's ONE official spelling (never creates one here)
         v["project"] = project_list.canonical(v["project"], create=False)[0]
     try:
-        v["discount"] = float(form.get("discount") or 0)
-    except ValueError:
+        v["discount"] = mg.parse_money(form.get("discount"), label="قيمة الخصم")
+    except mg.MoneyError as e:
         v["discount"] = 0.0
-        errors.append("قيمة الخصم يجب أن تكون رقمًا.")
+        errors.append(str(e))
     line_items, subtotal = [], 0.0
     for nm, un, q, p in zip(form.get("item_name", []), form.get("item_unit", []), form.get("item_qty", []), form.get("item_price", [])):
         nm = clean_spaces(nm)
         if not nm:
             continue
         try:
-            qf, pf = float(q or 0), float(p or 0)
-        except (TypeError, ValueError):
-            errors.append("قيمة كمية أو سعر غير صحيحة للصنف: %s" % nm)
+            qf = mg.parse_money(q, label="الكمية", decimals=4)
+            pf = mg.parse_money(p, label="السعر", decimals=4)
+        except mg.MoneyError as e:
+            errors.append("الصنف «%s»: %s" % (nm, e))
             continue
         line_items.append((nm, clean_spaces(un), qf, pf))
         subtotal += qf * pf
     v["subtotal"] = subtotal
     v["total"] = round(subtotal + round(subtotal * 0.15, 2) - v["discount"], 2)
+    if v["total"] < 0:
+        errors.append("الخصم أكبر من إجمالي الأمر؛ راجع قيمة الخصم.")
+    elif v["total"] > mg.MAX_MONEY:
+        errors.append("إجمالي الأمر كبير جدًا (أكثر من %s)؛ راجع الكميات والأسعار." % "{:,.0f}".format(mg.MAX_MONEY))
     if not line_items:
         errors.append("أضف صنفًا واحدًا على الأقل.")
     # text longer than its column would make the database refuse the whole save: say so BEFORE, in plain words

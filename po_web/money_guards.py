@@ -26,15 +26,16 @@ class MoneyError(ValueError):
     """A money rule was broken - the message is shown to the person as is."""
 
 
-def parse_money(text, *, allow_zero=True, maximum=MAX_MONEY, label="المبلغ"):
-    """'1,250.50' / '٣٤٥٫٥' / '' -> float rounded to 2 decimals. Empty means 0. Raises MoneyError for anything that is not a sane amount."""
+def parse_money(text, *, allow_zero=True, maximum=MAX_MONEY, label="المبلغ", decimals=2):
+    """'1,250.50' / '٣٤٥٫٥' / '' -> float rounded to `decimals` (2 for money, up to 4 for a quantity or unit price). Empty means 0.
+    Raises MoneyError (a ValueError) for anything that is not a sane amount: letters, a minus sign, NaN, infinity, 1e999, absurd size."""
     s = str(text if text is not None else "").strip().translate(_ARABIC_DIGITS).replace(",", "").replace(" ", "")
     if not s:
         value = 0.0
     else:
         if not re.fullmatch(r"\d+(\.\d+)?", s):
             raise MoneyError("%s غير صالح: اكتب رقمًا فقط (بدون حروف أو علامة سالب)." % label)
-        value = float(Decimal(s).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))      # 100.005 -> 100.01 (not banker's rounding)
+        value = float(Decimal(s).quantize(Decimal(1).scaleb(-decimals), rounding=ROUND_HALF_UP))      # 100.005 -> 100.01 (not banker's rounding)
     if not math.isfinite(value):
         raise MoneyError("%s غير صالح." % label)
     if value > maximum:

@@ -9,6 +9,7 @@ from flask import abort, flash, redirect, render_template, request, send_file, u
 
 import archive
 import auth
+import money_guards as mg
 import cycle_files
 import payment_files
 import cycles_service as cy
@@ -23,8 +24,7 @@ def _user():
 
 
 def _num(name):
-    v = (request.form.get(name) or "").strip().replace(",", "")
-    return float(v) if v else 0.0
+    return mg.parse_money(request.form.get(name))
 
 
 def _date(name):
@@ -118,15 +118,15 @@ def cycle_decisions(cycle_id):
     try:
         for l in data["lines"]:
             did = l["DecisionID"]
-            partial = (request.form.get("partial_%d" % did) or "").strip().replace(",", "")
-            entries[did] = (request.form.get("decision_%d" % did, ""), float(partial) if partial else 0.0, request.form.get("note_%d" % did, ""))
+            partial = mg.parse_money(request.form.get("partial_%d" % did), label="مبلغ الصرف الجزئي")
+            entries[did] = (request.form.get("decision_%d" % did, ""), partial, request.form.get("note_%d" % did, ""))
         n = cy.save_lines(cycle_id, entries, _user())
         if intent.startswith("distribute:"):
             sub_id = int(intent.split(":", 1)[1])
-            raw = (request.form.get("dist_%d" % sub_id) or "").strip().replace(",", "")
+            raw = (request.form.get("dist_%d" % sub_id) or "").strip()
             if not raw:
                 raise cy.CycleError("اكتب «مبلغ الصرف المعتمد» لهذا المقاول أولًا.")
-            plan = cy.distribute(cycle_id, sub_id, float(raw), _user())
+            plan = cy.distribute(cycle_id, sub_id, mg.parse_money(raw, label="مبلغ الصرف المعتمد"), _user())
             full, part, defer = (sum(1 for _d, d, _a in plan if d == x) for x in (cy.D_FULL, cy.D_PART, cy.D_DEFER))
             flash("وُزّع المبلغ على مستخلصات المقاول (الأقدم أولًا): %d بالكامل، %d جزئيًا، %d مؤجل. يمكنك تعديل أي قرار أو مبلغ يدويًا ثم «حفظ»." % (full, part, defer))
         elif intent == "next":
@@ -141,6 +141,8 @@ def cycle_decisions(cycle_id):
                 " (وحُفظ PDF الكشف في أرشيف الدورة)" if doc else " (لم يُنشأ PDF: %s)" % err))
         else:
             flash("تم الحفظ%s." % (" (%d من %d عليها قرار)" % (n, len(data["lines"])) if data["cycle"]["Status"] == cy.ST_WAITING else ""))
+    except mg.MoneyError as e:
+        flash(str(e))
     except ValueError:
         flash("مبلغ الصرف يجب أن يكون رقمًا.")
     except Exception as e:                                   # noqa

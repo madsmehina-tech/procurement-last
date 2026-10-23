@@ -9,6 +9,7 @@ from flask import flash, redirect, render_template, request, send_file, url_for
 
 import archive
 import auth
+import money_guards as mg
 import cycle_files
 import ledger_service as ls
 import payment_files
@@ -36,9 +37,9 @@ def _back(sub_id):
 def ledger_add(sub_id):
     f = request.form
     try:
-        amount = float((f.get("amount") or "").replace(",", "") or 0)
-    except ValueError:
-        flash("المبلغ يجب أن يكون رقمًا.")
+        amount = mg.parse_money(f.get("amount"), allow_zero=False, label="المبلغ")
+    except mg.MoneyError as e:
+        flash(str(e))
         return _back(sub_id)
     files = [x for x in request.files.getlist("files") if x and x.filename]
     bad = payment_files.bad_file(files)

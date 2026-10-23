@@ -160,3 +160,48 @@ def test_a_missing_table_is_still_tolerated(world, monkeypatch):
     import contracts_service as cs
     fake_db.execute("DROP TABLE [Payments]")
     assert cs.load()[3] == []
+
+
+# ------------------------------------------------------------------ closing is the owner's free choice, but never by accident
+def _ready_to_close(world):
+    a = h.add_cert(world, 100000, no=1)
+    for kind in ("نموذج طلب الصرف", "المستخلص المعتمد", "الاتفاقية", "الفاتورة الضريبية", "سند الصرف"):
+        fake_db.execute("INSERT INTO [Documents] ([EntityType], [EntityKey], [DocType], [IsCurrent], [OriginalName], [StoredName], [RelPath], [UploadedAt]) "
+                        "VALUES ('CERT', ?, ?, 1, 'f.pdf', 'f.pdf', 'x/f.pdf', ?)", (str(a), kind, datetime.now()))
+    return a
+
+
+def test_closing_an_unpaid_transaction_needs_an_explicit_ok(client, world):
+    a = _ready_to_close(world)
+    client.post("/archive/%d/close" % a)
+    assert not h.cert_row(a).get("ClosedAt")                         # no confirmation -> not closed
+    client.post("/archive/%d/close" % a, data={"unpaid_ok": "1"})
+    assert h.cert_row(a).get("ClosedAt")                             # confirmed -> closed (the owner's free choice)
+    assert fake_db.query("SELECT * FROM [AuditLog] WHERE [ActionName] = 'archive_close_unpaid'")
+
+
+def test_closing_a_paid_transaction_needs_no_extra_step(client, world):
+    a = _ready_to_close(world)
+    _pay_form(client, a)
+    client.post("/archive/%d/close" % a)
+    assert h.cert_row(a).get("ClosedAt")
+
+
+def test_archive_page_shows_the_unpaid_warning_in_the_close_button(client, world):
+    a = _ready_to_close(world)
+    html = client.get("/archive?cert=%d" % a).get_data(as_text=True)
+    assert "unpaid_ok" in html and "100,000.00" in html
+
+
+# ------------------------------------------------------------------ M-03: forms must refuse NaN / negative / absurd amounts
+def test_ledger_refuses_nan_and_negative_amounts(client, world):
+    for bad in ("nan", "-500", "1e999", "abc"):
+        client.post("/subcontractors/%d/ledger/new" % world, data={"kind": "دائن", "category": "دفعة مباشرة", "description": "x", "amount": bad, "status": "executed"})
+    assert fake_db.scalar("SELECT COUNT(*) FROM [LedgerEntries]", default=0) == 0
+    client.post("/subcontractors/%d/ledger/new" % world, data={"kind": "دائن", "category": "دفعة مباشرة", "description": "x", "amount": "1,500.50", "status": "executed"})
+    assert fake_db.scalar("SELECT COUNT(*) FROM [LedgerEntries]", default=0) == 1
+
+
+def test_certificate_form_refuses_nan(client, world):
+    client.post("/subcontractors/%d/certificates" % world, data={"project": "م", "site": "ص", "total_incl_vat": "nan", "cert_no": "1"})
+    assert fake_db.scalar("SELECT COUNT(*) FROM [Certificates]", default=0) == 0
