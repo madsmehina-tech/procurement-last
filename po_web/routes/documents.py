@@ -79,6 +79,9 @@ def save_entity_document(entity_type, entity_key, doc_type, file_storage, note="
     except archive.UnsupportedFile:
         flash("صيغة الملف غير مدعومة (المسموح: PDF، صور JPG/PNG، Word، Excel).")
         return None
+    except archive.PathTooLong as e:
+        flash(str(e))
+        return None
 
 
 def save_profile(file_storage, folder_rel, label):
@@ -90,6 +93,9 @@ def save_profile(file_storage, folder_rel, label):
         return archive.save_profile_file(file_storage, folder_rel, label)
     except archive.UnsupportedFile:
         flash("صيغة الملف غير مدعومة: %s" % file_storage.filename)
+        return None
+    except archive.PathTooLong as e:
+        flash(str(e))
         return None
 
 

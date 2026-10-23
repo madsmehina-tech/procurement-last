@@ -186,7 +186,7 @@ def subcontractor_new():
 
 
 # --------------------------------------------------------------------------- the contractor's page
-def _summary(sub_id, contracts_rows, my_certs, pays):
+def _summary(sub_id, contracts_rows, my_certs, pays, fig):
     """The financial summary shown at the top: what management asks first about any contractor."""
     live = [g for g in my_certs if g["Status"] != "مرفوض"]
     my_pays = [p for p in pays if p.get("SubcontractorID") == sub_id or p["CertificateID"] in {g["CertificateID"] for g in my_certs}]
@@ -198,7 +198,7 @@ def _summary(sub_id, contracts_rows, my_certs, pays):
     open_ = [g for g in live if g["Status"] in ("مُدخَل", "ضمن دورة صرف") and g["Remaining"] > 0.005 and not g.get("ClosedAt")]
     return {"open_total": round(sum(g["Remaining"] for g in open_), 2), "open_count": len(open_),
             "contracts_value": round(sum(c["value"] for c in contracts_rows), 2), "certs_value": round(sum(g["Value"] for g in live), 2),
-            "paid": round(sum(g["Paid"] for g in live), 2), "remaining": round(sum(g["Remaining"] for g in live), 2),
+            "paid": fig["paid"], "remaining": fig["remaining"],     # the SAME figures as the account statement (see contracts_service.sub_figures)
             "n_contracts": len(contracts_rows), "n_certs": len(my_certs),
             "last_pay": (last_direct and {"amount": last_direct["Amount"] or 0, "date": last_direct.get("EntryDate"), "cert": None})
             if (last_direct and (not last_pay or (last_direct.get("EntryDate") or datetime.min) >= (last_pay.get("PaidAt") or datetime.min)))
@@ -258,7 +258,8 @@ def render_sub_page(sub_id, open_dialog=None, form=None):
     ledger_files = {}
     for d in archive.list_documents_many("LEDGER") if hasattr(archive, "list_documents_many") else []:
         ledger_files.setdefault(int(d["EntityKey"]), []).append(d)
-    return render_template("subcontractor_detail.html", sub=sub, fig=cs.sub_figures(sub_id, contracts, certs), summary=_summary(sub_id, rows, my_certs, pays),
+    fig = cs.sub_figures(sub_id, contracts, certs)
+    return render_template("subcontractor_detail.html", sub=sub, fig=fig, summary=_summary(sub_id, rows, my_certs, pays, fig),
                            contracts=rows, certs=my_certs, cert_files=cert_files, contract_choices=contract_choices, sites_by_project=sites_by_project, next_numbers=next_numbers, ledger=ledger_service.entries(sub_id), ledger_files=ledger_files, balance=ledger_service.balance_of(sub_id), ledger_categories=ledger_service.CATEGORIES, badge=STATUS_BADGE, slots=slots, others=others, filled=filled,
                            slots_total=SLOTS_TOTAL, slot_names=archive.SUB_SLOTS, other_types=archive.SUB_OTHER_TYPES, folder=folder,
                            network=archive.network_path(folder), statuses=["ساري", "موقوف", "منتهي"], projects_list=projects_list,

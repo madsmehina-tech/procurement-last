@@ -114,7 +114,8 @@ def sub_figures(sub_id, contracts, certs):
     mine_certs = [g for g in certs if g["SubcontractorID"] == sub_id]
     live = [g for g in mine_certs if g["Status"] != ST_REJECTED]
     debit_entries, credit_entries = ledger_totals(sub_id)
-    due, paid = round(sum(g["Total"] for g in live) + debit_entries, 2), round(sum(g["Paid"] for g in live) + credit_entries, 2)
+    # money paid on a REJECTED certificate was really paid: the statement shows it as a credit, so it counts here too (it just has no due amount)
+    due, paid = round(sum(g["Total"] for g in live) + debit_entries, 2), round(sum(g["Paid"] for g in mine_certs) + credit_entries, 2)
     return {"contracts": len(mine), "value": round(sum(float(c.get("ContractValue") or 0) for c in mine), 2),
             "executed": round(sum(g.get("GrossAmount") or 0 for g in live), 2), "due": due, "paid": paid, "remaining": round(due - paid, 2),
             "certs": len(mine_certs)}
