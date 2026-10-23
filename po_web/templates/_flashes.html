@@ -1,0 +1,7 @@
+{% with messages = get_flashed_messages() %}{% if messages %}
+<div class="flash-stack">
+  {% for m in messages %}{% set kind = flash_kind(m) %}
+  <div class="flash flash-{{ kind }}" role="{{ 'alert' if kind == 'error' else 'status' }}"><span class="flash-ico" aria-hidden="true">{{ '✓' if kind == 'success' else ('✕' if kind == 'error' else '!') }}</span><span>{{ m }}</span></div>
+  {% endfor %}
+</div>
+{% endif %}{% endwith %}

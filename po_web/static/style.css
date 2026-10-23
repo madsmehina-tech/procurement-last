@@ -40,7 +40,7 @@
 
 body { letter-spacing: 0;
   margin: 0;
-  font-family: "Cairo", "Tajawal", Tahoma, Arial, sans-serif;
+  font-family: "Segoe UI", Tahoma, "Noto Naskh Arabic", "Noto Sans Arabic", Arial, sans-serif;
   font-size: 14.5px;
   font-weight: 400;
   background: var(--bg);
@@ -234,11 +234,17 @@ table.list tbody tr:hover td { background: var(--surface-2); }
 table.list .btn { min-height: 32px; padding: 4px 14px; font-size: 12.5px; }
 
 /* ------------------------------------------------------------------ flash messages */
+.flash-stack { margin-bottom: 1.25rem; display: flex; flex-direction: column; gap: 8px; }
 .flash {
+  display: flex; align-items: flex-start; gap: 10px;
   background: var(--warning-bg); color: var(--warning);
-  padding: 12px 18px; border-radius: var(--radius); margin-bottom: 1.25rem;
-  font-size: 14px; font-weight: 500; border: 1px solid #FCE3A0;
+  padding: 12px 18px; border-radius: var(--radius);
+  font-size: 14px; font-weight: 500; border: 1px solid #FCE3A0; line-height: 1.7;
 }
+.flash-ico { flex: none; font-weight: 700; width: 20px; text-align: center; }
+.flash-success { background: var(--success-bg); color: var(--success); border-color: #A7E3BE; }
+.flash-error   { background: var(--danger-bg);  color: var(--danger);  border-color: #F5B5B5; }
+.flash-notice  { background: var(--warning-bg); color: var(--warning); border-color: #FCE3A0; }
 
 /* ------------------------------------------------------------------ login */
 .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--bg); padding: 20px; }
@@ -558,3 +564,34 @@ dialog.dlg::backdrop { background: rgba(15, 23, 42, .5); }
 .cy3-pill.ok { background: #DFF0E5; color: #1A5E3C; } .cy3-pill.no { background: #F8DEDA; color: #8A2A22; } .cy3-pill.wait { background: #FBEBC8; color: #6E4700; }
 .cy3-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
 .cy3-log td { padding: 6px 10px; border-bottom: 1px solid #EEEBE5; font-size: 12.5px; }
+
+
+/* ------------------------------------------------------------------ v25.3: accessibility, phone, attention panel, print */
+:focus-visible { outline: 3px solid #F59E0B; outline-offset: 2px; }
+.skip-link { position: absolute; top: -60px; inset-inline-start: 8px; background: #fff; color: var(--text); padding: 8px 14px; border-radius: 8px; z-index: 100; font-weight: 700; }
+.skip-link:focus { top: 8px; }
+.nav-toggle { display: none; }
+tr[data-href] { cursor: pointer; }
+tr[data-href]:focus-visible { outline-offset: -3px; }
+button[disabled], .btn[disabled] { opacity: .55; cursor: wait; }
+@media (max-width: 880px) {
+  .nav-toggle { display: block; width: 100%; min-height: 46px; background: var(--sidebar-bg); color: #fff; border: 0; font: inherit; font-weight: 700; text-align: right; padding: 0 16px; cursor: pointer; }
+  .sidebar { display: none; flex-direction: column; flex-wrap: nowrap; }
+  .sidebar.open { display: flex; }
+  table.list { display: block; overflow-x: auto; white-space: nowrap; }
+  .page-title { font-size: 22px; }
+  .btn, input, select, textarea { min-height: 44px; }
+}
+.attn { padding: 18px 22px; margin-bottom: 1.5rem; }
+.attn h2 { margin: 0 0 10px; font-size: 16px; font-weight: 700; }
+.attn ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.attn a { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--radius); border: 1px solid var(--border); font-weight: 600; }
+.attn a:hover { background: var(--surface-2); }
+.attn .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.attn .dot.danger { background: var(--danger); } .attn .dot.warning { background: #F59E0B; } .attn .dot.info { background: var(--accent); }
+.attn .ok { color: var(--success); font-weight: 600; margin: 0; }
+@media print {
+  .nav-toggle, .skip-link, .flash-stack { display: none !important; }
+  a[href]:after { content: none !important; }
+  table { page-break-inside: auto; } tr { page-break-inside: avoid; } thead { display: table-header-group; }
+}

@@ -2,48 +2,49 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8">
-  <title>إدارة العقود والمشتريات</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+  <title>{% set t = self.title()|striptags|trim %}{{ t ~ ' — ' if t }}إدارة العقود والمشتريات</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1E293B">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
+  <a class="skip-link no-print" href="#main">تخطَّ إلى المحتوى</a>
   <div class="layout">
-    <aside class="sidebar">
+    <button class="nav-toggle no-print" type="button" aria-controls="sidebar" aria-expanded="false">☰ القائمة</button>
+    <aside class="sidebar" id="sidebar" aria-label="القائمة الرئيسية">
       <div class="brand">إدارة العقود والمشتريات</div>
       <div class="brand-sub">شركة الهضب للتجارة والمقاولات</div>
 
       <div class="nav-section">المشتريات</div>
-      {% if can('orders.create') %}<a class="nav-item {{ 'active' if active == 'order_new' else '' }}" href="{{ url_for('order_new') }}">إنشاء أمر شراء</a>{% endif %}
-      {% if can('compare.view') %}<a class="nav-item {{ 'active' if active == 'compare' else '' }}" href="{{ url_for('compare_list') }}">مقارنة عروض الأسعار</a>{% endif %}
-      {% if can('orders.view') %}<a class="nav-item {{ 'active' if active == 'orders' else '' }}" href="{{ url_for('orders_list') }}">متابعة أوامر الشراء</a>{% endif %}
-      {% if can('items.view') %}<a class="nav-item {{ 'active' if active == 'items' else '' }}" href="{{ url_for('items_list') }}">الأصناف</a>{% endif %}
-      {% if can('suppliers.view') %}<a class="nav-item {{ 'active' if active == 'suppliers' else '' }}" href="{{ url_for('suppliers_list') }}">الموردون</a>{% endif %}
-      {% if can('analytics.view') %}<a class="nav-item {{ 'active' if active == 'orders_analytics' else '' }}" href="{{ url_for('orders_analytics') }}">لوحة المؤشرات</a>{% endif %}
+      {% if can('orders.create') %}<a class="nav-item {{ 'active' if active == 'order_new' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'order_new' else '' }} href="{{ url_for('order_new') }}">إنشاء أمر شراء</a>{% endif %}
+      {% if can('compare.view') %}<a class="nav-item {{ 'active' if active == 'compare' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'compare' else '' }} href="{{ url_for('compare_list') }}">مقارنة عروض الأسعار</a>{% endif %}
+      {% if can('orders.view') %}<a class="nav-item {{ 'active' if active == 'orders' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'orders' else '' }} href="{{ url_for('orders_list') }}">متابعة أوامر الشراء</a>{% endif %}
+      {% if can('items.view') %}<a class="nav-item {{ 'active' if active == 'items' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'items' else '' }} href="{{ url_for('items_list') }}">الأصناف</a>{% endif %}
+      {% if can('suppliers.view') %}<a class="nav-item {{ 'active' if active == 'suppliers' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'suppliers' else '' }} href="{{ url_for('suppliers_list') }}">الموردون</a>{% endif %}
+      {% if can('analytics.view') %}<a class="nav-item {{ 'active' if active == 'orders_analytics' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'orders_analytics' else '' }} href="{{ url_for('orders_analytics') }}">لوحة المؤشرات</a>{% endif %}
 
       <div class="nav-section">إدارة مقاولي الباطن</div>
-      {% if can('analytics.view') %}<a class="nav-item {{ 'active' if active == 'subs_dashboard' else '' }}" href="{{ url_for('subs_dashboard') }}">لوحة المتابعة</a>{% endif %}
-      {% if can('subcontractors.view') %}<a class="nav-item {{ 'active' if active == 'subcontractors' else '' }}" href="{{ url_for('subcontractors_list') }}">مقاولو الباطن</a>{% endif %}
-      {% if can('certificates.view') %}<a class="nav-item {{ 'active' if active == 'certificates' else '' }}" href="{{ url_for('certificates_list') }}">المستخلصات</a>{% endif %}
-      {% if can('cycles.view') %}<a class="nav-item {{ 'active' if active == 'cycles' else '' }}" href="{{ url_for('cycles_list') }}">دورة الصرف</a>{% endif %}
-      {% if can('payments.view') %}<a class="nav-item {{ 'active' if active == 'payments' else '' }}" href="{{ url_for('payments_list') }}">الدفعات</a>{% endif %}
-      {% if can('archive.view') %}<a class="nav-item {{ 'active' if active == 'archive' else '' }}" href="{{ url_for('archive_list') }}">الأرشيف</a>{% endif %}
+      {% if can('analytics.view') %}<a class="nav-item {{ 'active' if active == 'subs_dashboard' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'subs_dashboard' else '' }} href="{{ url_for('subs_dashboard') }}">لوحة المتابعة</a>{% endif %}
+      {% if can('subcontractors.view') %}<a class="nav-item {{ 'active' if active == 'subcontractors' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'subcontractors' else '' }} href="{{ url_for('subcontractors_list') }}">مقاولو الباطن</a>{% endif %}
+      {% if can('certificates.view') %}<a class="nav-item {{ 'active' if active == 'certificates' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'certificates' else '' }} href="{{ url_for('certificates_list') }}">المستخلصات</a>{% endif %}
+      {% if can('cycles.view') %}<a class="nav-item {{ 'active' if active == 'cycles' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'cycles' else '' }} href="{{ url_for('cycles_list') }}">دورة الصرف</a>{% endif %}
+      {% if can('payments.view') %}<a class="nav-item {{ 'active' if active == 'payments' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'payments' else '' }} href="{{ url_for('payments_list') }}">الدفعات</a>{% endif %}
+      {% if can('archive.view') %}<a class="nav-item {{ 'active' if active == 'archive' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'archive' else '' }} href="{{ url_for('archive_list') }}">الأرشيف</a>{% endif %}
 
       <div class="nav-section">التقارير</div>
-      {% if can('analytics.view') %}<a class="nav-item {{ 'active' if active == 'project_analysis' else '' }}" href="{{ url_for('project_analysis') }}">تحليل المشروع</a>{% endif %}
+      {% if can('analytics.view') %}<a class="nav-item {{ 'active' if active == 'project_analysis' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'project_analysis' else '' }} href="{{ url_for('project_analysis') }}">تحليل المشروع</a>{% endif %}
 
       <div class="nav-section">الإعدادات</div>
-      <a class="nav-item {{ 'active' if active == 'settings_account' else '' }}" href="{{ url_for('settings_account') }}">حسابي</a>
-      {% if can('settings.users') %}<a class="nav-item {{ 'active' if active == 'settings_users' else '' }}" href="{{ url_for('settings_users') }}">المستخدمون{% if pending_users %}<span class="nav-badge">{{ pending_users }}</span>{% endif %}</a>{% endif %}
-      {% if can('settings.roles') %}<a class="nav-item {{ 'active' if active == 'settings_roles' else '' }}" href="{{ url_for('settings_roles') }}">الأدوار والصلاحيات</a>
-      <a class="nav-item {{ 'active' if active == 'settings_groups' else '' }}" href="{{ url_for('settings_groups') }}">المجموعات</a>{% endif %}
-      {% if can('settings.projects') %}<a class="nav-item {{ 'active' if active == 'settings_projects' else '' }}" href="{{ url_for('settings_projects') }}">المشاريع</a>{% endif %}
-      {% if can('settings.projects') %}<a class="nav-item {{ 'active' if active == 'settings_sites' else '' }}" href="{{ url_for('settings_sites') }}">المواقع</a>{% endif %}
-      {% if can('contractgen.templates') %}<a class="nav-item {{ 'active' if active == 'contract_templates' else '' }}" href="{{ url_for('contract_templates') }}">قوالب العقود</a>
-      <a class="nav-item {{ 'active' if active == 'settings_company' else '' }}" href="{{ url_for('settings_company') }}">بيانات الشركة</a>{% endif %}
-      {% if can('settings.system') %}<a class="nav-item {{ 'active' if active == 'settings_archive' else '' }}" href="{{ url_for('settings_archive') }}">صحة الأرشيف</a>{% endif %}
-      {% if can('settings.audit') %}<a class="nav-item {{ 'active' if active == 'settings_audit' else '' }}" href="{{ url_for('settings_audit') }}">سجل التدقيق</a>{% endif %}
+      <a class="nav-item {{ 'active' if active == 'settings_account' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'settings_account' else '' }} href="{{ url_for('settings_account') }}">حسابي</a>
+      {% if can('settings.users') %}<a class="nav-item {{ 'active' if active == 'settings_users' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'settings_users' else '' }} href="{{ url_for('settings_users') }}">المستخدمون{% if pending_users %}<span class="nav-badge">{{ pending_users }}</span>{% endif %}</a>{% endif %}
+      {% if can('settings.roles') %}<a class="nav-item {{ 'active' if active == 'settings_roles' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'settings_roles' else '' }} href="{{ url_for('settings_roles') }}">الأدوار والصلاحيات</a>
+      <a class="nav-item {{ 'active' if active == 'settings_groups' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'settings_groups' else '' }} href="{{ url_for('settings_groups') }}">المجموعات</a>{% endif %}
+      {% if can('settings.projects') %}<a class="nav-item {{ 'active' if active == 'settings_projects' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'settings_projects' else '' }} href="{{ url_for('settings_projects') }}">المشاريع</a>{% endif %}
+      {% if can('settings.projects') %}<a class="nav-item {{ 'active' if active == 'settings_sites' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'settings_sites' else '' }} href="{{ url_for('settings_sites') }}">المواقع</a>{% endif %}
+      {% if can('contractgen.templates') %}<a class="nav-item {{ 'active' if active == 'contract_templates' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'contract_templates' else '' }} href="{{ url_for('contract_templates') }}">قوالب العقود</a>
+      <a class="nav-item {{ 'active' if active == 'settings_company' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'settings_company' else '' }} href="{{ url_for('settings_company') }}">بيانات الشركة</a>{% endif %}
+      {% if can('settings.system') %}<a class="nav-item {{ 'active' if active == 'settings_archive' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'settings_archive' else '' }} href="{{ url_for('settings_archive') }}">صحة الأرشيف</a>{% endif %}
+      {% if can('settings.audit') %}<a class="nav-item {{ 'active' if active == 'settings_audit' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'settings_audit' else '' }} href="{{ url_for('settings_audit') }}">سجل التدقيق</a>{% endif %}
 
       <div class="sidebar-footer">
         <a href="{{ url_for('settings_account') }}" class="user-chip">
@@ -54,7 +55,7 @@
         {% if current_user %}<form method="post" action="{{ url_for('logout') }}" style="display:contents;"><button class="logout-link" type="submit" style="background:none; border:0; font:inherit; color:inherit; cursor:pointer;">خروج</button></form>{% endif %}
       </div>
     </aside>
-    <main class="main">
+    <main class="main" id="main">
       {% if staging %}<div class="env-banner">بيئة تجريبية (Staging) — البيانات هنا نسخة اختبارية ولا تؤثر على النظام الفعلي</div>{% endif %}
       <div class="page-head">
         <div>
@@ -63,13 +64,10 @@
         </div>
         <div class="page-actions no-print">{% block page_actions %}{% endblock %}</div>
       </div>
-      {% with messages = get_flashed_messages() %}
-        {% if messages %}
-          {% for m in messages %}<div class="flash">{{ m }}</div>{% endfor %}
-        {% endif %}
-      {% endwith %}
+      {% include "_flashes.html" %}
       {% block content %}{% endblock %}
     </main>
   </div>
+  <script src="{{ url_for('static', filename='ui.js') }}" defer></script>
 </body>
 </html>

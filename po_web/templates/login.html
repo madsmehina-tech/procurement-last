@@ -3,9 +3,8 @@
 <head>
   <meta charset="utf-8">
   <title>تسجيل الدخول - إدارة العقود والمشتريات</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1E293B">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
@@ -13,11 +12,7 @@
     <div class="login-card">
       <h1>إدارة العقود والمشتريات</h1>
       <p class="login-sub">Contracts &amp; Procurement Management · شركة الهضب للتجارة والمقاولات</p>
-      {% with messages = get_flashed_messages() %}
-        {% if messages %}
-          {% for m in messages %}<div class="flash">{{ m }}</div>{% endfor %}
-        {% endif %}
-      {% endwith %}
+      {% include "_flashes.html" %}
       <form method="post">
         <label>اسم المستخدم</label>
         <input type="text" name="username" required autofocus>

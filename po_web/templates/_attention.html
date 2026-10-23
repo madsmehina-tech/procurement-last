@@ -1,0 +1,7 @@
+{% macro attention_panel(todo) %}
+<section class="card attn" aria-labelledby="attn-h">
+  <h2 id="attn-h">ما يحتاج انتباهك</h2>
+  {% if todo %}<ul>{% for t in todo %}<li><a href="{{ t.url }}"><span class="dot {{ t.level }}" aria-hidden="true"></span><span>{{ t.text }}</span></a></li>{% endfor %}</ul>
+  {% else %}<p class="ok">✓ لا يوجد شيء يحتاج انتباهك الآن.</p>{% endif %}
+</section>
+{% endmacro %}

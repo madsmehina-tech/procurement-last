@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from flask import abort, flash, redirect, render_template, request, send_file, url_for
 
 import archive
+import attention
 import auth
 import money_guards as mg
 import order_math
@@ -27,8 +28,9 @@ from routes.documents import back, save_entity_document
 @route("/")
 @auth.login_required
 def dashboard():
+    todo = attention.items(url_for)
     if not auth.can("orders.view"):
-        return render_template("welcome.html")
+        return render_template("welcome.html", todo=todo)
     orders_count = db.scalar("SELECT COUNT(*) FROM [PurchaseOrders]", default=0)
     total_amount = db.scalar("SELECT SUM([TotalAmount]) FROM [PurchaseOrders]", default=0) or 0
     due_soon = db.scalar(
@@ -52,6 +54,7 @@ def dashboard():
         due_soon=due_soon,
         partial_receipt=partial_receipt,
         recent=recent,
+        todo=todo,
     )
 
 

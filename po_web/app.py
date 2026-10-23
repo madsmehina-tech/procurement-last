@@ -21,6 +21,7 @@ import audit
 import auth
 import config
 import db
+import ui_helpers
 
 
 def _setup_logging(app):
@@ -60,7 +61,8 @@ def create_app():
             pending = len(db.query("SELECT [UserID] FROM [Users] WHERE [Status] = ?", ("pending",)))
         import cycle_files
         return {"current_user": user, "can": auth.can, "pending_users": pending,
-                "staging": config.ENVIRONMENT == "staging", "company_logo": cycle_files.logo()}
+                "staging": config.ENVIRONMENT == "staging", "company_logo": cycle_files.logo(),
+                "flash_kind": ui_helpers.flash_kind}
 
     # ONE WRITER AT A TIME. The database is Access (it cannot lock rows) and numbers (purchase orders, cycles, payments, contracts) are
     # "read the last number, add one, insert": two saves at the same instant could take the same number. The server is a single process,
