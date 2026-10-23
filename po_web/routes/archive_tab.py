@@ -8,6 +8,7 @@ from datetime import datetime
 from flask import flash, redirect, render_template, request, send_file, url_for
 
 import archive
+import audit
 import auth
 import contracts_service as cs
 import db
@@ -116,8 +117,13 @@ def archive_close(cert_id):
         flash("لا تُقفل المعاملة قبل اكتمال أوراقها الخمس (ينقص %d)." % (len(PAPERS) - row["count"]))
     elif row["Status"] == ST_IN_CYCLE:
         flash("هذا المستخلص داخل دورة صرف مفتوحة؛ أكمل الدورة أو احذفها ثم أقفل المعاملة.")
+    elif (row.get("Remaining") or 0) > 0.005 and request.form.get("unpaid_ok") != "1":
+        # closing is always the owner's free choice, but never by accident: an unpaid balance must be acknowledged
+        flash("على هذه المعاملة متبقٍ لم يُصرف (%s ريال). للإقفال مع ذلك أكّد الإقفال من نافذة التأكيد." % "{:,.2f}".format(row["Remaining"]))
     else:
         db.execute("UPDATE [Certificates] SET [ClosedAt] = ?, [ClosedBy] = ? WHERE [CertificateID] = ?", (datetime.now(), (auth.current_user() or {}).get("Username", ""), cert_id))
+        if (row.get("Remaining") or 0) > 0.005:
+            audit.log("archive_close_unpaid", "مستخلص", cert_id, "أُقفلت المعاملة وعليها متبقٍ %s ريال (أُقرّ الإقفال)" % "{:,.2f}".format(row["Remaining"]))
         flash("أُقفلت المعاملة نهائيًا. أوراقها الخمس محفوظة ولا تُعدَّل إلا بإعادة الفتح من صلاحية أعلى.")
     return redirect(url_for("archive_list", cert=cert_id))
 

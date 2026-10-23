@@ -17,6 +17,7 @@ import contract_render
 import contract_templates as templates
 import contract_vars as V
 import db
+import money_guards as mg
 import masterdata
 from textnorm import clean_spaces, norm_key
 
@@ -33,9 +34,12 @@ class ContractError(Exception):
 
 # ---------------------------------------------------------------- small helpers
 def _num(x):
+    """A number typed in the contract form -> float, or None when blank or not a sane number (NaN, infinity, a minus sign, letters ...)."""
+    s = str(x if x is not None else "").strip()
+    if s == "":
+        return None
     try:
-        s = str(x).replace(",", "").strip()
-        return float(s) if s != "" else None
+        return mg.parse_money(s, decimals=4)
     except ValueError:
         return None
 
@@ -60,17 +64,22 @@ def parse_date(raw):
 
 
 def words_sar(amount):
-    """«فقط ستة وأربعون ألف ريال سعودي لا غير»."""
+    """«فقط ستة وأربعون ألف ريال سعودي لا غير» - the contract style: hundreds written joined (خمسمائة) and the currency with its adjective."""
     if amount is None:
         return None
+    amount = round(float(amount), 2)
+    if not (0 <= amount < 1_000_000_000):
+        return None
     whole, halalas = int(amount), int(round((amount - int(amount)) * 100))
-    w = arabic_numbers.number_to_arabic_words(whole) if whole else "صفر"
-    for a, b in (("خمس مائة", "خمسمائة"), ("ست مائة", "ستمائة"), ("سبع مائة", "سبعمائة"), ("ثمان مائة", "ثمانمائة"), ("تسع مائة", "تسعمائة")):
-        w = w.replace(a, b)
-    if w.endswith("اً"):
-        w = w[:-2]
-    tail = (" و%s هللة" % arabic_numbers.number_to_arabic_words(halalas).replace("اً", "")) if halalas else ""
-    return "فقط %s ريال سعودي%s لا غير" % (w, tail)
+    phrase = arabic_numbers._noun_phrase(whole, 'ريال واحد', 'ريالان', 'ريالات', 'ريالاً') if whole else "صفر ريال"
+    for plain, adjective in (("ريال واحد", "ريال سعودي واحد"), ("ريالان", "ريالان سعوديان"), ("ريالات", "ريالات سعودية"), ("ريالاً", "ريالاً سعودياً"), ("ريال", "ريال سعودي")):
+        if phrase.endswith(plain):
+            phrase = phrase[:-len(plain)] + adjective
+            break
+    for a_, b_ in (("ثلاث مائة", "ثلاثمائة"), ("أربع مائة", "أربعمائة"), ("خمس مائة", "خمسمائة"), ("ست مائة", "ستمائة"), ("سبع مائة", "سبعمائة"), ("ثمان مائة", "ثمانمائة"), ("تسع مائة", "تسعمائة")):
+        phrase = phrase.replace(a_, b_)
+    tail = (" و" + arabic_numbers._noun_phrase(halalas, "هللة واحدة", "هللتان", "هللات", "هللة")) if halalas else ""
+    return "فقط %s%s لا غير" % (phrase, tail)
 
 
 # ---------------------------------------------------------------- parties and numbering

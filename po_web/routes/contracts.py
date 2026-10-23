@@ -7,6 +7,7 @@ from flask import abort, flash, redirect, render_template, request, url_for
 
 import archive
 import auth
+import money_guards as mg
 import contracts_service as cs
 import db
 import masterdata
@@ -24,9 +25,9 @@ def _project_choices():
     return [{"Project": n} for n in names]
 
 
-def _float(name):
-    v = request.form.get(name, "").strip().replace(",", "")
-    return float(v) if v else None
+def _float(name, label="القيمة", maximum=None):
+    v = request.form.get(name, "").strip()
+    return mg.parse_money(v, label=label, maximum=maximum or mg.MAX_MONEY) if v else None
 
 
 @route("/contracts")
@@ -112,7 +113,7 @@ def contract_new(sub_id):
         flash("اسم المشروع واسم الموقع الأول مطلوبان.")
         return again()
     try:
-        contract_value, retention_pct, advance_pct = _float("contract_value"), _float("retention_pct"), _float("advance_pct")
+        contract_value, retention_pct, advance_pct = _float("contract_value", "قيمة العقد"), _float("retention_pct", "نسبة الاستقطاع", 100), _float("advance_pct", "نسبة الدفعة المقدمة", 100)
     except ValueError:
         flash("القيم المرجعية (قيمة العقد/النسب) يجب أن تكون أرقامًا إن أُدخلت.")
         return again()
@@ -173,7 +174,7 @@ def contract_edit(contract_id):
     contract_no = clean_spaces(request.form.get("contract_no", ""))
     status = request.form.get("status", "ساري")
     try:
-        value, retention, advance = _float("contract_value"), _float("retention_pct"), _float("advance_pct")
+        value, retention, advance = _float("contract_value", "قيمة العقد"), _float("retention_pct", "نسبة الاستقطاع", 100), _float("advance_pct", "نسبة الدفعة المقدمة", 100)
     except ValueError:
         flash("القيم يجب أن تكون أرقامًا.")
         return _back(sub_id, contract=contract_id, mode="edit")
