@@ -15,6 +15,7 @@ import auth
 import contracts_service as cs
 import db
 import masterdata
+import money_guards as mg
 from finance import STATUS_BADGE, ST_ENTERED, ST_IN_CYCLE, ST_PAID, ST_REJECTED, CERT_STATUSES, classify_status, norm_status
 from routes import route
 from routes.documents import save_entity_document
@@ -22,9 +23,10 @@ from textnorm import clean_spaces, contains, norm_key
 
 
 
-def _num(name, default=0.0):
-    v = (request.form.get(name) or "").strip().replace(",", "")
-    return float(v) if v else default
+def _num(name, default=0.0, label="المبلغ"):
+    """An amount from the form: finite, not negative, two decimals (raises mg.MoneyError, a ValueError, with a message for the person)."""
+    raw = (request.form.get(name) or "").strip()
+    return mg.parse_money(raw, label=label) if raw else default
 
 
 def _date(name):
@@ -140,10 +142,10 @@ def _read_cert_form(sub_id, existing=None):
     elif existing and "contract_id" not in f:
         v["contract_id"] = existing.get("ContractID")          # a form that does not carry the field keeps the link as it is
     try:
-        v["value"], v["materials"], v["penalties"] = _num("total_incl_vat"), _num("supplied_materials"), _num("penalties")
-    except ValueError:
+        v["value"], v["materials"], v["penalties"] = _num("total_incl_vat", label="إجمالي المستخلص"), _num("supplied_materials", label="مواد الشركة"), _num("penalties", label="الغرامات")
+    except mg.MoneyError as e:
         v["value"] = v["materials"] = v["penalties"] = 0.0
-        errors.append("القيم المالية يجب أن تكون أرقامًا.")
+        errors.append(str(e))
     if v["value"] <= 0:
         errors.append("إجمالي قيمة المستخلص (شامل الضريبة) مطلوب.")
     if min(v["materials"], v["penalties"]) < 0:
@@ -152,6 +154,7 @@ def _read_cert_form(sub_id, existing=None):
         errors.append("الخصومات (%s) أكبر من قيمة المستخلص (%s)." % ("{:,.2f}".format(v["materials"] + v["penalties"]), "{:,.2f}".format(v["value"])))
     v["date"] = _date("cert_date")
     nxt = 1
+    v["no"] = int(existing["CertificateNo"]) if existing and existing.get("CertificateNo") else 1
     if v["project"] and v["site"]:
         taken = [g for g in cs.load()[2] if g["SubcontractorID"] == sub_id and norm_key(g.get("Project")) == norm_key(v["project"])
                  and norm_key(g.get("SiteName")) == norm_key(v["site"]) and (not existing or g["CertificateID"] != existing["CertificateID"])]
@@ -227,6 +230,11 @@ def certificate_edit(cert_id):
     if g["Status"] not in (ST_ENTERED, ST_REJECTED) or g.get("StatusUnknown"):
         flash("لا يُعدَّل مستخلص بعد إدراجه في دورة صرف أو صرفه.")
         return _back_to_sub(sub_id)
+    try:
+        mg.check_can_change(db, cert_id, "التعديل")
+    except mg.MoneyError as e:
+        flash(str(e))
+        return _back_to_sub(sub_id)
     v, errors = _read_cert_form(sub_id, existing=g)
     if errors:
         for e in errors:
@@ -251,6 +259,11 @@ def certificate_delete(cert_id):
     sub_id = g["SubcontractorID"]
     if g["Status"] not in (ST_ENTERED, ST_REJECTED) or g.get("CycleID") or any(p["CertificateID"] == cert_id for p in pays):
         flash("لا يُحذف مستخلص أُدرج في دورة صرف أو سُجّل له صرف (تاريخه المالي محفوظ).")
+        return _back_to_sub(sub_id)
+    try:
+        mg.check_can_change(db, cert_id, "الحذف")
+    except mg.MoneyError as e:
+        flash(str(e))
         return _back_to_sub(sub_id)
     folder = db.query("SELECT [ArchiveFolder] FROM [Certificates] WHERE [CertificateID] = ?", (cert_id,))[0].get("ArchiveFolder")
     with db.transaction() as tx:
@@ -303,6 +316,15 @@ def certificate_detail(cert_id):
         ST_ENTERED=ST_ENTERED, ST_IN_CYCLE=ST_IN_CYCLE, ST_PAID=ST_PAID, ST_REJECTED=ST_REJECTED)
 
 
+def _can_change_or_flash(cert_id, what):
+    try:
+        mg.check_can_change(db, cert_id, what)
+        return True
+    except mg.MoneyError as e:
+        flash(str(e))
+        return False
+
+
 @route("/certificates/<int:cert_id>/reject", methods=["POST"])
 @auth.login_required
 def certificate_reject(cert_id):
@@ -314,6 +336,8 @@ def certificate_reject(cert_id):
         flash("يُرفض المستخلص وهو «مُدخَل» فقط.")
     elif not reason:
         flash("سبب الرفض مطلوب.")
+    elif not _can_change_or_flash(cert_id, "الرفض"):
+        pass
     else:
         db.execute("UPDATE [Certificates] SET [Status] = ?, [RejectionReason] = ? WHERE [CertificateID] = ?", (ST_REJECTED, reason, cert_id))
         flash("أُعيد المستخلص (مرفوض) مع السبب.")
@@ -344,6 +368,11 @@ def certificate_pay(cert_id):
     if g["Status"] not in (ST_ENTERED, ST_IN_CYCLE) or g.get("StatusUnknown"):
         flash("لا يُسجَّل صرف لمستخلص حالته «%s»." % (g["StatusRaw"] if g.get("StatusUnknown") else g["Status"]))
         return redirect(url_for("certificate_detail", cert_id=cert_id))
+    try:
+        mg.check_new_payment(db, cert_id, g["Remaining"])
+    except mg.MoneyError as e:
+        flash(str(e))
+        return redirect(url_for("certificate_detail", cert_id=cert_id))
     proof = request.files.get("proof_file")
     if proof and proof.filename and archive._ext(proof.filename) not in archive.ALLOWED_EXT:
         flash("صيغة سند التحويل غير مدعومة - لم يُسجَّل الصرف.")
@@ -352,11 +381,17 @@ def certificate_pay(cert_id):
     paid_at = _date("pay_date")
     try:
         with db.transaction() as tx:                       # the payment record and the status change together
+            mg.check_new_payment(tx, cert_id, g["Remaining"])
             tx.execute("INSERT INTO [Payments] ([CertificateID], [SubcontractorID], [PaidAt], [Amount], [BankRef], [CycleID], [DocID], [Note], "
                        "[CreatedBy], [CreatedAt]) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                        (cert_id, g["SubcontractorID"], paid_at, g["Remaining"], request.form.get("bank_ref", "").strip()[:80], g.get("CycleID"),
                         doc["DocID"] if doc else None, request.form.get("note", "").strip()[:250], _user(), datetime.now()))
             tx.execute("UPDATE [Certificates] SET [Status] = ?, [PaymentDate] = ? WHERE [CertificateID] = ?", (ST_PAID, paid_at, cert_id))
+    except mg.MoneyError as e:
+        if doc:
+            archive.discard_document(doc["DocID"])
+        flash(str(e))
+        return redirect(url_for("certificate_detail", cert_id=cert_id))
     except Exception as e:                                 # noqa
         if doc:
             archive.discard_document(doc["DocID"])
@@ -371,7 +406,10 @@ def certificate_pay(cert_id):
 @auth.login_required
 def certificate_unpay(cert_id):
     """Corrects a payment entered by mistake. The voucher stays in the archive."""
-    rows = db.query("SELECT [Status], [CycleID] FROM [Certificates] WHERE [CertificateID] = ?", (cert_id,))
+    rows = db.query("SELECT [Status], [CycleID], [ClosedAt] FROM [Certificates] WHERE [CertificateID] = ?", (cert_id,))
+    if rows and rows[0].get("ClosedAt"):
+        flash("معاملة هذا المستخلص مُقفلة في الأرشيف؛ لا يُلغى صرفها. (إعادة فتحها بصلاحية أعلى أولًا.)")
+        return redirect(url_for("certificate_detail", cert_id=cert_id))
     if db.query("SELECT [PaymentID] FROM [Payments] WHERE [CertificateID] = ?", (cert_id,)) and any(p.get("CycleID") for p in db.query("SELECT [CycleID] FROM [Payments] WHERE [CertificateID] = ?", (cert_id,))):
         flash("صُرف هذا المستخلص عبر دورة صرف؛ يُصحَّح من شاشة التحويلات في الدورة.")
         return redirect(url_for("certificate_detail", cert_id=cert_id))

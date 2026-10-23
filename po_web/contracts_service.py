@@ -12,13 +12,16 @@ add up certificates their own way; now they all read the same figures from here,
 from datetime import datetime
 
 import db
+import money_guards as mg
 from finance import ST_PAID, ST_REJECTED, certificate_value, classify_status, norm_status, row_amounts
 
 
 def _payments():
     try:
         return db.query("SELECT * FROM [Payments]")
-    except Exception:                                    # noqa - before the migration the table does not exist
+    except Exception as e:                               # only «the table does not exist yet» (an old database) is tolerated; any other error must not turn «paid» into zero
+        if not mg.is_missing_table(e):
+            raise
         return []
 
 
@@ -28,14 +31,18 @@ def load():
     pays = _payments()
     try:
         cycle_no = {x["CycleID"]: x["CycleNo"] for x in db.query("SELECT [CycleID], [CycleNo] FROM [PaymentCycles]")}
-    except Exception:                                    # noqa - before the migration the table may not exist
+    except Exception as e:
+        if not mg.is_missing_table(e):
+            raise
         cycle_no = {}
     paid_by_cert = {}
     for p in pays:
         paid_by_cert[p["CertificateID"]] = paid_by_cert.get(p["CertificateID"], 0.0) + float(p.get("Amount") or 0)
     try:
         projects = {p["ProjectID"]: p["ProjectName"] for p in db.query("SELECT [ProjectID], [ProjectName] FROM [Projects]")}
-    except Exception:                                    # noqa - before the migration the table may not exist
+    except Exception as e:
+        if not mg.is_missing_table(e):
+            raise
         projects = {}
     certs = []
     for g in db.query("SELECT * FROM [Certificates]"):
@@ -88,7 +95,9 @@ def ledger_totals(sub_id):
     """(debit, credit) of the EXECUTED movements typed by hand on the contractor's page - the same ones the account statement shows."""
     try:
         rows = db.query("SELECT * FROM [LedgerEntries] WHERE [SubcontractorID] = ?", (sub_id,))
-    except Exception:                                    # noqa - before the migration the table does not exist
+    except Exception as e:
+        if not mg.is_missing_table(e):
+            raise
         return 0.0, 0.0
     done = [e for e in rows if e.get("Status") == "منفّذة"]
     return (round(sum(float(e.get("Amount") or 0) for e in done if e.get("Kind") == "مدين"), 2),
