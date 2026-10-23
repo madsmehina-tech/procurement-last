@@ -73,3 +73,8 @@ def test_script_and_styles_exist():
     assert "nav-toggle" in js and "disabled = true" in js and "defaultPrevented" in js
     css = open(os.path.join(ROOT, "static", "style.css"), encoding="utf-8").read()
     assert ".flash-error" in css and ":focus-visible" in css and "googleapis" not in css
+
+
+def test_the_menu_has_a_way_back_to_the_home_page(client):
+    html = client.get("/orders").get_data(as_text=True)
+    assert 'href="/"' in html and "الرئيسية" in html
