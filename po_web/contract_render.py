@@ -204,6 +204,40 @@ def _cell(cell, text, width, align, head=False, blank=False, bold=False):
         run.font.highlight_color = WD_COLOR_INDEX.YELLOW
 
 
+# ---------------------------------------------------------------- OOXML child order
+# Word is strict about the ORDER of the properties inside a table / cell / run / paragraph (the standard fixes it); LibreOffice forgives a wrong
+# order, Word may report «unreadable content». Everything this module builds is put in the standard order before it is saved.
+_ORDER = {
+    "tblPr": "tblStyle tblpPr tblOverlap bidiVisual tblStyleRowBandSize tblStyleColBandSize tblW jc tblCellSpacing tblInd tblBorders shd tblLayout tblCellMar tblLook tblCaption tblDescription",
+    "tcPr": "cnfStyle tcW gridSpan hMerge vMerge tcBorders shd noWrap tcMar textDirection tcFitText vAlign hideMark",
+    "tcMar": "top start left bottom end right",
+    "trPr": "cnfStyle divId gridBefore gridAfter wBefore wAfter cantSplit trHeight tblHeader tblCellSpacing jc hidden",
+    "rPr": "rStyle rFonts b bCs i iCs caps smallCaps strike dstrike outline shadow emboss imprint noProof snapToGrid vanish webHidden color spacing w kern position sz szCs highlight u effect bdr shd fitText vertAlign rtl cs em lang eastAsianLayout specVanish oMath",
+    "pPr": "pStyle keepNext keepLines pageBreakBefore framePr widowControl numPr suppressLineNumbers pBdr shd tabs suppressAutoHyphens kinsoku wordWrap overflowPunct topLinePunct autoSpaceDE autoSpaceDN bidi adjustRightInd snapToGrid spacing ind contextualSpacing mirrorIndents suppressOverlap jc textDirection textAlignment textboxTightWrap outlineLvl divId cnfStyle rPr sectPr pPrChange",
+}
+
+
+def _local(el):
+    return el.tag.split("}")[-1]
+
+
+def normalize_order(root):
+    """Puts the children of every tblPr / tcPr / tcMar / trPr / rPr / pPr under `root` in the order the OOXML standard requires."""
+    for el in root.iter():
+        order = _ORDER.get(_local(el))
+        if not order or len(el) < 2:
+            continue
+        names = order.split()
+        rank = {n: i for i, n in enumerate(names)}
+        kids = list(el)
+        ordered = sorted(kids, key=lambda k: rank.get(_local(k), len(names)))        # stable: unknown properties keep their place at the end
+        if ordered != kids:
+            for k in kids:
+                el.remove(k)
+            for k in ordered:
+                el.append(k)
+
+
 def build_table(doc, spec, total_width):
     """spec: {header: [...], rows: [[...]], widths: [fractions], align: [center|right], blank_missing: bool, bold_last: bool}"""
     cols = len(spec["header"])
@@ -247,6 +281,9 @@ def build_table(doc, spec, total_width):
             _cell(t.rows[i].cells[j], v, widths[j], aligns[j], blank=spec.get("blank_missing", True), bold=last)
         cant = OxmlElement("w:cantSplit")
         t.rows[i]._tr.get_or_add_trPr().append(cant)
+    for j, w_ in enumerate(widths):                    # the grid (tblGrid) must carry the real widths too, or Word spreads the columns equally
+        t.columns[j].width = Twips(w_)
+    normalize_order(tbl)
     return t
 
 
