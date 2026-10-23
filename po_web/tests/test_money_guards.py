@@ -205,3 +205,15 @@ def test_ledger_refuses_nan_and_negative_amounts(client, world):
 def test_certificate_form_refuses_nan(client, world):
     client.post("/subcontractors/%d/certificates" % world, data={"project": "م", "site": "ص", "total_incl_vat": "nan", "cert_no": "1"})
     assert fake_db.scalar("SELECT COUNT(*) FROM [Certificates]", default=0) == 0
+
+
+def test_loading_many_certificates_is_not_quadratic(world):
+    """Performance guard (audit M8): grouping payments once must give the same figures as before."""
+    import contracts_service as cs
+    ids = [h.add_cert(world, 1000, no=i + 1) for i in range(60)]
+    for i in ids[:30]:
+        fake_db.execute("INSERT INTO [Payments] ([CertificateID], [SubcontractorID], [PaidAt], [Amount], [CreatedAt]) VALUES (?, ?, ?, 400, ?)", (i, world, datetime.now(), datetime.now()))
+        fake_db.execute("INSERT INTO [Payments] ([CertificateID], [SubcontractorID], [PaidAt], [Amount], [CreatedAt]) VALUES (?, ?, ?, 100, ?)", (i, world, datetime.now(), datetime.now()))
+    certs = {g["CertificateID"]: g for g in cs.load()[2]}
+    assert certs[ids[0]]["Paid"] == 500.0 and certs[ids[0]]["Remaining"] == 500.0
+    assert certs[ids[-1]]["Paid"] == 0.0 and certs[ids[-1]]["Remaining"] == 1000.0

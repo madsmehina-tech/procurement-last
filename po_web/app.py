@@ -73,6 +73,10 @@ def create_app():
             g._write_locked = True
 
     @app.teardown_request
+    def _close_read_connection(exc=None):
+        db.close_request_conn()
+
+    @app.teardown_request
     def _release_writes(exc=None):
         if g.pop("_write_locked", False):
             write_lock.release()

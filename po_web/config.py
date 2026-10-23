@@ -110,7 +110,7 @@ LOG_DIR = _path(_get("server", "log_dir", "PO_LOG_DIR", "logs"))
 ENVIRONMENT = _get("server", "environment", "PO_ENV", "production").lower()   # "staging" shows a banner on every page
 SESSION_HOURS = int(_get("server", "session_hours", "PO_SESSION_HOURS", "12"))
 
-APP_VERSION = "24.3"
+APP_VERSION = "25.0"
 
 
 def secret_key():

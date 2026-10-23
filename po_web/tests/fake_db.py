@@ -18,6 +18,7 @@ from datetime import date, datetime
 DB_PATH = ":memory:"
 _conn = None
 _last_id = [None]
+CALLS = [0]                       # every call is one Access connection in the real db.py: the number of calls per page is the speed budget
 
 
 def _adapt_dt(v):
@@ -38,7 +39,11 @@ def reset():
 
 
 def _tr(sql):
+    top = re.match(r"\s*SELECT\s+TOP\s+(\d+)\s", sql, flags=re.I)
+    if top:                                                  # Access «SELECT TOP n ...» -> SQLite «... LIMIT n»
+        sql = re.sub(r"SELECT\s+TOP\s+\d+\s", "SELECT ", sql, count=1, flags=re.I).rstrip() + " LIMIT " + top.group(1)
     sql = re.sub(r"\bAUTOINCREMENT\s+PRIMARY\s+KEY\b", "INTEGER PRIMARY KEY AUTOINCREMENT", sql, flags=re.I)
+    sql = re.sub(r"DATEADD\('d',\s*(\d+),\s*Now\(\)\)", r"datetime('now','localtime','+\1 days')", sql, flags=re.I)
     sql = re.sub(r"\bNow\(\)", "datetime('now','localtime')", sql, flags=re.I)
     sql = re.sub(r"\bYESNO\b", "INTEGER", sql, flags=re.I)
     sql = re.sub(r"\bMEMO\b", "TEXT", sql, flags=re.I)
@@ -58,6 +63,7 @@ def _row(cols, row):
 
 
 def _run(cur, sql, params=()):
+    CALLS[0] += 1
     params = tuple(1 if p is True else 0 if p is False else p for p in (params or ()))
     return cur.execute(_tr(sql), params)
 
@@ -172,6 +178,10 @@ def transaction():
     except BaseException:
         _conn.execute("ROLLBACK")
         raise
+
+
+def close_request_conn():
+    pass
 
 
 def ansi_codec():

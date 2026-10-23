@@ -147,16 +147,62 @@ def _clean(v):
     return float(v) if isinstance(v, decimal.Decimal) else v
 
 
+# ---- ONE connection per web request for reading ---------------------------------------------------------------------
+# Opening a connection to an Access file is the expensive part of every query (tens to hundreds of milliseconds, much more on a slow disk or with an
+# anti-virus watching the file). A page asks the database 6-25 small questions; opening a new connection for each made every page take seconds.
+# Inside a web request all the READS now share one connection (opened at the first question, closed when the request ends). Any WRITE closes it first
+# and after it is done, so a later read in the same request opens a fresh connection and always sees what was just saved (Access/Jet may serve
+# a stale cached page to an older connection). Outside a request (tools, migrations, tests) nothing changes: one connection per call.
+def _request_globals():
+    try:
+        from flask import g, has_request_context
+    except ImportError:                                  # pragma: no cover - the tools run without Flask installed
+        return None
+    return g if has_request_context() else None
+
+
+def _read_conn():
+    """(connection, owned). `owned` = the caller must close it (outside a web request)."""
+    g_ = _request_globals()
+    if g_ is None:
+        return get_conn(), True
+    conn = g_.get("_po_read_conn")
+    if conn is None:
+        conn = get_conn()
+        g_._po_read_conn = conn
+    return conn, False
+
+
+def close_request_conn():
+    """Closes the request's shared read connection (called after every write and when the request ends)."""
+    g_ = _request_globals()
+    if g_ is None:
+        return
+    conn = g_.pop("_po_read_conn", None)
+    if conn is not None:
+        try:
+            conn.close()
+        except Exception:                                # noqa - closing must never raise
+            pass
+
+
 def query(sql, params=()):
     """SELECT helper: returns a list of dicts (column name -> value)."""
-    conn = get_conn()
+    conn, owned = _read_conn()
     try:
         cur = conn.cursor()
         _run(cur, sql, params)
         cols = [c[0] for c in cur.description]
-        return [{c: _clean(v) for c, v in zip(cols, row)} for row in cur.fetchall()]
+        rows = [{c: _clean(v) for c, v in zip(cols, row)} for row in cur.fetchall()]
+        cur.close()
+        return rows
+    except BaseException:
+        if not owned:
+            close_request_conn()                         # never keep a connection that failed
+        raise
     finally:
-        conn.close()
+        if owned:
+            conn.close()
 
 
 def scalar(sql, params=(), default=None):
@@ -169,6 +215,7 @@ def scalar(sql, params=(), default=None):
 
 def execute(sql, params=()):
     """INSERT / UPDATE / DELETE helper."""
+    close_request_conn()
     conn = get_conn()
     try:
         cur = conn.cursor()
@@ -182,6 +229,7 @@ def execute_insert(sql, params=()):
     scoped to the connection that did the insert, so - unlike execute() -
     this keeps one connection open for both statements instead of opening
     a fresh one (which would just see NULL)."""
+    close_request_conn()
     conn = get_conn()
     try:
         cur = conn.cursor()
@@ -233,6 +281,7 @@ class Transaction:
 def transaction():
     """with db.transaction() as tx:  tx.execute(...); tx.execute_insert(...)  - committed together, or rolled back."""
     real = True
+    close_request_conn()
     try:
         conn = get_conn(autocommit=False)
     except pyodbc.Error:                               # a driver without transactions: statements run one by one, as before
@@ -250,6 +299,7 @@ def transaction():
         raise
     finally:
         conn.close()
+        close_request_conn()                             # the next read in this request must see what the transaction saved
 
 
 # ---- text longer than its column ---------------------------------------------------------------------------------
