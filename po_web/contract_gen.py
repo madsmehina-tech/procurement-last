@@ -8,6 +8,7 @@ its signed copy is uploaded to the SAME record. The parties' data is read from t
 """
 import os
 import tempfile
+import threading
 from datetime import datetime
 
 import archive
@@ -18,6 +19,7 @@ import contract_templates as templates
 import contract_vars as V
 import db
 import money_guards as mg
+import write_lock
 import masterdata
 from textnorm import clean_spaces, norm_key
 
@@ -328,8 +330,26 @@ def save(form, user, contract_id=None):
 
 
 # ---------------------------------------------------------------- generating the files
+_GENERATING = set()                                   # contracts whose files are being made right now
+_GEN_GUARD = threading.Lock()
+
+
 def generate(cid, user=""):
-    """Fills the template -> DOCX (always) + PDF (when a converter exists). Returns {revision, docx, pdf, missing, pdf_error}."""
+    """Fills the template -> DOCX (always) + PDF (when a converter exists). Returns {revision, docx, pdf, missing, pdf_error}.
+    The Word -> PDF step runs WITHOUT the global write lock (it takes seconds to a minute), so a second click on the same contract must not start a
+    second generation (two «revision 5» files): it is refused until the first one has finished."""
+    with _GEN_GUARD:
+        if cid in _GENERATING:
+            raise ContractError("جارٍ إنشاء ملفات هذا العقد الآن؛ انتظر حتى تنتهي (حتى دقيقة) ثم حدّث الصفحة.")
+        _GENERATING.add(cid)
+    try:
+        return _generate(cid, user)
+    finally:
+        with _GEN_GUARD:
+            _GENERATING.discard(cid)
+
+
+def _generate(cid, user=""):
     d = load(cid)
     if not d or d["c"].get("Origin") != "مولَّد":
         raise ContractError("هذا العقد ليس عقدًا مولَّدًا من قالب.")
@@ -352,7 +372,8 @@ def generate(cid, user=""):
         report = contract_render.render(templates.path_of(ver[0]), docx_path, values, tables)
         pdf_error = None
         try:
-            contract_pdf.convert(docx_path, pdf_path)
+            with write_lock.released():                        # Word / LibreOffice take seconds to a minute: other people may save meanwhile
+                contract_pdf.convert(docx_path, pdf_path)
         except contract_pdf.PdfUnavailable as e:
             pdf_error = str(e)
         folder = archive.ensure_contract_folder(cid)

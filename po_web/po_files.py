@@ -24,6 +24,7 @@ import arabic_numbers
 import config
 import db
 import order_math
+import write_lock
 import pdfgen
 
 SNAPSHOT_FIELDS = ("PONumber", "OrderDate", "HijriDate", "SupplierName", "QuoteNo", "Project", "Location", "Receiver",
@@ -74,7 +75,8 @@ def make_pdf(order, items, watermark=None):
     fd, path = tempfile.mkstemp(suffix=".pdf")
     os.close(fd)
     try:
-        pdfgen.html_to_pdf(html, path)
+        with write_lock.released():                       # Edge/Chrome needs seconds: others may save meanwhile
+            pdfgen.html_to_pdf(html, path)
         with open(path, "rb") as f:
             return f.read()
     finally:

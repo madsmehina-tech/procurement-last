@@ -15,6 +15,7 @@ import auth
 import compare_service as cps
 import cycle_files
 import db
+import write_lock
 import report_xlsx
 from order_services import official_supplier, supplier_project_choices
 from routes import route
@@ -97,13 +98,16 @@ def clean_read_party(read, kind="supplier"):
     return read
 
 
+MAX_OCR_PAGES = 10
+
+
 def _pages(raw):
     """«1-3» / «2» -> (first, last) pages to OCR (default: the first three - the price table is there, the rest are drawings and terms)."""
     m = re.fullmatch(r"\s*(\d+)\s*(?:-\s*(\d+))?\s*", raw or "")
     if not m:
         return (1, 3)
-    a = int(m.group(1))
-    return (a, max(a, int(m.group(2) or a)))
+    a = max(int(m.group(1)), 1)
+    return (a, min(max(a, int(m.group(2) or a)), a + MAX_OCR_PAGES - 1))          # at most MAX_OCR_PAGES pages: «1-9999» must not keep the server busy for hours
 
 
 def _party_ids(kind, name):
@@ -216,7 +220,8 @@ def compare_quote_add(compare_id):
             known = [x["SupplierName"] for x in supplier_project_choices()[0]]
             own = [n for n in OWN_NAMES if " " not in n or n == "al hadab"] + ["شركة الهضب للتجارة والمقاولات"]
             try:
-                got = quote_read.read_offer(tmp, known=known, exclude=own, pages=_pages(f.get("ocr_pages")))
+                with write_lock.released():                   # the (possibly slow) reading must not freeze everybody else's saves
+                    got = quote_read.read_offer(tmp, known=known, exclude=own, pages=_pages(f.get("ocr_pages")))
                 md, engine, res = got["md"], got["engine"], got["res"]
                 lines = got["items"]
                 if engine == "ocr":
@@ -227,7 +232,8 @@ def compare_quote_add(compare_id):
                 warnings.append("تعذّرت القراءة المباشرة للملف (%s)" % " ".join(str(e).split())[:110])
             if not lines and quote2po.has_api_key():
                 try:                                     # the optional second reader: only when a key is configured and the direct reading found nothing
-                    res = quote2po.ai_extract(tmp, md)
+                    with write_lock.released():           # up to 2 minutes on the network
+                        res = quote2po.ai_extract(tmp, md)
                     engine = "ai"
                     lines = res.get("items", []) if res else []
                     warnings.append("قُرئ العرض بالذكاء الاصطناعي لأن القراءة المباشرة لم تجد بنودًا: راجع كل سطر")

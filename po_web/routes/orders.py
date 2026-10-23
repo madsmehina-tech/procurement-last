@@ -10,6 +10,7 @@ import archive
 import auth
 import money_guards as mg
 import order_math
+import write_lock
 import db
 import items_service
 import masterdata
@@ -581,8 +582,9 @@ def order_parse_quote():
 
     md = None
     try:
-        md, engine = quote2po.convert_to_md(tmp_path)
-        res = quote2po.parse_quote(md)
+        with write_lock.released():                       # OCR / the optional AI read can take a minute: nobody else's save waits for it
+            md, engine = quote2po.convert_to_md(tmp_path)
+            res = quote2po.parse_quote(md)
         if engine == "ocr":
             warnings.append("قُرئ الملف بالتعرف الضوئي (OCR): تأكد من كل رقم واسم، فقد تحدث أخطاء في الحروف والأرقام.")
         read_name = res.get("supplier")
