@@ -26,6 +26,8 @@ from textnorm import clean_spaces, norm_key
 VAT_RATE = 0.15
 PRICE_MODELS = ("مقطوعية", "بالوحدة")
 ST_DRAFT, ST_ISSUED, ST_ACTIVE = "مسودة", "صادر", "ساري"
+SIGNED_STATES = ("ساري", "موقوف", "منتهي", "مفسوخ")        # from signing on, the contract's text and money never change: a change is a NEW document (an addendum)
+SIGNED_COPY_EXT = (".pdf", ".jpg", ".jpeg", ".png")
 WEEKDAYS = ["الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت", "الأحد"]
 ORDINALS = ["الأولى", "الثانية", "الثالثة", "الرابعة", "الخامسة", "السادسة", "السابعة", "الثامنة"]
 
@@ -259,6 +261,10 @@ def missing_fields(cid):
 # ---------------------------------------------------------------- saving
 def save(form, user, contract_id=None):
     """The wizard's POST -> the contract record + its lines, tranches and extra fields. Returns the contract id. Missing data is allowed (it stays yellow)."""
+    if contract_id:
+        old = db.query("SELECT [Status] FROM [Contracts] WHERE [ContractID] = ?", (contract_id,))
+        if old and old[0].get("Status") in SIGNED_STATES:
+            raise ContractError("هذا العقد «%s» (وُقّع)؛ لا يُعدَّل نصه ولا قيمته بعد التوقيع. لأي تغيير أنشئ ملحقاً أو عقداً جديداً." % old[0]["Status"])
     kind, pid = parse_party(form.get("party"))
     if not kind or not party(kind, pid):
         raise ContractError("اختر المقاول أو المورد.")
@@ -354,6 +360,8 @@ def _generate(cid, user=""):
     if not d or d["c"].get("Origin") != "مولَّد":
         raise ContractError("هذا العقد ليس عقدًا مولَّدًا من قالب.")
     c = d["c"]
+    if c.get("Status") in SIGNED_STATES:
+        raise ContractError("هذا العقد «%s» (وُقّع)؛ لا تُعاد صياغة ملفاته بعد التوقيع لأنها ستختلف عن النسخة الموقّعة. لأي تغيير أنشئ ملحقاً أو عقداً جديداً." % c["Status"])
     ver = db.query("SELECT * FROM [ContractTemplateVersions] WHERE [VersionID] = ?", (c.get("TemplateVersionID") or 0,))
     tpl_id = ver[0]["TemplateID"] if ver else None
     if c.get("Status") != ST_ACTIVE and tpl_id:                       # until it is signed, a regeneration takes the template's latest version
@@ -407,6 +415,10 @@ def upload_signed(cid, file, user=""):
     c = db.query("SELECT * FROM [Contracts] WHERE [ContractID] = ?", (cid,))
     if not c:
         raise ContractError("العقد غير موجود.")
+    if os.path.splitext(file.filename or "")[1].lower() not in SIGNED_COPY_EXT:
+        raise ContractError("النسخة الموقّعة تُرفع بصيغة PDF أو صورة (JPG / PNG) فقط.")
+    if c[0].get("Origin") == "مولَّد" and c[0].get("Status") in (ST_DRAFT, ST_ISSUED) and not (c[0].get("Revision") or 0):
+        raise ContractError("أنشئ ملفات العقد وراجعها وطبعها أولًا، ثم ارفع النسخة الموقّعة.")
     folder = archive.ensure_contract_folder(cid)
     archive.store_document("CONTRACT", cid, folder, "العقد الموقّع", file, file.filename, "", user)
     if c[0].get("Origin") == "مولَّد" and c[0].get("Status") in (ST_DRAFT, ST_ISSUED):

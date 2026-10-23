@@ -12,6 +12,7 @@ import audit
 import auth
 import contracts_service as cs
 import db
+import ledger_service
 from finance import ST_IN_CYCLE, ST_REJECTED
 from routes import route
 from textnorm import contains
@@ -121,10 +122,16 @@ def archive_close(cert_id):
         # closing is always the owner's free choice, but never by accident: an unpaid balance must be acknowledged
         flash("على هذه المعاملة متبقٍ لم يُصرف (%s ريال). للإقفال مع ذلك أكّد الإقفال من نافذة التأكيد." % "{:,.2f}".format(row["Remaining"]))
     else:
-        db.execute("UPDATE [Certificates] SET [ClosedAt] = ?, [ClosedBy] = ? WHERE [CertificateID] = ?", (datetime.now(), (auth.current_user() or {}).get("Username", ""), cert_id))
-        if (row.get("Remaining") or 0) > 0.005:
-            audit.log("archive_close_unpaid", "مستخلص", cert_id, "أُقفلت المعاملة وعليها متبقٍ %s ريال (أُقرّ الإقفال)" % "{:,.2f}".format(row["Remaining"]))
-        flash("أُقفلت المعاملة نهائيًا. أوراقها الخمس محفوظة ولا تُعدَّل إلا بإعادة الفتح من صلاحية أعلى.")
+        who, unpaid = (auth.current_user() or {}).get("Username", ""), round(row.get("Remaining") or 0, 2)
+        with db.transaction() as tx:                       # the closing and its settlement line are saved together - or neither
+            tx.execute("UPDATE [Certificates] SET [ClosedAt] = ?, [ClosedBy] = ? WHERE [CertificateID] = ?", (datetime.now(), who, cert_id))
+            if unpaid > 0.005:
+                ledger_service.settle_on_close(tx, row, unpaid, who)
+        if unpaid > 0.005:
+            audit.log("archive_close_unpaid", "مستخلص", cert_id, "أُقفلت المعاملة وسُوّي المتبقي %s ريال (أُقرّ الإقفال)" % "{:,.2f}".format(unpaid))
+            flash("أُقفلت المعاملة نهائيًا، وسُجّل المتبقي (%s ريال) «تسوية عند الإقفال» في كشف حساب المقاول فصار المتبقي صفرًا. تُلغى التسوية بإعادة فتح المعاملة." % "{:,.2f}".format(unpaid))
+        else:
+            flash("أُقفلت المعاملة نهائيًا. أوراقها الخمس محفوظة ولا تُعدَّل إلا بإعادة الفتح من صلاحية أعلى.")
     return redirect(url_for("archive_list", cert=cert_id))
 
 
@@ -132,6 +139,8 @@ def archive_close(cert_id):
 @auth.login_required
 def archive_reopen(cert_id):
     if db.query("SELECT [CertificateID] FROM [Certificates] WHERE [CertificateID] = ?", (cert_id,)):
-        db.execute("UPDATE [Certificates] SET [ClosedAt] = NULL, [ClosedBy] = NULL WHERE [CertificateID] = ?", (cert_id,))
-        flash("أُعيد فتح المعاملة للتعديل.")
+        with db.transaction() as tx:
+            tx.execute("UPDATE [Certificates] SET [ClosedAt] = NULL, [ClosedBy] = NULL WHERE [CertificateID] = ?", (cert_id,))
+            back = ledger_service.remove_settlement(tx, cert_id)
+        flash("أُعيد فتح المعاملة للتعديل." + (" وأُلغيت «تسوية عند الإقفال» (%s ريال): عاد المتبقي." % "{:,.2f}".format(back) if back else ""))
     return redirect(url_for("archive_list", cert=cert_id))
