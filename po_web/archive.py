@@ -106,6 +106,14 @@ class UnsupportedFile(ValueError):
     pass
 
 
+MAX_FULL = 258       # a whole Windows path (root + folders + file) must stay under 260
+MAX_REL = 250        # the RelPath column holds 255 characters; Windows refuses full paths over 260 - one budget keeps both safe
+
+
+class PathTooLong(OSError):
+    """The folder of this record is so deep that not even a short file name fits (the message tells the person what to shorten)."""
+
+
 # --------------------------------------------------------------------------- names & paths
 NAME_CODEC = "cp1256"      # file and folder names follow ONE rule on every PC
 
@@ -523,6 +531,31 @@ def _write(dest, source, keep_source=False):
         shutil.move(source, dest)
 
 
+def _fit_name(folder_rel, stored):
+    """Shortens a file name (keeping its extension) so the record path fits MAX_REL; refuses only when even a short name cannot fit."""
+    room = min(MAX_REL - len(folder_rel) - 1, MAX_FULL - len(abs_path(folder_rel)) - 1)
+    if len(stored) <= room:
+        return stored
+    stem, dot, ext = stored.rpartition(".")
+    if not dot:
+        stem, ext = stored, ""
+    keep = room - len(ext) - 1 - 6                       # 6 spare characters for « (2)» when the name already exists
+    if keep < 12:
+        raise PathTooLong("مسار المجلد طويل جداً ولا يتّسع لاسم ملف؛ اختصر اسم المقاول أو المشروع أو الموقع.")
+    return stem[:keep].rstrip(" .-") + ("." + ext if ext else "")
+
+
+def _undo_write(dest, source, keep_source):
+    """The record could not be saved: the file must not stay behind as an orphan (a pending upload goes back where it was)."""
+    try:
+        if isinstance(source, (str, os.PathLike)) and not keep_source and os.path.exists(dest) and not os.path.exists(source):
+            shutil.move(dest, source)
+        elif os.path.exists(dest):
+            os.remove(dest)
+    except OSError:
+        pass
+
+
 def store_document(entity_type, entity_key, folder_rel, doc_type, source, original_name, note="", user="",
                    expiry=None, keep_source=False, exact_name=None, system=False):
     """Saves one document into the entity's folder and records it. Returns the new Documents row (dict)."""
@@ -532,27 +565,33 @@ def store_document(entity_type, entity_key, folder_rel, doc_type, source, origin
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     base = safe_name(os.path.splitext(original_name)[0], fallback="ملف", maxlen=30)
     stored = safe_name(exact_name, maxlen=120) if exact_name else "%s - %s - %s.%s" % (safe_name(doc_type, maxlen=20), stamp, base, ext)
+    stored = _fit_name(folder_rel, stored)
     ensure_folder(folder_rel)
     dest = _unique(os.path.join(abs_path(folder_rel), stored))
     stored = os.path.basename(dest)
-    _write(dest, source, keep_source)
     rel = "%s/%s" % (folder_rel, stored)
+    if len(rel) > MAX_REL or len(dest) > MAX_FULL:
+        raise PathTooLong("مسار الملف أطول من المسموح؛ اختصر اسم المقاول أو المشروع أو الموقع.")
     key = str(entity_key)
-    if doc_type not in MULTI_TYPES:
-        db.execute(
-            "UPDATE [Documents] SET [IsCurrent] = False WHERE [EntityType] = ? AND [EntityKey] = ? AND [DocType] = ?",
-            (entity_type, key, doc_type),
-        )
-    doc_id = db.execute_insert(
-        "INSERT INTO [Documents] ([EntityType], [EntityKey], [DocType], [StoredName], [OriginalName], [RelPath], "
-        "[UploadedAt], [UploadedBy], [Note], [IsCurrent], [ExpiryDate]) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, True, ?)",
-        (entity_type, key, doc_type, stored, original_name, rel, datetime.now(), user or "", note or "", expiry),
-    )
-    legacy = LEGACY_COLUMN.get((entity_type, doc_type))
-    if legacy:
-        table, column, keycol, numeric = legacy
-        db.execute("UPDATE [%s] SET [%s] = ? WHERE [%s] = ?" % (table, column, keycol),
-                   (rel, int(key) if numeric else key))
+    _write(dest, source, keep_source)
+    # the old «current» mark, the new record and the legacy column change TOGETHER: if one fails nothing is lost and the new file is removed
+    try:
+        with db.transaction() as tx:
+            if doc_type not in MULTI_TYPES:
+                tx.execute("UPDATE [Documents] SET [IsCurrent] = False WHERE [EntityType] = ? AND [EntityKey] = ? AND [DocType] = ?",
+                           (entity_type, key, doc_type))
+            doc_id = tx.execute_insert(
+                "INSERT INTO [Documents] ([EntityType], [EntityKey], [DocType], [StoredName], [OriginalName], [RelPath], "
+                "[UploadedAt], [UploadedBy], [Note], [IsCurrent], [ExpiryDate]) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, True, ?)",
+                (entity_type, key, doc_type, stored, original_name, rel, datetime.now(), user or "", note or "", expiry),
+            )
+            legacy = LEGACY_COLUMN.get((entity_type, doc_type))
+            if legacy:
+                table, column, keycol, numeric = legacy
+                tx.execute("UPDATE [%s] SET [%s] = ? WHERE [%s] = ?" % (table, column, keycol), (rel, int(key) if numeric else key))
+    except BaseException:
+        _undo_write(dest, source, keep_source)
+        raise
     return {"DocID": doc_id, "RelPath": rel, "StoredName": stored}
 
 
@@ -610,7 +649,7 @@ def save_profile_file(file_storage, folder_rel, label):
         raise UnsupportedFile(file_storage.filename)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     base = safe_name(os.path.splitext(file_storage.filename)[0], fallback="ملف", maxlen=30)
-    stored = "%s - %s - %s.%s" % (safe_name(label, maxlen=20), stamp, base, ext)
+    stored = _fit_name(folder_rel, "%s - %s - %s.%s" % (safe_name(label, maxlen=20), stamp, base, ext))
     ensure_folder(folder_rel)
     dest = _unique(os.path.join(abs_path(folder_rel), stored))
     file_storage.save(dest)
