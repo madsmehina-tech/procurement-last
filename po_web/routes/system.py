@@ -24,5 +24,7 @@ def health():
     storage = archive.storage_probe()
     storage.pop("error", None)
     ok = db_state["ok"] and storage["ok"]
-    return jsonify(status="ok" if ok else "degraded", version=config.APP_VERSION, environment=config.ENVIRONMENT, database=db_state,
-                   storage=storage, backup=backup.status(), time=datetime.now().isoformat(timespec="seconds")), (200 if ok else 503)
+    bk = backup.status()
+    state = "degraded" if not ok else ("warning" if bk["warnings"] else "ok")      # «warning»: working, but the safety net needs attention (HTTP 200)
+    return jsonify(status=state, version=config.APP_VERSION, environment=config.ENVIRONMENT, database=db_state,
+                   storage=storage, backup=bk, time=datetime.now().isoformat(timespec="seconds")), (200 if ok else 503)
