@@ -35,9 +35,10 @@ def load():
         if not mg.is_missing_table(e):
             raise
         cycle_no = {}
-    paid_by_cert = {}
-    for p in pays:
+    paid_by_cert, pays_of = {}, {}
+    for p in pays:                                       # grouped ONCE: re-scanning every payment for every certificate made this O(certificates x payments)
         paid_by_cert[p["CertificateID"]] = paid_by_cert.get(p["CertificateID"], 0.0) + float(p.get("Amount") or 0)
+        pays_of.setdefault(p["CertificateID"], []).append(p)
     try:
         projects = {p["ProjectID"]: p["ProjectName"] for p in db.query("SELECT [ProjectID], [ProjectName] FROM [Projects]")}
     except Exception as e:
@@ -60,7 +61,7 @@ def load():
         if g["Status"] == ST_PAID and not g["Paid"]:     # paid in an older version (no payment record yet)
             g["Paid"] = g["Total"]
         g["Remaining"] = round(0 if g["Status"] == ST_REJECTED else g["Total"] - g["Paid"], 2)
-        mine_p = [p for p in pays if p["CertificateID"] == g["CertificateID"]]
+        mine_p = pays_of.get(g["CertificateID"], [])
         dates = [p.get("PaidAt") for p in mine_p if p.get("PaidAt")]
         g["LastPayDate"] = max(dates) if dates else g.get("PaymentDate")
         last_cycle = (max(mine_p, key=lambda p: p["PaymentID"]).get("CycleID") if mine_p else None) or g.get("CycleID")

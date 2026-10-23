@@ -16,9 +16,14 @@ legacy_uploads = D:\po_web\uploads
 ; How the OTHER PCs reach that same folder (shown in the app so the team can open it in Explorer)
 share_path = \\SERVER\PO_Archive
 max_upload_mb = 50
-; Dated copies of the database made before every update of its structure (keep this on ANOTHER disk if you can)
+; Dated copies of the database: before every update of its structure AND automatically while the server runs.
 backup_dir = E:\PO_Backup\db
 backup_keep = 20
+; An automatic copy every N hours (0 = off). The first copy is taken when the server starts.
+backup_auto_hours = 12
+; THE MOST IMPORTANT SETTING: a SECOND place for every copy - another disk, another PC's shared folder, or a OneDrive folder.
+; A copy on the same disk as the database is not a real backup. (A comment after the value, like this one, is allowed.)
+backup_extra_dir = \\BACKUPSERVER\PO_Backup
 
 [server]
 host = 0.0.0.0

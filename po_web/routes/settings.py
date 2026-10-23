@@ -106,7 +106,10 @@ def avatar_view(user_id):
     rows = db.query("SELECT [AvatarFile] FROM [Users] WHERE [UserID] = ?", (user_id,))
     if not rows or not rows[0]["AvatarFile"]:
         abort(404)
-    return archive.send(rows[0]["AvatarFile"])
+    resp = archive.send(rows[0]["AvatarFile"])
+    resp.cache_control.private = True                    # the picture rarely changes: the browser keeps it for 10 minutes instead of asking on every page
+    resp.cache_control.max_age = 600
+    return resp
 
 
 # ------------------------------------------------------------------ users & approvals
