@@ -126,6 +126,18 @@ def settings_users():
                            role_names=names, member=member, me=_me(), viewer_role=next((r["RoleID"] for r in roles if r["RoleKey"] == "viewer"), None))
 
 
+def _admin_guard(target, new_role_id=None):
+    """Only a system administrator may touch an administrator's account or give anyone the administrator role.
+    Returns the message to show, or None when it is allowed. (Otherwise whoever holds «إدارة المستخدمين» could reset the
+    administrator's password and sign in as the administrator.)"""
+    if (_me() or {}).get("IsAdmin"):
+        return None
+    admin = _admin_role_id()
+    if target.get("RoleID") == admin or (new_role_id is not None and new_role_id == admin):
+        return "حساب مدير النظام ودوره لا يغيّرهما إلا مدير نظام."
+    return None
+
+
 def _target(user_id):
     rows = db.query("SELECT [UserID], [Username], [Status], [RoleID] FROM [Users] WHERE [UserID] = ?", (user_id,))
     if not rows:
@@ -139,6 +151,13 @@ def user_approve(user_id):
     role_id = request.form.get("role_id", type=int)
     if not role_id or role_id not in {r["RoleID"] for r in _roles()}:
         flash("اختر الدور الذي سيحصل عليه المستخدم.")
+        return redirect(url_for("settings_users"))
+    if u["Status"] != "pending":
+        flash("«%s» ليس طلب تسجيل بانتظار الموافقة (استخدم «تعديل» لتغيير دوره)." % u["Username"])
+        return redirect(url_for("settings_users"))
+    blocked = _admin_guard(u, role_id)
+    if blocked:
+        flash(blocked)
         return redirect(url_for("settings_users"))
     db.execute("UPDATE [Users] SET [Status] = 'active', [RoleID] = ?, [ApprovedBy] = ?, [ApprovedAt] = Now() WHERE [UserID] = ?",
                (role_id, _me()["Username"], user_id))
@@ -165,6 +184,8 @@ def user_update(user_id):
     valid = {r["RoleID"] for r in _roles()}
     if role_id not in valid:
         flash("دور غير صحيح.")
+    elif _admin_guard(u, role_id):
+        flash(_admin_guard(u, role_id))
     elif role_id != u["RoleID"] and u["RoleID"] == _admin_role_id() and not _active_admins(excluding=user_id):
         flash("لا يمكن إزالة صلاحية آخر مدير نظام.")
     elif user_id == session["user_id"] and role_id != u["RoleID"]:
@@ -179,7 +200,9 @@ def user_update(user_id):
 @route("/settings/users/<int:user_id>/toggle", methods=["POST"])
 def user_toggle(user_id):
     u = _target(user_id)
-    if user_id == session["user_id"]:
+    if _admin_guard(u):
+        flash(_admin_guard(u))
+    elif user_id == session["user_id"]:
         flash("لا يمكنك تعطيل حسابك بنفسك.")
     elif u["Status"] == "active":
         if u["RoleID"] == _admin_role_id() and not _active_admins(excluding=user_id):
@@ -199,7 +222,9 @@ def user_toggle(user_id):
 def user_reset_password(user_id):
     u = _target(user_id)
     new = request.form.get("new", "")
-    if len(new) < 8 or not re.search(r"[A-Za-z]", new) or not re.search(r"\d", new):
+    if _admin_guard(u):
+        flash(_admin_guard(u))
+    elif len(new) < 8 or not re.search(r"[A-Za-z]", new) or not re.search(r"\d", new):
         flash("كلمة المرور الجديدة 8 أحرف على الأقل وفيها حرف ورقم.")
     else:
         db.execute("UPDATE [Users] SET [PasswordHash] = ? WHERE [UserID] = ?", (generate_password_hash(new), user_id))

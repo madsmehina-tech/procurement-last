@@ -840,7 +840,7 @@ COLS = {
     'serial': ['م', '#', 'no', 'no.', 'sr', 'sl', 'serial', 'الرقم', 'رقم', 'ت', 's.n', 'sn'],
 }
 _SHORT = ('no', 'sr', 'sl', '#', 'sn')
-TOTAL_ROW = re.compile(r'(جمالي|مجموع|ضريب|قيمه مضافه|subtotal|sub total|grand total|^total|vat|tax|خصم|discount|net )', re.I)
+TOTAL_ROW = re.compile(r'(جمالي|مجموع(?![هة])|ضريب|قيمه مضافه|\bsubtotal\b|\bsub total\b|\bgrand total\b|^total\b|\bvat\b|\btax\b|خصم|\bdiscount\b|\bnet (?:amount|total|value|price|payable)\b|^net$)', re.I)
 _CUR = re.compile(r'(?i)^(sar|sr|ريال|ر\.س|﷼|ر\.س\.)$')
 
 
@@ -1043,7 +1043,7 @@ def parse_row_cells(cells, cols):
             parts = {types[0]: t}
         for c, v in parts.items():
             if c in ('qty', 'price', 'total'):
-                n = num(v)
+                n = None if '%' in v else num(v)
                 if n is None:
                     amounts = [(tok, num(tok)) for tok in v.split() if '%' not in tok and num(tok) is not None]
                     if len(amounts) == 1:
@@ -1060,7 +1060,7 @@ def parse_row_cells(cells, cols):
             elif c == 'unit':
                 vals['unit'] = v
             elif c == 'other':
-                n = num(v)
+                n = None if '%' in v else num(v)               # «خصم 10%» must not be mistaken for an amount
                 if n is not None:
                     nums.append(n)
     if not vals.get('name'):
