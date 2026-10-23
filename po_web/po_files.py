@@ -23,6 +23,7 @@ import archive
 import arabic_numbers
 import config
 import db
+import order_math
 import pdfgen
 
 SNAPSHOT_FIELDS = ("PONumber", "OrderDate", "HijriDate", "SupplierName", "QuoteNo", "Project", "Location", "Receiver",
@@ -32,11 +33,9 @@ SNAPSHOT_FIELDS = ("PONumber", "OrderDate", "HijriDate", "SupplierName", "QuoteN
 def print_context(order, items, watermark=None):
     """Everything order_print.html needs. `order` / `items` may come from the database, from an unsaved form
     (preview) or from an old saved version - the form on paper is the same for all three."""
-    subtotal = round(sum((it["Qty"] or 0) * (it["UnitPrice"] or 0) for it in items), 2)
-    vat = round(subtotal * 0.15, 2)
-    total_with_vat = round(subtotal + vat, 2)
-    discount = order.get("Discount") or 0
-    grand = round(total_with_vat - discount, 2)
+    items = order_math.with_line_totals(items)
+    t = order_math.order_totals([(it["Qty"], it["UnitPrice"]) for it in items], order.get("Discount") or 0)
+    subtotal, vat, total_with_vat, discount, grand = t["subtotal"], t["vat"], t["total_with_vat"], t["discount"], t["grand"]
     extra_notes = [l.strip() for l in (order.get("ExtraNotes") or "").splitlines() if l.strip()]
     return dict(order=order, items=items, subtotal=subtotal, vat=vat, total_with_vat=total_with_vat,
                 discount=discount, grand=grand, amount_words=arabic_numbers.amount_to_words(grand),
