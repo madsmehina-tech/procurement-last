@@ -60,7 +60,7 @@
         <td>{{ it.Unit }}</td>
         <td>{{ it.Qty }}</td>
         <td>{{ '{:,.2f}'.format(it.UnitPrice) }}</td>
-        <td>{{ '{:,.2f}'.format(it.Qty * it.UnitPrice) }}</td>
+        <td>{{ '{:,.2f}'.format(it.LineTotal if it.LineTotal is defined else it.Qty * it.UnitPrice) }}</td>
         <td>{{ it.QtyReceived }}</td>
       </tr>
       {% endfor %}

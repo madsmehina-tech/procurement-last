@@ -9,6 +9,7 @@ from flask import abort, flash, redirect, render_template, request, send_file, u
 import archive
 import auth
 import money_guards as mg
+import order_math
 import db
 import items_service
 import masterdata
@@ -112,7 +113,7 @@ def order_detail(po_number):
     revisions = sorted(db.query("SELECT [RevNo], [ChangedAt], [ChangedBy], [Summary], [PdfDocID], [DataDocID] FROM [OrderRevisions] "
                                 "WHERE [PONumber] = ?", (po_number,)), key=lambda r: r["RevNo"], reverse=True)
     return render_template(
-        "order_detail.html", order=o, items=items, revisions=revisions, version=len(revisions) + 1,
+        "order_detail.html", order=o, items=order_math.with_line_totals(items), revisions=revisions, version=len(revisions) + 1,
         gen=po_files.generated_docs(po_number), pdf_ready=pdfgen.available(),
         docs=archive.panel("PO", po_number, archive.PO_DOC_TYPES), folder=folder,
         folder_exists=bool(o.get("ArchiveFolder")), network=archive.network_path(folder),
@@ -349,9 +350,9 @@ def _read_order(form, editing=None, create_project=True):
             errors.append("الصنف «%s»: %s" % (nm, e))
             continue
         line_items.append((nm, clean_spaces(un), qf, pf))
-        subtotal += qf * pf
-    v["subtotal"] = subtotal
-    v["total"] = round(subtotal + round(subtotal * 0.15, 2) - v["discount"], 2)
+    totals = order_math.order_totals([(q_, p_) for _n, _u, q_, p_ in line_items], v["discount"])      # the SAME arithmetic the printed order uses
+    v["subtotal"] = totals["subtotal"]
+    v["total"] = totals["grand"]
     if v["total"] < 0:
         errors.append("الخصم أكبر من إجمالي الأمر؛ راجع قيمة الخصم.")
     elif v["total"] > mg.MAX_MONEY:
