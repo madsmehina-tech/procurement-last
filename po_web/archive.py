@@ -20,6 +20,7 @@ import hashlib
 import os
 import re
 import shutil
+import threading
 import time
 from datetime import datetime
 
@@ -790,7 +791,7 @@ def storage_probe():
     out = {"ok": False, "write_ms": None, "read_ms": None}
     try:
         folder = ensure_folder("_health") and abs_path("_health")
-        p = os.path.join(folder, "probe.txt")
+        p = os.path.join(folder, "probe_%d_%d.txt" % (os.getpid(), threading.get_ident()))
         t0 = time.perf_counter()
         with open(p, "w", encoding="utf-8") as f:
             f.write("ok " * 64)

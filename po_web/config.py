@@ -16,7 +16,7 @@ CONFIG_FILE = os.environ.get("PO_CONFIG") or os.path.join(BASE_DIR, "config.ini"
 def _read_ini(path):
     """Reads config.ini whichever way Notepad saved it (UTF-8, UTF-8 with BOM, or old Arabic ANSI), and turns a
     typing mistake in the file into a clear message instead of a Python traceback."""
-    cp = configparser.ConfigParser(interpolation=None)
+    cp = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=(";",))   # «backup_auto_hours = 12   ; تعليق» is legal
     try:
         with open(path, "rb") as f:
             raw = f.read()
@@ -87,7 +87,8 @@ BACKUP_KEEP = int(_get("storage", "backup_keep", "PO_BACKUP_KEEP", "20"))
 # automatic backup of the database while the server runs: a copy every BACKUP_AUTO_HOURS hours (0 = off) in BACKUP_DIR and, when set, in a SECOND
 # place (BACKUP_EXTRA_DIR: another disk, a shared folder, OneDrive ...). A copy on the same disk as the database is not a real backup.
 BACKUP_AUTO_HOURS = int(_get("storage", "backup_auto_hours", "PO_BACKUP_AUTO_HOURS", "12"))
-BACKUP_EXTRA_DIR = (_get("storage", "backup_extra_dir", "PO_BACKUP_EXTRA_DIR", "") or "").strip().strip('"')
+_extra = (_get("storage", "backup_extra_dir", "PO_BACKUP_EXTRA_DIR", "") or "").strip().strip('"')
+BACKUP_EXTRA_DIR = _path(_extra) if _extra else ""
 # PDF of every purchase order (written to the order's archive folder). It is produced by Microsoft Edge or Google Chrome
 # running without a window - both read Arabic perfectly and one of them is on every office PC. browser_path is only
 # needed if neither is found automatically.
