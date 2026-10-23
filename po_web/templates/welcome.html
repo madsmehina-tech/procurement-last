@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% block title %}مرحبًا {{ current_user.FullName }}{% endblock %}
 {% block subtitle %}اختر ما تريد من القائمة الجانبية · Choose a section from the side menu{% endblock %}
+{% from "_attention.html" import attention_panel %}
 {% block content %}
+{{ attention_panel(todo) }}
 <div class="card" style="padding:28px 26px; max-width:620px;">
   <p style="margin:0 0 8px; font-size:16px; font-weight:700;">دورك: {{ current_user.RoleName or 'بلا دور' }}</p>
   <p style="margin:0; color:var(--text-secondary); line-height:1.9;">تظهر لك في القائمة الجانبية الأقسام المسموحة لدورك فقط. إن احتجت قسمًا آخر فاطلب من مدير النظام إضافته لصلاحياتك.</p>

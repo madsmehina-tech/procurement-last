@@ -11,7 +11,9 @@
   {%- endif -%}
 {%- endmacro %}
 
+{% from "_attention.html" import attention_panel %}
 {% block content %}
+{{ attention_panel(todo) }}
 <div class="kpi-grid">
   <div class="kpi-card">
     <p class="kpi-label">إجمالي عدد الأوامر</p>

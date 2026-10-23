@@ -1,0 +1,75 @@
+# -*- coding: utf-8 -*-
+"""v25.3: phone-ready pages, no outside fonts, coloured messages, the «needs attention» panel, double-click protection."""
+import glob
+import os
+import re
+
+import pytest
+
+import conftest
+import helpers as h
+from ui_helpers import flash_kind
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _login(client):
+    return client.post("/login", data={"username": "admin", "password": "Admin12345"})
+
+
+@pytest.fixture()
+def client():
+    conftest.build_schema()
+    import app as appmod
+    c = appmod.app.test_client()
+    _login(c)
+    return c
+
+
+def test_message_colours():
+    assert flash_kind("تم حفظ المستخلص") == "success"
+    assert flash_kind("سُجّل صرف على هذا المستخلص") == "success"
+    assert flash_kind("لا يجوز التعديل بعد الصرف") == "error"
+    assert flash_kind("لم يتم العثور على السجل.") == "error"
+    assert flash_kind("تعذر حفظ الملف") == "error"            # starts like a success word but is a failure
+    assert flash_kind("المستخلص #2 سُدِّد بالكامل بدفعة أخرى") == "notice"
+
+
+def test_no_page_loads_anything_from_outside_and_all_full_pages_have_a_viewport():
+    for path in glob.glob(os.path.join(ROOT, "templates", "*.html")):
+        text = open(path, encoding="utf-8").read()
+        assert "fonts.googleapis" not in text and "fonts.gstatic" not in text, path
+        if "<head>" in text and "<html" in text and "base.html" not in os.path.basename(path):
+            if 'name="viewport"' not in text:
+                # printable / standalone sheets may omit it, but never the three main shells
+                assert os.path.basename(path) not in ("login.html", "register.html"), path
+    for shell in ("base.html", "login.html", "register.html"):
+        assert 'name="viewport"' in open(os.path.join(ROOT, "templates", shell), encoding="utf-8").read()
+
+
+def test_home_page_has_the_attention_panel_and_skip_link(client):
+    r = client.get("/")
+    html = r.get_data(as_text=True)
+    assert r.status_code == 200
+    assert "ما يحتاج انتباهك" in html and "skip-link" in html and 'id="main"' in html
+    assert "<title>" in html and "إدارة العقود والمشتريات" in html
+
+
+def test_attention_panel_lists_a_waiting_certificate(client):
+    h.add_cert(h.add_sub(), total=5000)
+    html = client.get("/").get_data(as_text=True)
+    assert "مستخلص مُدخَل ولم يدخل دورة صرف" in html
+
+
+def test_coloured_message_is_rendered_with_its_role(client):
+    with client.session_transaction() as s:
+        s["_flashes"] = [("message", "لا يجوز التعديل بعد الصرف")]
+    html = client.get("/").get_data(as_text=True)
+    assert 'class="flash flash-error"' in html and 'role="alert"' in html
+
+
+def test_script_and_styles_exist():
+    js = open(os.path.join(ROOT, "static", "ui.js"), encoding="utf-8").read()
+    assert "nav-toggle" in js and "disabled = true" in js and "defaultPrevented" in js
+    css = open(os.path.join(ROOT, "static", "style.css"), encoding="utf-8").read()
+    assert ".flash-error" in css and ":focus-visible" in css and "googleapis" not in css
