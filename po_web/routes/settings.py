@@ -73,6 +73,7 @@ def settings_password_save():
         flash("كلمتا المرور الجديدتان غير متطابقتين.")
     else:
         db.execute("UPDATE [Users] SET [PasswordHash] = ? WHERE [UserID] = ?", (generate_password_hash(new), session["user_id"]))
+        session["sv"] = auth.bump_session_version(session["user_id"])      # every OTHER open sign-in of this account ends; this one continues
         flash("تم تغيير كلمة المرور.")
     return redirect(url_for("settings_account"))
 
@@ -195,6 +196,8 @@ def user_update(user_id):
         flash("لا يمكنك تغيير دور حسابك بنفسك.")
     else:
         db.execute("UPDATE [Users] SET [RoleID] = ?, [JobTitle] = ? WHERE [UserID] = ?", (role_id, job, user_id))
+        if role_id != u["RoleID"]:
+            auth.bump_session_version(user_id)
         audit.log("user_update", "مستخدم", u["Username"], "role=%s" % role_id)
         flash("تم حفظ بيانات «%s»." % u["Username"])
     return redirect(url_for("settings_users"))
@@ -212,6 +215,7 @@ def user_toggle(user_id):
             flash("لا يمكن تعطيل آخر مدير نظام.")
         else:
             db.execute("UPDATE [Users] SET [Status] = 'disabled' WHERE [UserID] = ?", (user_id,))
+            auth.bump_session_version(user_id)
             audit.log("user_toggle", "مستخدم", u["Username"], "disabled")
             flash("تم تعطيل «%s»." % u["Username"])
     elif u["Status"] in ("disabled", "rejected"):
@@ -231,6 +235,7 @@ def user_reset_password(user_id):
         flash("كلمة المرور الجديدة 8 أحرف على الأقل وفيها حرف ورقم.")
     else:
         db.execute("UPDATE [Users] SET [PasswordHash] = ? WHERE [UserID] = ?", (generate_password_hash(new), user_id))
+        auth.bump_session_version(user_id)
         audit.log("user_reset_password", "مستخدم", u["Username"])
         flash("تمت إعادة تعيين كلمة مرور «%s». أبلغه بها." % u["Username"])
     return redirect(url_for("settings_users"))

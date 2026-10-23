@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Sign in, sign out, and asking for a new account (which only the Administrator can approve)."""
 import re
+from urllib.parse import urlparse
 import time
 
 from flask import flash, redirect, render_template, request, session, url_for
@@ -19,8 +20,16 @@ EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 def _safe_next(target):
-    """Only follow a 'next' address that stays on this site (no open redirect)."""
-    return target if target and target.startswith("/") and not target.startswith("//") else None
+    """Only follow a 'next' address that stays on this site: a plain path («/orders»), nothing else. «//evil.com», «/\\evil.com», «http://...»,
+    «javascript:...» and anything with a control character or a space are refused."""
+    if not target or not target.startswith("/") or target.startswith("//") or "\\" in target:
+        return None
+    if any(ord(ch) < 32 or ch == " " for ch in target):
+        return None
+    p = urlparse(target)
+    if p.scheme or p.netloc:
+        return None
+    return target
 
 
 @route("/login", methods=["GET", "POST"])
@@ -50,14 +59,17 @@ def login():
         session.clear()
         session.permanent = True
         session["user_id"] = user["UserID"]
+        session["sv"] = user.get("SessionVersion") or 0
         db.execute("UPDATE [Users] SET [LastLoginAt] = Now() WHERE [UserID] = ?", (user["UserID"],))
         audit.log("login_ok", "مستخدم", username, user=user)
         return redirect(_safe_next(request.args.get("next")) or url_for("dashboard"))
     return render_template("login.html")
 
 
-@route("/logout")
+@route("/logout", methods=["GET", "POST"])
 def logout():
+    if request.method != "POST":                          # leaving needs the button (a POST): a link on another page must not sign anyone out
+        return redirect(url_for("dashboard"))
     user = auth.current_user()
     if user:
         audit.log("logout", "مستخدم", user.get("Username"), user=user)

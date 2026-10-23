@@ -108,9 +108,10 @@ PORT = int(_get("server", "port", "PO_PORT", "5000"))
 THREADS = int(_get("server", "threads", "PO_THREADS", "8"))
 LOG_DIR = _path(_get("server", "log_dir", "PO_LOG_DIR", "logs"))
 ENVIRONMENT = _get("server", "environment", "PO_ENV", "production").lower()   # "staging" shows a banner on every page
+CSRF_ENABLED = _get("server", "csrf", "PO_CSRF", "1") != "0"          # request-forgery protection; only the automatic tests switch it off
 SESSION_HOURS = int(_get("server", "session_hours", "PO_SESSION_HOURS", "12"))
 
-APP_VERSION = "25.1"
+APP_VERSION = "25.2"
 
 
 def secret_key():

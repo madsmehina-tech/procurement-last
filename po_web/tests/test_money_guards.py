@@ -264,3 +264,20 @@ def test_a_fully_paid_transaction_creates_no_settlement(client, world):
     _pay_form(client, a)
     client.post("/archive/%d/close" % a)
     assert fake_db.scalar("SELECT COUNT(*) FROM [LedgerEntries]", default=0) == 0
+
+
+def test_the_close_confirmation_is_valid_javascript_with_the_amount(client, world):
+    """The first version of this dialog produced «confirm(إقفال ...)» without quotes: a JavaScript error, so the dialog never appeared."""
+    import json
+    import re
+    a = _ready_to_close(world)
+    html = client.get("/archive?cert=%d" % a).get_data(as_text=True)
+    m = re.search(r'<form[^>]*/close"[^>]*onsubmit="return confirm\((.*?)\);">', html, re.S)
+    assert m, "no confirm() on the close form"
+    arg = m.group(1).replace("&#34;", '"').replace("&quot;", '"')
+    text = json.loads(arg)                                         # a real JSON string: quotes, newlines, Arabic - all valid
+    assert "100,000.00" in text and "تسوية عند الإقفال" in text
+    _pay_form(client, a)
+    html = client.get("/archive?cert=%d" % a).get_data(as_text=True)
+    arg2 = re.search(r'<form[^>]*/close"[^>]*onsubmit="return confirm\((.*?)\);">', html, re.S).group(1).replace("&#34;", '"')
+    assert "تسوية" not in json.loads(arg2)                         # a fully paid transaction gets the plain question

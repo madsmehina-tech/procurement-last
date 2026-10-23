@@ -51,7 +51,7 @@
           {% else %}<span class="avatar avatar-ph">{{ (current_user.FullName or '؟')[:1] if current_user else '؟' }}</span>{% endif %}
           <span class="user-meta"><b>{{ current_user.FullName if current_user else '' }}</b><small>{{ (current_user.JobTitle or current_user.RoleName) if current_user else '' }}</small></span>
         </a>
-        {% if current_user %}<a class="logout-link" href="{{ url_for('logout') }}">خروج</a>{% endif %}
+        {% if current_user %}<form method="post" action="{{ url_for('logout') }}" style="display:contents;"><button class="logout-link" type="submit" style="background:none; border:0; font:inherit; color:inherit; cursor:pointer;">خروج</button></form>{% endif %}
       </div>
     </aside>
     <main class="main">
