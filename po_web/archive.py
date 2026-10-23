@@ -215,7 +215,10 @@ def ensure_contract_folder(contract_id):
     """The folder of a contract's files - decided once (Contracts.ArchiveFolder):
          contractor:  إدارة مقاولي الباطن / <المقاول> / العقود / عقد رقم XXX / ملفات العقد
          supplier:    الموردين / <المورد> / عقود واتفاقيات / عقد رقم XXX / ملفات العقد"""
-    rows = db.query("SELECT [ContractNo], [SubcontractorID], [SupplierID], [PartyKind], [ArchiveFolder] FROM [Contracts] WHERE [ContractID] = ?", (contract_id,))
+    try:
+        rows = db.query("SELECT [ContractNo], [SubcontractorID], [SupplierID], [PartyKind], [ArchiveFolder] FROM [Contracts] WHERE [ContractID] = ?", (contract_id,))
+    except Exception:                                    # noqa - a database older than migration m025 has no SupplierID / PartyKind (restoring an old backup runs m019 first)
+        rows = db.query("SELECT [ContractNo], [SubcontractorID], [ArchiveFolder] FROM [Contracts] WHERE [ContractID] = ?", (contract_id,))
     if not rows:
         return None
     c = rows[0]
