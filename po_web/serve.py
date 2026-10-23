@@ -6,8 +6,11 @@ Uses Waitress (a real multi-threaded server that works on Windows) instead of Fl
 Settings (host / port / threads) come from config.ini. If Waitress is not installed it says so and falls
 back to Flask's server with the debugger OFF - still safe for the network, just slower.
 """
+import os
 import socket
 import sys
+import threading
+import time
 
 import config
 
@@ -38,6 +41,33 @@ def banner():
     print("  للإيقاف: اضغط Ctrl+C")
 
 
+STOP_FLAG = os.path.join(config.BASE_DIR, "instance", "stop.flag")
+
+
+def start_stop_watcher(lock, flag=None, exit_fn=None, every=2.0):
+    """A CLEAN stop. deploy\\stop_server.bat creates instance\\stop.flag; this thread then takes the application's write lock - which waits for any
+    save that is in progress and blocks every new one - and only then ends the process. A forced kill in the middle of a database write
+    (or of a backup copy) is what damaged the database before; this removes that risk. Returns the thread."""
+    flag = flag or STOP_FLAG
+    exit_fn = exit_fn or os._exit
+
+    def loop():
+        while True:
+            if os.path.exists(flag):
+                with lock:
+                    try:
+                        os.remove(flag)
+                    except OSError:
+                        pass
+                    print("  تم الإيقاف النظيف: لا توجد عملية حفظ جارية.", flush=True)
+                    exit_fn(0)
+                    return
+            time.sleep(every)
+    t = threading.Thread(target=loop, name="po-stop-watcher", daemon=True)
+    t.start()
+    return t
+
+
 def main():
     for stream in (sys.stdout, sys.stderr):          # Arabic text must not crash when output goes to a log file
         try:
@@ -57,6 +87,10 @@ def main():
         return 1
     from app import app
     banner()
+    try:                                                      # a clean stop on request (deploy\\stop_server.bat)
+        start_stop_watcher(app.write_lock)
+    except Exception as e:                                    # noqa
+        print("!! تعذّر تفعيل الإيقاف النظيف:", e)
     try:                                                      # automatic copies of the database (a second place: [storage] backup_extra_dir)
         import backup
         backup.start_auto(app.write_lock)
