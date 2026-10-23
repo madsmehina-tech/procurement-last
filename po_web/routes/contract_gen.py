@@ -95,14 +95,7 @@ def _wizard(cid):
                            ready=bool(kind and tpl and version))
 
 
-def _release_write_lock():
-    """The data is saved: making the Word / PDF files (up to a minute) must not keep the other person's saves waiting."""
-    if g.pop("_write_locked", False):
-        current_app.write_lock.release()
-
-
 def _generate_and_go(cid):
-    _release_write_lock()
     try:
         r = cg.generate(cid, _user())
     except (cg.ContractError, ct.TemplateError, contract_render.MissingDocx) as e:
