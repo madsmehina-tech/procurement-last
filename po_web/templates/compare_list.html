@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% set active = "compare" %}
+{% block title %}مقارنة عروض الأسعار{% endblock %}
+{% block subtitle %}قبل أمر الشراء أو العقد: وحّد البنود، قارن الأسعار، اكشف الناقص، واتخذ قرار الترسية{% endblock %}
+{% block page_actions %}{% if can('compare.edit') %}<a class="btn btn-primary" href="{{ url_for('compare_new') }}">+ مقارنة جديدة</a>{% endif %}{% endblock %}
+{% block content %}
+{% include "_compare_css.html" %}
+<div class="cp-panel">
+  <div class="cp-card"><small>عدد المقارنات</small><div class="v">{{ stats.count }}</div><div class="n">{{ stats.open }} قيد العمل</div></div>
+  <div class="cp-card"><small>تمت الترسية</small><div class="v">{{ stats.awarded }}</div><div class="n">مقارنات انتهت بقرار</div></div>
+  <div class="cp-card star"><small>وفر التكاليف (مقابل متوسط باقي العروض)</small><div class="v">{{ '{:,.0f}'.format(stats.savings_avg) }} ريال</div><div class="n">مقابل أعلى عرض: {{ '{:,.0f}'.format(stats.savings_max) }}</div></div>
+  <div class="cp-card"><small>الأكثر فوزًا</small><div class="v">{{ stats.parties[0].name if stats.parties and stats.parties[0].wins else '—' }}</div><div class="n">{% if stats.parties and stats.parties[0].wins %}{{ stats.parties[0].wins }} من {{ stats.parties[0].offers }} عروض ({{ stats.parties[0].rate }}%){% endif %}</div></div>
+</div>
+<div class="card"><div class="tbl-wrap"><table class="list">
+  <thead><tr><th>المقارنة</th><th>المشروع / الموقع</th><th>النوع</th><th>العروض</th><th>الحالة</th><th>الفائز</th><th>الوفر</th><th>التاريخ</th></tr></thead>
+  <tbody>{% for c in rows %}<tr style="cursor:pointer;" onclick="location.href='{{ url_for('compare_view', compare_id=c.CompareID) }}'">
+    <td><b>{{ c.Title }}</b></td><td>{{ c.ProjectName or '—' }}{% if c.SiteName %}<br><small style="color:var(--text-secondary);">{{ c.SiteName }}</small>{% endif %}</td><td>{{ c.Kind }}</td><td>{{ c.offers }}</td>
+    <td><span class="badge {{ 'success' if c.Status == 'تمت الترسية' else 'neutral' }}">{{ c.Status }}</span></td><td>{{ c.winner or '—' }}</td>
+    <td>{{ '{:,.0f}'.format(c.SavingsVsAvg) if c.SavingsVsAvg else '—' }}</td><td>{{ c.CreatedAt.strftime('%Y-%m-%d') if c.CreatedAt else '' }}</td></tr>
+  {% else %}<tr><td colspan="8" style="text-align:center; color:var(--text-secondary); padding:34px;">لا توجد مقارنات بعد. اضغط «+ مقارنة جديدة» وارفع عروض الموردين.</td></tr>{% endfor %}</tbody></table></div></div>
+{% if stats.parties %}<div class="card" style="margin-top:14px;"><div class="card-header">نسبة الفوز لكل مورد / مقاول</div><div class="tbl-wrap"><table class="list"><thead><tr><th>الطرف</th><th>العروض المقدَّمة</th><th>مرات الفوز</th><th>نسبة الفوز</th></tr></thead>
+  <tbody>{% for p in stats.parties %}<tr><td>{{ p.name }}</td><td>{{ p.offers }}</td><td>{{ p.wins }}</td><td>{{ p.rate }}%</td></tr>{% endfor %}</tbody></table></div></div>{% endif %}
+{% endblock %}

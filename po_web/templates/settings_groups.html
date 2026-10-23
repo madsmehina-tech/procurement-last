@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% set active = "settings_groups" %}
+{% block title %}المجموعات{% endblock %}
+{% block subtitle %}فرق العمل التي تُوجَّه إليها التنبيهات لاحقًا · Groups{% endblock %}
+{% block content %}
+{% include "_settings_nav.html" %}
+
+<div class="card set-card" style="margin-bottom:1.5rem; max-width:560px;">
+  <h3 class="set-title">إنشاء مجموعة</h3>
+  <form method="post" action="{{ url_for('group_create') }}" class="row-form" style="display:flex; gap:8px; flex-wrap:wrap;">
+    <input class="search-box" type="text" name="name" placeholder="اسم المجموعة (مثل: فريق العقود)" required style="flex:1; min-width:200px;">
+    <input class="search-box" type="text" name="description" placeholder="وصف (اختياري)" style="flex:1; min-width:200px;">
+    <button class="btn btn-primary" type="submit">إنشاء</button>
+  </form>
+</div>
+
+{% for g in groups %}
+<div class="card" style="margin-bottom:1rem;">
+  <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+    <span>{{ g.GroupName }} <small style="color:var(--text-secondary); font-weight:400;">{{ g.Description or '' }}</small></span>
+    <form method="post" action="{{ url_for('group_delete', group_id=g.GroupID) }}" onsubmit="return confirm('حذف المجموعة؟');"><button class="btn" type="submit" style="color:var(--danger); border-color:var(--danger);">حذف</button></form>
+  </div>
+  <form method="post" action="{{ url_for('group_save', group_id=g.GroupID) }}" style="padding:16px 24px;">
+    <div class="member-grid">
+      {% for u in users %}
+      <label class="member"><input type="checkbox" name="members" value="{{ u.UserID }}" {{ 'checked' if u.UserID in members.get(g.GroupID, []) else '' }}> {{ u.FullName }}</label>
+      {% endfor %}
+    </div>
+    <button class="btn btn-primary" type="submit" style="margin-top:12px;">حفظ الأعضاء</button>
+  </form>
+</div>
+{% else %}
+<div class="card"><p style="padding:24px; margin:0; color:var(--text-secondary);">لا توجد مجموعات بعد.</p></div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% from "_documents.html" import documents_panel %}
+{% set active = "orders" %}
+{% block title %}أمر الشراء {{ order.PONumber }}{% endblock %}
+{% block subtitle %}تفاصيل أمر الشراء وحالات المتابعة الثلاث · Order details & three-step tracking{% endblock %}
+
+{% macro status_form(kind, label, options, current, date, note) %}
+<div class="detail-item">
+  <p class="label">{{ label }}</p>
+  <form method="post" action="{{ url_for('update_status', po_number=order.PONumber) }}" class="status-form">
+    <input type="hidden" name="kind" value="{{ kind }}">
+    <select name="value" class="search-box" style="width:auto; padding:6px 8px;" onchange="onStatusSelect(this)">
+      {% for v in options %}
+      <option value="{{ v }}" {{ 'selected' if current == v else '' }}>{{ v }}</option>
+      {% endfor %}
+    </select>
+    <span class="status-extra" style="display:{{ 'inline-flex' if current not in ['لم يبدأ', 'معلق'] else 'none' }}; gap:6px; margin-top:6px; align-items:center;">
+      <input class="search-box" style="width:160px; padding:6px 8px;" type="text" name="note" placeholder="ملاحظة (اختياري)" value="{{ note or '' }}">
+      <button type="submit" class="btn" style="padding:6px 10px; font-size:12.5px;">حفظ</button>
+    </span>
+  </form>
+  {% if date %}<p style="font-size:11.5px; color:var(--text-secondary); margin:4px 0 0;">{{ date.strftime('%Y-%m-%d') }}</p>{% endif %}
+</div>
+{% endmacro %}
+
+{% block page_actions %}
+{% if can('orders.edit') %}<a class="btn" href="{{ url_for('order_edit', po_number=order.PONumber) }}">تعديل الأمر</a>{% endif %}
+{% if order.QuoteFile %}<a class="btn" href="{{ url_for('order_quote_file', po_number=order.PONumber) }}" target="_blank">فتح عرض السعر</a>{% endif %}
+<a class="btn btn-primary" href="{{ url_for('order_print', po_number=order.PONumber) }}" target="_blank">طباعة أمر الشراء</a>
+{% endblock %}
+
+{% block content %}
+<div class="detail-grid">
+  <div class="detail-item"><p class="label">المورد</p><p class="value">{{ order.SupplierName }}</p></div>
+  <div class="detail-item"><p class="label">المشروع</p><p class="value">{{ order.Project }}</p></div>
+  {% if order.Location %}<div class="detail-item"><p class="label">الموقع</p><p class="value">{{ order.Location }}</p></div>{% endif %}
+  <div class="detail-item">
+    <p class="label">تاريخ الأمر</p>
+    <p class="value">{{ order.OrderDate.strftime('%Y-%m-%d') if order.OrderDate else '' }}</p>
+    {% if order.HijriDate %}<p style="font-size:11.5px; color:var(--text-secondary); margin:2px 0 0;">{{ order.HijriDate }}</p>{% endif %}
+  </div>
+  <div class="detail-item"><p class="label">رقم عرض السعر</p><p class="value">{{ order.QuoteNo or '-' }}</p></div>
+  <div class="detail-item"><p class="label">المستلم</p><p class="value">{{ order.Receiver or '-' }}</p></div>
+  <div class="detail-item"><p class="label">جوال المستلم</p><p class="value">{{ order.ReceiverPhone or '-' }}</p></div>
+
+  {{ status_form('receipt', 'سند الاستلام', ['لم يبدأ', 'استلام جزئي', 'مكتمل'], order.ReceiptStatus, order.ReceiptDate, order.ReceiptNote) }}
+  {{ status_form('invoice', 'الفاتورة', ['معلق', 'تم الإصدار'], order.InvoiceStatus, order.InvoiceDate, order.InvoiceNote) }}
+  {{ status_form('payment', 'السداد', ['معلق', 'تم السداد'], order.PaymentStatus, order.PaymentDate, order.PaymentNote) }}
+</div>
+
+<div class="card">
+  <div class="card-header">الأصناف</div>
+  <table class="list">
+    <thead><tr><th>#</th><th>الصنف</th><th>الوحدة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th><th>المستلم</th></tr></thead>
+    <tbody>
+      {% for it in items %}
+      <tr>
+        <td>{{ it.LineNo }}</td>
+        <td>{{ it.ItemName }}</td>
+        <td>{{ it.Unit }}</td>
+        <td>{{ it.Qty }}</td>
+        <td>{{ '{:,.2f}'.format(it.UnitPrice) }}</td>
+        <td>{{ '{:,.2f}'.format(it.Qty * it.UnitPrice) }}</td>
+        <td>{{ it.QtyReceived }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card gen-card">
+  <div class="doc-head">
+    <div><h3 class="doc-title">النسخة الإلكترونية للأمر</h3><div class="doc-en">Order PDF &amp; data copy · محفوظة تلقائيًا في «أمر الشراء» داخل مجلد الأمر</div></div>
+    {% if can('orders.edit') %}<form method="post" action="{{ url_for('order_pdf', po_number=order.PONumber) }}"><button class="btn btn-primary" type="submit">{{ 'تحديث PDF' if gen.pdf else 'إنشاء PDF' }}</button></form>{% endif %}
+  </div>
+  {% for label, d in (('أمر الشراء PDF', gen.pdf), ('نسخة البيانات (JSON)', gen.data)) %}
+  <div class="doc-row">
+    <div class="doc-type">{{ label }}</div>
+    <div class="doc-files">
+      {% if d %}<div class="doc-file"><span class="badge success">✓ محفوظ</span><span class="doc-name">{{ d.StoredName }}</span>
+        <span class="doc-date">{{ d.UploadedAt.strftime('%Y-%m-%d %H:%M') if d.UploadedAt else '' }}</span>
+        <a class="btn" href="{{ url_for('document_view', doc_id=d.DocID) }}" target="_blank">فتح</a>
+        <a class="btn" href="{{ url_for('document_view', doc_id=d.DocID, download=1) }}">تنزيل</a></div>
+      {% else %}<span class="badge neutral">لم يُنشأ بعد</span>
+        {% if label.startswith('أمر الشراء') and not pdf_ready %}<span class="doc-date">لا يوجد Microsoft Edge أو Google Chrome على هذا الجهاز لإنشاء PDF — راجع docs\ملفات_الأمر_PDF.md</span>{% endif %}{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if revisions %}
+<div class="card" style="margin-top:1.5rem;">
+  <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+    <span>سجل التعديلات</span><span class="badge neutral">النسخة الحالية رقم {{ version }}</span>
+  </div>
+  <table class="list">
+    <thead><tr><th>النسخة المحفوظة</th><th>تاريخ التعديل</th><th>بواسطة</th><th>ما الذي تغيّر</th><th>ملفات النسخة</th><th></th></tr></thead>
+    <tbody>
+    {% for r in revisions %}
+      <tr>
+        <td><b>نسخة {{ r.RevNo }}</b></td>
+        <td>{{ r.ChangedAt.strftime('%Y-%m-%d %H:%M') if r.ChangedAt else '' }}</td>
+        <td dir="ltr" style="text-align:right;">{{ r.ChangedBy }}</td>
+        <td>{{ r.Summary }}</td>
+        <td>{% if r.PdfDocID %}<a class="btn" href="{{ url_for('document_view', doc_id=r.PdfDocID) }}" target="_blank">PDF</a>{% endif %}
+            {% if r.DataDocID %}<a class="btn" href="{{ url_for('document_view', doc_id=r.DataDocID) }}" target="_blank">بيانات</a>{% endif %}</td>
+        <td>{% if can('orders.print') %}<a class="btn" href="{{ url_for('order_revision_print', po_number=order.PONumber, rev_no=r.RevNo) }}" target="_blank">طباعة هذه النسخة</a>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div style="margin-top:1.5rem;">
+  {{ documents_panel("PO", order.PONumber, docs, folder, folder_exists, network) }}
+</div>
+
+<p style="margin-top:1.5rem;"><a class="btn" href="{{ url_for('orders_list') }}">&rarr; عودة لقائمة المتابعة</a></p>
+
+<script>
+function onStatusSelect(sel) {
+  const extra = sel.parentElement.querySelector('.status-extra');
+  const doneValues = ['استلام جزئي', 'مكتمل', 'تم الإصدار', 'تم السداد'];
+  if (doneValues.includes(sel.value)) {
+    extra.style.display = 'inline-flex';
+  } else {
+    extra.style.display = 'none';
+    sel.form.submit();
+  }
+}
+</script>
+{% endblock %}

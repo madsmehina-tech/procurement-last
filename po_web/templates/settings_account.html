@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% set active = "settings_account" %}
+{% block title %}حسابي{% endblock %}
+{% block subtitle %}بياناتك وكلمة المرور وصورتك · My account{% endblock %}
+{% block content %}
+{% include "_settings_nav.html" %}
+<div class="set-grid">
+  <div class="card set-card">
+    <h3 class="set-title">البيانات الشخصية</h3>
+    <form method="post" action="{{ url_for('settings_profile_save') }}">
+      <label class="set-lab">الاسم الكامل</label>
+      <input class="search-box" style="width:100%;" type="text" name="full_name" value="{{ me.FullName }}" required>
+      <label class="set-lab">البريد الإلكتروني</label>
+      <input class="search-box" style="width:100%; direction:ltr; text-align:right;" type="email" name="email" value="{{ me.Email or '' }}">
+      <div class="set-ro"><span>اسم المستخدم</span><b dir="ltr">{{ me.Username }}</b></div>
+      <div class="set-ro"><span>المسمى الوظيفي</span><b>{{ me.JobTitle or '-' }}</b></div>
+      <div class="set-ro"><span>الدور</span><b>{{ me.RoleName or '-' }}</b></div>
+      <button class="btn btn-primary" type="submit">حفظ</button>
+    </form>
+  </div>
+
+  <div class="card set-card">
+    <h3 class="set-title">صورة المستخدم</h3>
+    <div class="set-avatar">
+      {% if me.AvatarFile %}<img class="avatar avatar-lg" src="{{ url_for('avatar_view', user_id=me.UserID) }}" alt="">
+      {% else %}<span class="avatar avatar-lg avatar-ph">{{ (me.FullName or '؟')[:1] }}</span>{% endif %}
+      <form method="post" action="{{ url_for('settings_avatar_save') }}" enctype="multipart/form-data">
+        <input type="file" name="avatar" accept=".jpg,.jpeg,.png,.webp" required>
+        <p class="set-hint">JPG أو PNG أو WEBP، حتى 2 ميجابايت</p>
+        <button class="btn btn-primary" type="submit">تغيير الصورة</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="card set-card">
+    <h3 class="set-title">تغيير كلمة المرور</h3>
+    <form method="post" action="{{ url_for('settings_password_save') }}">
+      <label class="set-lab">كلمة المرور الحالية</label>
+      <input class="search-box" style="width:100%;" type="password" name="current" required autocomplete="current-password">
+      <label class="set-lab">كلمة المرور الجديدة (8 أحرف فأكثر، فيها حرف ورقم)</label>
+      <input class="search-box" style="width:100%;" type="password" name="new" required autocomplete="new-password">
+      <label class="set-lab">أعد كتابتها</label>
+      <input class="search-box" style="width:100%;" type="password" name="new2" required autocomplete="new-password">
+      <button class="btn btn-primary" type="submit">تغيير كلمة المرور</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

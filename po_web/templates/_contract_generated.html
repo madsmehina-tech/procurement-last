@@ -1,0 +1,22 @@
+{# the panel of a contract MADE BY THE SYSTEM from a Word template #}
+<div class="card" style="padding:20px 24px;margin-bottom:1.5rem;border:2px solid #29595e;">
+  <div class="doc-head"><h3 class="doc-title" style="margin:0;">عقد مولَّد من قالب{% if gen.template %}: {{ gen.template.Name }} <small style="font-weight:400;color:var(--text-secondary);">(نسخة القالب {{ gen.version.VersionNo if gen.version else '؟' }})</small>{% endif %}</h3>
+    <span class="badge {{ 'success' if contract.Status == 'ساري' else 'warning' }}" style="font-size:14px;">{{ contract.Status }}</span></div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0;align-items:center;">
+    <span>المراجعة الحالية: <b>{{ contract.Revision or 0 }}</b></span>
+    {% if contract.GeneratedAt %}<span style="color:var(--text-secondary);">آخر إنشاء للملفات: {{ contract.GeneratedAt.strftime('%Y-%m-%d %H:%M') }} · {{ contract.GeneratedBy or '' }}</span>{% endif %}</div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+    {% if can('contractgen.create') %}<a class="btn" href="{{ url_for('contract_generate_edit', contract_id=contract.ContractID) }}">تعديل بيانات العقد</a>
+    <form method="post" action="{{ url_for('contract_files_generate', contract_id=contract.ContractID) }}"><button class="btn btn-primary" type="submit">{{ 'إعادة إنشاء الملفات (مراجعة جديدة)' if contract.Revision else 'إنشاء الملفات (Word + PDF)' }}</button></form>{% endif %}
+    {% if gen.docx %}<a class="btn" href="{{ url_for('document_view', doc_id=gen.docx.DocID) }}">تحميل Word (للتعديل)</a>{% endif %}
+    {% if gen.pdf %}<a class="btn" href="{{ url_for('document_view', doc_id=gen.pdf.DocID) }}" target="_blank">فتح PDF</a>{% elif gen.docx %}<span class="badge neutral">لا PDF: احفظ ملف Word كـ PDF أو ارفعه يدويًا</span>{% endif %}
+    {% if gen.signed %}<a class="btn" href="{{ url_for('document_view', doc_id=gen.signed.DocID) }}" target="_blank">فتح النسخة الموقّعة</a>{% endif %}</div>
+  {% if can('contractgen.create') %}<form method="post" action="{{ url_for('contract_signed_upload', contract_id=contract.ContractID) }}" enctype="multipart/form-data" style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <label class="btn btn-primary">{{ 'استبدال النسخة الموقّعة' if gen.signed else 'رفع النسخة الموقّعة' }}<input type="file" name="signed_file" style="display:none;" onchange="this.form.submit()"></label>
+    <span class="set-hint" style="margin:0;">تُحفظ على نفس سجل العقد، وتتحول حالته إلى «ساري».</span></form>{% endif %}
+  {% if gen.gaps %}<div class="warn-box" style="margin-top:14px;"><b>حقول ناقصة في العقد ({{ gen.gaps|length }}):</b> {% for f in gen.gaps %}{{ f.label }}{{ '، ' if not loop.last }}{% endfor %}.
+    تظهر في ملف Word بنقاط مظللة بالأصفر لتكملها يدويًا، أو أكملها من بيانات الطرف / الشركة / العقد ثم أعد إنشاء الملفات.</div>{% endif %}
+  {% if gen.old %}<details style="margin-top:12px;"><summary class="set-hint" style="cursor:pointer;">المراجعات السابقة ({{ gen.old|length }})</summary>{% for d in gen.old %}<div><a href="{{ url_for('document_view', doc_id=d.DocID) }}" target="_blank">{{ d.OriginalName }}</a> <small style="color:var(--text-secondary);">{{ d.DocType }}</small></div>{% endfor %}</details>{% endif %}
+  <details style="margin-top:12px;" open><summary style="cursor:pointer;font-weight:700;">سجل العقد</summary>
+    <table class="list" style="margin-top:6px;"><thead><tr><th>التاريخ</th><th>الإجراء</th><th>التفاصيل</th><th>بواسطة</th></tr></thead><tbody>{% for h in gen.history %}<tr><td>{{ h.At.strftime('%Y-%m-%d %H:%M') if h.At else '' }}</td><td>{{ h.Action }}</td><td>{{ h.Detail or '' }}</td><td>{{ h.ByUser or '' }}</td></tr>{% endfor %}</tbody></table></details>
+</div>

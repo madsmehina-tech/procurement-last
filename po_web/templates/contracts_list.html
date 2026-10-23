@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% set active = "subcontractors" %}
+{% block title %}العقود والاتفاقيات{% endblock %}
+{% block subtitle %}سجل مركزي للعقود الموقّعة خارج النظام (مؤرشفة) وما يولّده النظام من قوالب · Contracts{% endblock %}
+{% block page_actions %}{% if can('contractgen.create') %}<a class="btn btn-primary" href="{{ url_for('contract_generate') }}">+ إنشاء عقد / اتفاقية من قالب</a>{% endif %}{% if can('contractgen.templates') %}<a class="btn" href="{{ url_for('contract_templates') }}">قوالب العقود</a>{% endif %}{% endblock %}
+{% block content %}
+<div class="kpi-grid">
+  <div class="kpi-card"><p class="kpi-label">إجمالي قيم العقود</p><p class="kpi-value">{{ '{:,.0f}'.format(kpi.value) }}</p></div>
+  <div class="kpi-card"><p class="kpi-label">إجمالي المنفّذ</p><p class="kpi-value">{{ '{:,.0f}'.format(kpi.executed) }}</p></div>
+  <div class="kpi-card"><p class="kpi-label">العقود السارية</p><p class="kpi-value">{{ kpi.active }}</p></div>
+  <div class="kpi-card {{ 'warning' if kpi.over90 else '' }}"><p class="kpi-label">عقود تجاوزت 90% من قيمتها</p><p class="kpi-value">{{ kpi.over90 }}</p></div>
+  <div class="kpi-card"><p class="kpi-label">مسودات وعقود بانتظار التوقيع</p><p class="kpi-value">{{ kpi.drafts }}</p></div>
+</div>
+<form method="get" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:1rem;">
+  <input class="search-box sb-search" type="text" name="q" value="{{ q }}" placeholder="رقم العقد أو الطرف أو المشروع" style="width:230px;">
+  <select class="search-box" name="kind" style="width:130px;"><option value="">مقاولون وموردون</option><option {{ 'selected' if f_kind == 'مقاول' else '' }}>مقاول</option><option {{ 'selected' if f_kind == 'مورد' else '' }}>مورد</option></select>
+  <select class="search-box" name="sub" style="width:190px;"><option value="">كل المقاولين</option>{% for s in subs %}<option value="{{ s.SubcontractorID }}" {{ 'selected' if f_sub == s.SubcontractorID else '' }}>{{ s.Name }}</option>{% endfor %}</select>
+  <select class="search-box" name="sup" style="width:190px;"><option value="">كل الموردين</option>{% for sid, name in sups %}<option value="{{ sid }}" {{ 'selected' if f_sup == sid else '' }}>{{ name }}</option>{% endfor %}</select>
+  <select class="search-box" name="project" style="width:170px;"><option value="">كل المشاريع</option>{% for p in projects %}<option {{ 'selected' if f_project == p else '' }}>{{ p }}</option>{% endfor %}</select>
+  <select class="search-box" name="type" style="width:160px;"><option value="">كل الأنواع</option>{% for t in types %}<option {{ 'selected' if f_type == t else '' }}>{{ t }}</option>{% endfor %}</select>
+  <select class="search-box" name="origin" style="width:130px;"><option value="">كل المصادر</option><option {{ 'selected' if f_origin == 'مؤرشف' else '' }}>مؤرشف</option><option {{ 'selected' if f_origin == 'مولَّد' else '' }}>مولَّد</option></select>
+  <select class="search-box" name="status" style="width:120px;"><option value="">كل الحالات</option>{% for s in statuses %}<option {{ 'selected' if f_status == s else '' }}>{{ s }}</option>{% endfor %}</select>
+  <label style="display:flex;align-items:center;gap:4px;font-size:13px;">من <input class="search-box" type="date" name="date_from" value="{{ date_from }}"></label>
+  <label style="display:flex;align-items:center;gap:4px;font-size:13px;">إلى <input class="search-box" type="date" name="date_to" value="{{ date_to }}"></label>
+  <button class="btn btn-primary" type="submit">تطبيق</button>
+  {% if q or f_sub or f_sup or f_project or f_status or f_kind or f_type or f_origin or date_from or date_to %}<a class="btn" href="{{ url_for('contracts_list') }}">مسح</a>{% endif %}
+</form>
+<div class="card"><div class="tbl-wrap">
+  <table class="list">
+    <thead><tr><th>رقم العقد</th><th>النوع / المصدر</th><th>الطرف</th><th>المشروع / الموقع</th><th>قيمة العقد</th><th>المنفّذ</th><th style="width:170px;">نسبة التنفيذ</th><th>المتبقي للصرف</th><th>الحالة</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr style="cursor:pointer;" onclick="location.href='{{ url_for('contract_detail', contract_id=r.ContractID) }}'">
+        <td><b style="color:var(--accent);">{{ r.ContractNo or ('#' ~ r.ContractID) }}</b></td>
+        <td>{{ r.ContractType or 'عقد مقاول باطن' }}<br><span class="badge {{ 'success' if r.Origin == 'مولَّد' else 'neutral' }}">{{ r.Origin or 'مؤرشف' }}</span></td>
+        <td>{{ r.SubName }}<br><small style="color:var(--text-secondary);">{{ r.Kind }}</small></td>
+        <td>{{ r.Project }}<br><small style="color:var(--text-secondary);">{{ r.SiteName or '' }}</small></td>
+        <td>{{ '{:,.0f}'.format(r.value) if r.value else '—' }}</td>
+        <td>{{ '{:,.0f}'.format(r.executed) }}</td>
+        <td>{% if r.pct is not none %}<div class="pbar"><span style="width:{{ [r.pct, 100]|min }}%;" class="{{ 'over' if r.pct >= 90 else '' }}"></span></div><small>{{ r.pct }}%</small>{% else %}<small style="color:var(--text-secondary);">لا توجد قيمة</small>{% endif %}</td>
+        <td>{{ '{:,.0f}'.format(r.remaining) }}</td>
+        <td><span class="badge {{ 'success' if (r.Status or 'ساري') == 'ساري' else ('warning' if r.Status in ('مسودة', 'صادر') else 'neutral') }}">{{ r.Status or 'ساري' }}</span></td>
+      </tr>
+    {% else %}<tr><td colspan="9" style="text-align:center; color:var(--text-secondary); padding:28px;">لا توجد عقود مطابقة.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endblock %}

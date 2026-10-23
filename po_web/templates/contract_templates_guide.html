@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% set active = "contract_templates" %}
+{% block title %}دليل علامات قوالب العقود{% endblock %}
+{% block subtitle %}كيف تكتب قالب Word يفهمه النظام{% endblock %}
+{% block page_actions %}<a class="btn" href="{{ url_for('contract_templates') }}">&rarr; القوالب</a>{% endblock %}
+{% block content %}
+<div class="card" style="padding:20px 24px;margin-bottom:14px;"><h3 style="margin-top:0;">ثلاثة أنواع من العلامات</h3>
+  <p><b dir="ltr">{{ '{{اسم_المتغير}}' }}</b> — قيمة يملؤها النظام (بيانات الطرفين والمشروع والسعر والتاريخ...). اكتبها في Word بالشرطة السفلية بدل المسافة. إن لم تتوفر قيمتها تبقى نقاطًا مظللة بالأصفر.</p>
+  <p><b dir="ltr">{{ '{{مسؤولية_المواد|النص الأول|النص الثاني}}' }}</b> — <b>اختيار</b>: يظهر في المعالج قائمة بالنصين ويدخل المختار في العقد.</p>
+  <p><b dir="ltr">[[جدول_الأسعار]]</b> — يبني النظام جدولًا كاملًا بدل هذا السطر؛ يجب أن يكون <b>وحده في فقرة</b>.</p>
+  <p>أي اسم آخر تكتبه ({{ '{{مدة_السداد_بالأيام}}' }} مثلًا) يصير <b>حقلًا إضافيًا</b> يسأل عنه المعالج تلقائيًا، فلا حاجة لبرمجة عند إضافة نوع عقد جديد.</p>
+  <p>ورق الشركة (الترويسة والتذييل) والخطوط والتنسيق كلها من ملف Word نفسه ويحتفظ بها النظام كما هي.</p></div>
+<div class="card" style="padding:20px 24px;margin-bottom:14px;"><h3 style="margin-top:0;">الجداول التي يبنيها النظام</h3>
+  <table class="list"><tbody>{% for k, label in blocks.items() %}<tr><td dir="ltr" style="text-align:right;">[[{{ k }}]]</td><td>{{ label }}</td></tr>{% endfor %}</tbody></table></div>
+{% for group, items in groups.items() %}<div class="card" style="padding:16px 22px;margin-bottom:10px;"><h4 style="margin:0 0 8px;">{{ group }}</h4>
+  <table class="list"><tbody>{% for k, label in items %}<tr><td dir="ltr" style="text-align:right;width:46%;">{{ '{{' }}{{ k }}{{ '}}' }}</td><td>{{ label }}</td></tr>{% endfor %}</tbody></table></div>{% endfor %}
+{% endblock %}

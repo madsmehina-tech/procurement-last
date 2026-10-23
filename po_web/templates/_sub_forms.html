@@ -1,0 +1,113 @@
+{# The two forms that open as windows from the contractor's page. After saving, the person is back on that page. #}
+
+{% macro contract_form(sub, c, mode, form, projects_list, statuses, can_edit) %}
+{# mode: new | edit | view #}
+{% set ro = mode == 'view' or (mode == 'edit' and not can_edit) %}
+{% set dis = 'disabled' if ro else '' %}
+<form method="post" enctype="multipart/form-data" class="dlg-form"
+      action="{{ url_for('contract_new', sub_id=sub.SubcontractorID) if mode == 'new' else url_for('contract_edit', contract_id=c.ContractID) }}">
+  <div class="dlg-head"><h3>{{ 'عقد جديد' if mode == 'new' else (('عقد رقم ' ~ (c.ContractNo or ('#' ~ c.ContractID))) ~ (' — عرض' if mode == 'view' else ' — تعديل')) }}</h3>
+    <button type="button" class="dlg-x" data-close aria-label="إغلاق">×</button></div>
+  <div class="dlg-body">
+    <p class="set-hint" style="margin-top:0;">المقاول: <b>{{ sub.Name }}</b></p>
+    <div class="form-2">
+      <div><label class="set-lab" style="margin-top:0;">رقم العقد</label><input class="inp" name="contract_no" value="{{ form.get('contract_no') if mode == 'new' and form else (c.ContractNo or '' if c else '') }}" placeholder="مثال: SC-2026-006" {{ dis }}></div>
+      {% if mode != 'new' %}<div><label class="set-lab" style="margin-top:0;">الحالة</label><select class="inp" name="status" {{ dis }}>{% for s in statuses %}<option {{ 'selected' if (c.Status or 'ساري') == s else '' }}>{{ s }}</option>{% endfor %}</select></div>
+      {% else %}<div></div>{% endif %}
+      <div><label class="set-lab">المشروع</label>
+        {% if mode == 'new' %}<input class="inp" name="project" list="dl-projects" required value="{{ form.get('project', '') if form else '' }}" placeholder="اختر أو اكتب"><datalist id="dl-projects">{% for p in projects_list %}<option value="{{ p }}">{% endfor %}</datalist>
+        {% else %}<input class="inp" value="{{ c.Project }}" disabled>{% endif %}</div>
+      <div><label class="set-lab">{{ 'الموقع الأول' if mode == 'new' else 'المواقع' }}</label>
+        {% if mode == 'new' %}<input class="inp" name="site_name" required value="{{ form.get('site_name', '') if form else '' }}" placeholder="مثال: الفرسان (185 186)">
+        {% else %}<input class="inp" value="{{ c.sites|join('، ') }}" disabled>{% endif %}</div>
+      <div><label class="set-lab">قيمة العقد</label><input class="inp num" type="number" step="any" min="0" name="contract_value" dir="ltr" value="{{ form.get('contract_value', '') if mode == 'new' and form else (c.ContractValue if c and c.ContractValue is not none else '') }}" {{ dis }}></div>
+      <div><label class="set-lab">نسبة الاستقطاع (المحتجز) % — مرجعية</label><input class="inp num" type="number" step="any" min="0" name="retention_pct" dir="ltr" value="{{ form.get('retention_pct', '') if mode == 'new' and form else (c.RetentionPct if c and c.RetentionPct is not none else '') }}" {{ dis }}></div>
+      <div><label class="set-lab">نسبة الدفعة المقدمة % — مرجعية</label><input class="inp num" type="number" step="any" min="0" name="advance_pct" dir="ltr" value="{{ form.get('advance_pct', '') if mode == 'new' and form else (c.AdvancePct if c and c.AdvancePct is not none else '') }}" {{ dis }}></div>
+    </div>
+    <label class="set-lab">ملاحظات</label><textarea class="inp" name="notes" style="height:64px;" {{ dis }}>{{ form.get('notes', '') if mode == 'new' and form else (c.Notes or '' if c else '') }}</textarea>
+    <h4 class="dlg-sec">ملفات العقد</h4>
+    {% if c and c.files %}<div class="dlg-files">{% for d in c.files %}<a class="btn" href="{{ url_for('document_view', doc_id=d.DocID) }}" target="_blank">{{ d.DocType }} · {{ d.OriginalName }}</a>{% endfor %}</div>{% endif %}
+    {% if not ro %}
+    <div class="form-2"><div><label class="set-lab">رفع العقد الموقّع {{ '(يُضاف كنسخة جديدة)' if c and c.files else '' }}</label><input type="file" name="contract_file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"></div>
+      <div><label class="set-lab">ملاحق / مرفقات (اختياري، يمكن اختيار أكثر من ملف)</label><input type="file" name="extra_files" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"></div></div>
+    {% elif not (c and c.files) %}<p class="set-hint">لم تُرفع ملفات لهذا العقد.</p>{% endif %}
+    <p class="set-hint">تُحفظ في: <bdi>{{ sub.Name }}\العقود\عقد رقم {{ (c.ContractNo or ('#' ~ c.ContractID)) if c else 'XXX' }}\ملفات العقد</bdi></p>
+  </div>
+  <div class="dlg-foot">
+    {% if not ro %}<button class="btn btn-primary btn-lg" type="submit">{{ 'حفظ العقد' if mode == 'new' else 'حفظ التعديلات' }}</button>{% endif %}
+    <button class="btn btn-lg" type="button" data-close>{{ 'إغلاق' if ro else 'إلغاء' }}</button>
+  </div>
+</form>
+{% endmacro %}
+
+
+{% macro cert_form(sub, g, form, projects_list, contract_choices, can_edit, can_delete, files) %}
+{# g = None for a new certificate. The certificate stands on its own: contractor + project + site. The contract is optional. #}
+{% set new = g is none %}
+{% set locked = (not new) and (g.Status not in ('مُدخَل', 'مرفوض') or g.StatusUnknown) %}
+{% set ro = locked or not can_edit %}
+{% set dis = 'disabled' if ro else '' %}
+{% set fv = form if (form and ((new and form.get('project') is not none) or (not new and form.get('total_incl_vat') is not none))) else None %}
+<form method="post" enctype="multipart/form-data" class="dlg-form cert-form" data-vat="1.15"
+      action="{{ url_for('certificate_add', sub_id=sub.SubcontractorID) if new else url_for('certificate_edit', cert_id=g.CertificateID) }}">
+  <div class="dlg-head"><h3>{{ 'إضافة مستخلص جديد' if new else ('مستخلص رقم ' ~ g.CertificateNo ~ ' — ' ~ g.Status) }}</h3><button type="button" class="dlg-x" data-close aria-label="إغلاق">×</button></div>
+  <div class="dlg-body">
+    <p class="set-hint" style="margin-top:0;">المراجعة الحسابية تتم يدويًا كما هي عادتكم — هذه الشاشة لحفظ وأرشفة بيانات المستخلص، واستخدامها لاحقًا في دورة الصرف وسجل مستخلصات المقاول.</p>
+    {% if locked %}<div class="warn-box">لا يُعدَّل هذا المستخلص: هو «{{ g.Status }}»{% if g.CycleNo %} (دورة {{ g.CycleNo }}){% endif %}. يمكنك مراجعة بياناته فقط.</div>{% endif %}
+    {% if not new and g.AmountModel != 'v2' and not ro %}<div class="warn-box">هذا المستخلص أُدخل بالنموذج القديم؛ حفظه من هذه الشاشة يحوّله إلى النموذج الجديد (القيمة شاملة الضريبة بلا محتجز).</div>{% endif %}
+
+    <h4 class="dlg-sec">١. المقاول والمشروع والموقع</h4>
+    <label class="set-lab" style="margin-top:0;">المقاول</label><input class="inp" value="{{ sub.Name }}" disabled>
+    <div class="form-2">
+      <div><label class="set-lab">اسم المشروع</label>
+        {% if new %}<input class="inp cf-project" name="project" list="dl-cert-projects" required autocomplete="off" value="{{ fv.get('project') if fv else '' }}" placeholder="اختر من القائمة أو اكتب مشروعًا جديدًا" {{ dis }}>
+        <datalist id="dl-cert-projects">{% for p in projects_list %}<option value="{{ p }}">{% endfor %}</datalist>
+        {% else %}<input class="inp" value="{{ g.Project }}" disabled>{% endif %}</div>
+      <div><label class="set-lab">اسم الموقع</label>
+        {% if new %}<input class="inp cf-site" name="site" list="dl-cert-sites" required autocomplete="off" value="{{ fv.get('site') if fv else '' }}" placeholder="اختر من القائمة أو اكتب موقعًا جديدًا" {{ dis }}>
+        <datalist id="dl-cert-sites"></datalist>
+        {% else %}<input class="inp" value="{{ g.SiteName or '' }}" disabled>{% endif %}</div>
+    </div>
+    {% if new %}<p class="set-hint">المشروع أو الموقع الجديد يُحفظ تلقائيًا في القائمة الموحدة ويظهر بعدها لكل المقاولين وفي كل المستخلصات.</p>{% endif %}
+    <label class="set-lab">العقد (اختياري)</label>
+    <select class="inp" name="contract_id" {{ dis }}><option value="">— بدون عقد —</option>
+      {% for c in contract_choices %}<option value="{{ c.id }}" {{ 'selected' if (fv.get('contract_id') if fv else (g.ContractID if not new else '')) | string == c.id | string else '' }}>{{ c.label }}</option>{% endfor %}</select>
+
+    <h4 class="dlg-sec">٢. بيانات المستخلص</h4>
+    <div class="form-3">
+      <div><label class="set-lab" style="margin-top:0;">رقم المستخلص</label><input class="inp num cf-no" type="number" min="1" name="cert_no" dir="ltr" value="{{ fv.get('cert_no') if fv else ('' if new else g.CertificateNo) }}" placeholder="{{ 'يُقترح الرقم التالي' if new else '' }}" {{ dis }}></div>
+      <div><label class="set-lab" style="margin-top:0;">تاريخ المستخلص</label><input class="inp" type="date" name="cert_date" value="{{ fv.get('cert_date') if fv else ((g.CertificateDate.strftime('%Y-%m-%d') if g.CertificateDate else '') if not new else today_iso) }}" {{ dis }}></div>
+      <div><label class="set-lab" style="margin-top:0;">إجمالي قيمة المستخلص شامل الضريبة</label><input class="inp num cf-value" type="number" step="any" min="0" name="total_incl_vat" dir="ltr" required value="{{ fv.get('total_incl_vat') if fv else ('' if new else g.Value) }}" {{ dis }}></div>
+    </div>
+
+    <h4 class="dlg-sec">٣. خصومات إضافية (يدوي)</h4>
+    <div class="form-2">
+      <div><label class="set-lab" style="margin-top:0;">مواد مورّدة من الشركة</label><input class="inp num cf-mat" type="number" step="any" min="0" name="supplied_materials" dir="ltr" value="{{ fv.get('supplied_materials') if fv else ('' if new else (g.SuppliedMaterials or 0)) }}" placeholder="0" {{ dis }}></div>
+      <div><label class="set-lab" style="margin-top:0;">غرامات / خصومات أخرى</label><input class="inp num cf-pen" type="number" step="any" min="0" name="penalties" dir="ltr" value="{{ fv.get('penalties') if fv else ('' if new else (g.Penalties or 0)) }}" placeholder="0" {{ dis }}></div>
+    </div>
+
+    <h4 class="dlg-sec">٤. ملفات المستخلص</h4>
+    {% if files %}<div class="dlg-files">{% for t, d in files.items() %}<a class="btn" href="{{ url_for('document_view', doc_id=d.DocID) }}" target="_blank">{{ t }} · {{ d.OriginalName }}</a>{% endfor %}</div>{% endif %}
+    {% if not ro %}<div class="form-2">
+      <div><label class="set-lab" style="margin-top:0;">ملف المستخلص من الموقع</label><input type="file" name="final_file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"></div>
+      <div><label class="set-lab" style="margin-top:0;">النسخة المعتمدة PDF (بعد اكتمال التوقيعات)</label><input type="file" name="approved_pdf" accept=".pdf,.jpg,.jpeg,.png"></div></div>
+    <p class="set-hint">يُحفظ داخل أرشيف المستخلص: <bdi>{{ sub.Name }}\المستخلصات\المشروع\الموقع\المستخلص رقم N\ملف المستخلص</bdi>.</p>
+    {% elif not files %}<p class="set-hint">لم تُرفع ملفات لهذا المستخلص.</p>{% endif %}
+
+    <h4 class="dlg-sec">٥. الصافي المستحق للمقاول (محسوب تلقائيًا)</h4>
+    <div class="totals" style="width:100%;">
+      <div class="t-row"><span>إجمالي قيمة المستخلص</span><b class="o-value">0.00</b></div>
+      <div class="t-row"><span>يُطرح: مواد مورّدة</span><b class="o-mat">(0.00)</b></div>
+      <div class="t-row"><span>يُطرح: غرامات / خصومات أخرى</span><b class="o-pen">(0.00)</b></div>
+      <div class="t-row t-grand"><span>الصافي المستحق للمقاول</span><b class="o-due">0.00</b></div>
+      <div class="t-row"><span>منه ضريبة القيمة المضافة (15%)</span><b class="o-vat">0.00</b></div>
+    </div>
+  </div>
+  <div class="dlg-foot">
+    {% if not ro %}<button class="btn btn-primary btn-lg" type="submit">{{ 'حفظ المستخلص' if new else 'حفظ التعديلات' }}</button>{% endif %}
+    <button class="btn btn-lg" type="button" data-close>{{ 'إغلاق' if ro else 'إلغاء' }}</button>
+    {% if not new %}<a class="btn btn-lg" href="{{ url_for('certificate_detail', cert_id=g.CertificateID) }}">تفاصيل الحالة والإجراءات</a>{% endif %}
+    {% if not new and can_delete and not locked and not g.CycleID %}<button class="btn btn-lg" type="submit" style="color:var(--danger); margin-inline-start:auto;" formaction="{{ url_for('certificate_delete', cert_id=g.CertificateID) }}" formnovalidate onclick="return confirm('حذف هذا المستخلص؟ تُنقل ملفاته إلى سلة المحذوفات في الأرشيف.');">حذف</button>{% endif %}
+  </div>
+</form>
+{% endmacro %}

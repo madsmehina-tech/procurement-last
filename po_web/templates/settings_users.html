@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% set active = "settings_users" %}
+{% block title %}المستخدمون{% endblock %}
+{% block subtitle %}الموافقة على طلبات التسجيل وإدارة الأدوار · Users &amp; approvals{% endblock %}
+{% block content %}
+{% include "_settings_nav.html" %}
+
+{% if pending %}
+<div class="card" style="margin-bottom:1.5rem; border-color:#FCD34D;">
+  <div class="card-header">طلبات تسجيل بانتظار موافقتك ({{ pending|length }})</div>
+  <table class="list">
+    <thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>المسمى</th><th>البريد</th><th>تاريخ الطلب</th><th>الدور الممنوح</th><th></th></tr></thead>
+    <tbody>
+    {% for u in pending %}
+      <tr>
+        <td><b>{{ u.FullName }}</b></td>
+        <td dir="ltr" style="text-align:right;">{{ u.Username }}</td>
+        <td>{{ u.JobTitle or '-' }}</td>
+        <td dir="ltr" style="text-align:right;">{{ u.Email or '-' }}</td>
+        <td>{{ u.CreatedAt.strftime('%Y-%m-%d %H:%M') if u.CreatedAt else '' }}</td>
+        <td colspan="2">
+          <form method="post" action="{{ url_for('user_approve', user_id=u.UserID) }}" class="row-form">
+            <select class="search-box" name="role_id" style="width:150px;">
+              {% for r in roles if r.RoleKey != 'admin' %}<option value="{{ r.RoleID }}" {{ 'selected' if r.RoleID == viewer_role else '' }}>{{ r.RoleName }}</option>{% endfor %}
+            </select>
+            <button class="btn btn-primary" type="submit">موافقة</button>
+          </form>
+          <form method="post" action="{{ url_for('user_reject', user_id=u.UserID) }}" class="row-form" onsubmit="return confirm('رفض هذا الطلب؟');">
+            <button class="btn" type="submit" style="color:var(--danger); border-color:var(--danger);">رفض</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header">المستخدمون ({{ users|length }})</div>
+  <table class="list">
+    <thead><tr><th>المستخدم</th><th>المسمى الوظيفي</th><th>الدور</th><th>المجموعات</th><th>الحالة</th><th>آخر دخول</th><th>إجراءات</th></tr></thead>
+    <tbody>
+    {% for u in users %}
+      <tr>
+        <td>
+          <div class="who">
+            {% if u.AvatarFile %}<img class="avatar" src="{{ url_for('avatar_view', user_id=u.UserID) }}" alt="">{% else %}<span class="avatar avatar-ph">{{ (u.FullName or '؟')[:1] }}</span>{% endif %}
+            <span><b>{{ u.FullName }}</b><br><small dir="ltr">{{ u.Username }}</small></span>
+          </div>
+        </td>
+        <td><input class="search-box" form="uf{{ u.UserID }}" name="job_title" value="{{ u.JobTitle or '' }}" style="width:170px;"></td>
+        <td>
+          <select class="search-box" form="uf{{ u.UserID }}" name="role_id" style="width:210px;" {{ 'disabled' if u.UserID == me.UserID else '' }}>
+            {% for r in roles %}<option value="{{ r.RoleID }}" {{ 'selected' if r.RoleID == u.RoleID else '' }}>{{ r.RoleName }}</option>{% endfor %}
+          </select>
+          {% if u.UserID == me.UserID %}<input type="hidden" form="uf{{ u.UserID }}" name="role_id" value="{{ u.RoleID }}">{% endif %}
+        </td>
+        <td>{{ (member.get(u.UserID) or ['-'])|join('، ') }}</td>
+        <td>
+          {% if u.Status == 'active' %}<span class="badge success">مفعّل</span>
+          {% elif u.Status == 'disabled' %}<span class="badge danger">معطّل</span>
+          {% elif u.Status == 'rejected' %}<span class="badge danger">مرفوض</span>
+          {% else %}<span class="badge neutral">{{ u.Status }}</span>{% endif %}
+        </td>
+        <td>{{ u.LastLoginAt.strftime('%Y-%m-%d %H:%M') if u.LastLoginAt else '-' }}</td>
+        <td>
+          <button class="btn" type="submit" form="uf{{ u.UserID }}">حفظ</button>
+          {% if u.UserID != me.UserID %}
+          <form method="post" action="{{ url_for('user_toggle', user_id=u.UserID) }}" class="row-form">
+            <button class="btn" type="submit">{{ 'تعطيل' if u.Status == 'active' else 'تفعيل' }}</button>
+          </form>
+          {% endif %}
+          <details class="pw-box"><summary class="btn">كلمة مرور</summary>
+            <form method="post" action="{{ url_for('user_reset_password', user_id=u.UserID) }}">
+              <input class="search-box" type="text" name="new" placeholder="كلمة مرور جديدة" dir="ltr" style="width:150px;" required>
+              <button class="btn btn-primary" type="submit">تعيين</button>
+            </form>
+          </details>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% for u in users %}<form method="post" action="{{ url_for('user_update', user_id=u.UserID) }}" id="uf{{ u.UserID }}"></form>{% endfor %}
+</div>
+{% endblock %}

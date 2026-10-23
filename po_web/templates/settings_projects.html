@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% set active = "settings_projects" %}
+{% block title %}المشاريع{% endblock %}
+{% block subtitle %}كل مشروع باسم واحد رسمي في كل مكان · Projects{% endblock %}
+{% block content %}
+{% include "_settings_nav.html" %}
+
+<div class="set-grid" style="margin-bottom:1.5rem;">
+  <div class="card set-card">
+    <h3 class="set-title">إضافة مشروع</h3>
+    <form method="post" action="{{ url_for('project_add') }}" class="row-form" style="display:flex; gap:8px;">
+      <input class="search-box" type="text" name="name" placeholder="اسم المشروع" required style="flex:1;">
+      <button class="btn btn-primary" type="submit">إضافة</button>
+    </form>
+    <p class="set-hint">يُنشأ المشروع تلقائيًا أيضًا عند كتابته لأول مرة في أمر شراء أو عقد، وأي كتابة مقاربة (مسافة زائدة، همزة، تاء مربوطة) تُنسب لنفس المشروع.</p>
+  </div>
+  <div class="card set-card">
+    <h3 class="set-title">دمج مشروعين</h3>
+    <form method="post" action="{{ url_for('project_merge') }}" onsubmit="return confirm('دمج المصدر في الهدف؟ لا يمكن التراجع.');">
+      <div class="form-2">
+        <div><label class="set-lab" style="margin-top:0;">المشروع المصدر (سيختفي)</label><select class="search-box" name="source" style="width:100%;">{% for p in rows %}<option value="{{ p.ProjectID }}">{{ p.ProjectName }}</option>{% endfor %}</select></div>
+        <div><label class="set-lab" style="margin-top:0;">المشروع الهدف (يبقى)</label><select class="search-box" name="target" style="width:100%;">{% for p in rows %}<option value="{{ p.ProjectID }}">{{ p.ProjectName }}</option>{% endfor %}</select></div>
+      </div>
+      <button class="btn btn-primary" type="submit">دمج</button>
+    </form>
+    <p class="set-hint">تنتقل كل أوامر وعقود المصدر إلى الهدف. ملفات الأرشيف تبقى في مجلداتها دون نقل.</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">المشاريع ({{ rows|length }})</div>
+  <table class="list">
+    <thead><tr><th>المشروع</th><th>أوامر الشراء</th><th>العقود</th><th>الحالة</th><th>إجراءات</th></tr></thead>
+    <tbody>
+    {% for p in rows %}
+      <tr>
+        <td>
+          <form method="post" action="{{ url_for('project_rename', project_id=p.ProjectID) }}" class="row-form">
+            <input class="search-box" type="text" name="name" value="{{ p.ProjectName }}" style="width:260px;">
+            <button class="btn" type="submit">إعادة تسمية</button>
+          </form>
+        </td>
+        <td>{{ p.orders }}</td>
+        <td>{{ p.contracts }}</td>
+        <td>{% if p.IsActive %}<span class="badge success">فعّال</span>{% else %}<span class="badge neutral">متوقف</span>{% endif %}</td>
+        <td><form method="post" action="{{ url_for('project_toggle', project_id=p.ProjectID) }}" class="row-form"><button class="btn" type="submit">{{ 'إيقاف' if p.IsActive else 'تفعيل' }}</button></form></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" style="text-align:center; color:var(--text-secondary); padding:28px;">لا توجد مشاريع بعد. نفّذ <code>python migrate.py</code> لبنائها من أوامرك الحالية.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if unknown %}<p class="set-hint" style="margin-top:12px;">أسماء مشاريع في الأوامر خارج القائمة: {{ unknown|join('، ') }} — ستُضاف تلقائيًا عند أول تعديل.</p>{% endif %}
+{% endblock %}

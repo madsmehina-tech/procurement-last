@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% from "_papers.html" import papers_panel with context %}
+{% from "_sub_forms.html" import contract_form, cert_form %}
+{% set active = "subcontractors" %}
+{% block title %}{{ sub.Name }}{% endblock %}
+{% block subtitle %}مركز إدارة المقاول: بياناته وأوراقه وعقوده ومستخلصاته وأرشيفه · Subcontractor{% endblock %}
+{% block page_actions %}
+<a class="btn" href="{{ url_for('subcontractors_list') }}">&rarr; مقاولو الباطن</a>
+<a class="btn" href="{{ url_for('statement_view', sub_id=sub.SubcontractorID) }}">كشف الحساب</a>
+<a class="btn btn-primary" href="{{ url_for('contractor_status_report', sub_id=sub.SubcontractorID) }}" target="_blank">تقرير موقف المقاول</a>
+<a class="btn" href="{{ url_for('subcontractor_report', sub_id=sub.SubcontractorID) }}" target="_blank">طباعة تقرير</a>
+{% endblock %}
+{% block content %}
+{% set s = summary %}
+<section class="card sum-card" aria-label="الملخص المالي للمقاول">
+  <div class="sum-title">الملخص المالي للمقاول <small>Contractor Summary</small></div>
+  <div class="sum-grid">
+    <div class="sum"><span>إجمالي العقود</span><b>{{ '{:,.0f}'.format(s.contracts_value) }}</b><small>{{ s.n_contracts }} عقد</small></div>
+    <div class="sum"><span>إجمالي المستخلصات</span><b>{{ '{:,.0f}'.format(fig.due) }}</b><small>مدين في كشف الحساب · {{ s.n_certs }} مستخلص</small></div>
+    <div class="sum ok"><span>إجمالي المصروف</span><b>{{ '{:,.0f}'.format(fig.paid) }}</b><small>{{ ('%.0f' % (fig.paid / fig.due * 100)) ~ '% من المستحق · دائن في كشف الحساب' if fig.due else 'دائن في كشف الحساب' }}</small></div>
+    <div class="sum {{ 'warn' if fig.remaining > 0 else '' }}"><span>المتبقي للمقاول</span><b><bdi dir="ltr">{{ '{:,.0f}'.format(fig.remaining) }}</bdi></b><small>{{ 'مستحق ولم يُصرف (الرصيد بالسالب في الكشف)' if fig.remaining > 0 else ('صُرف أكثر من المستحق' if fig.remaining < 0 else 'لا توجد فروقات') }}</small></div>
+    <div class="sum {{ 'warn' if s.open_total > 0 else '' }}"><span>الإجمالي</span><b>{{ '{:,.0f}'.format(s.open_total) }}</b><small>المستخلصات المفتوحة ({{ s.open_count }}) في كل المشاريع والمواقع</small></div>
+    <div class="sum"><span>عدد العقود</span><b>{{ s.n_contracts }}</b><small>{{ contracts|selectattr('Status', 'equalto', 'ساري')|list|length }} ساري</small></div>
+    <div class="sum"><span>عدد المستخلصات</span><b>{{ s.n_certs }}</b><small>{{ certs|selectattr('Status', 'equalto', 'مصروف')|list|length }} مصروف</small></div>
+    <div class="sum"><span>آخر دفعة</span>
+      {% if s.last_pay %}<b>{{ '{:,.0f}'.format(s.last_pay.amount) }}</b><small>{{ s.last_pay.date.strftime('%Y-%m-%d') if s.last_pay.date else '' }}{% if s.last_pay.cert %} · مستخلص {{ s.last_pay.cert.CertificateNo }}{% endif %}</small>
+      {% else %}<b>—</b><small>لا دفعات بعد</small>{% endif %}</div>
+    <div class="sum"><span>آخر مستخلص</span>
+      {% if s.last_cert %}<b>رقم {{ s.last_cert.CertificateNo }}</b><small>{{ (s.last_cert.CertificateDate or s.last_cert.CreatedAt).strftime('%Y-%m-%d') if (s.last_cert.CertificateDate or s.last_cert.CreatedAt) else '' }} · {{ '{:,.0f}'.format(s.last_cert.Value) }}</small>
+      {% else %}<b>—</b><small>لا مستخلصات بعد</small>{% endif %}</div>
+  </div>
+</section>
+
+<form method="post" action="{{ url_for('subcontractor_edit', sub_id=sub.SubcontractorID) }}" class="card" id="dataForm" style="padding:22px 24px; margin-bottom:1.5rem;">
+  <div class="doc-head"><h3 class="doc-title">بيانات المقاول</h3>
+    <div class="row-form" style="display:flex; gap:8px;">
+      {% if can('subcontractors.edit') %}<button class="btn btn-primary" type="button" id="dataEdit">تعديل</button>
+      <button class="btn btn-primary" type="submit" id="dataSave" hidden>حفظ التعديلات</button><button class="btn" type="button" id="dataCancel" hidden>إلغاء</button>{% endif %}</div></div>
+  <fieldset id="dataFields" disabled style="border:0; padding:0; margin:0;">
+    <label class="set-lab" style="margin-top:0;">اسم المقاول</label><input class="inp" name="name" value="{{ sub.Name }}" required>
+    <div class="form-2">
+      <div><label class="set-lab">السجل التجاري</label><input class="inp" name="cr" value="{{ sub.CR or '' }}"></div>
+      <div><label class="set-lab">الرقم الضريبي</label><input class="inp" name="tax_number" value="{{ sub.TaxNumber or '' }}"></div>
+      <div><label class="set-lab">الحساب البنكي (آيبان)</label><input class="inp" style="direction:ltr; text-align:right;" name="bank_account" value="{{ sub.BankAccount or '' }}"></div>
+      <div><label class="set-lab">جوال المسؤول</label><input class="inp" dir="ltr" style="text-align:right;" name="phone" value="{{ sub.Phone or '' }}"></div>
+    </div>
+    <h4 style="margin:16px 0 6px;font-size:14px;">بيانات التعاقد (تُقرأ في العقود المولَّدة)</h4>
+    <div class="form-3">
+      <div><label class="set-lab" style="margin-top:0;">العنوان</label><input class="inp" name="address" value="{{ sub.Address or '' }}"></div>
+      <div><label class="set-lab" style="margin-top:0;">البريد الإلكتروني</label><input class="inp" dir="ltr" style="text-align:right;" name="email" value="{{ sub.Email or '' }}"></div>
+      <div><label class="set-lab" style="margin-top:0;">الرقم الوطني الموحد</label><input class="inp" name="unified_no" value="{{ sub.UnifiedNo or '' }}"></div>
+      <div><label class="set-lab">ممثل المقاول (الموقِّع)</label><input class="inp" name="rep_name" value="{{ sub.RepName or '' }}"></div>
+      <div><label class="set-lab">صفته</label><input class="inp" name="rep_title" value="{{ sub.RepTitle or '' }}"></div>
+      <div><label class="set-lab">البنك</label><input class="inp" name="bank_name" value="{{ sub.BankName or '' }}"></div>
+      <div><label class="set-lab">اسم صاحب الحساب</label><input class="inp" name="account_holder" value="{{ sub.AccountHolder or '' }}"></div>
+    </div>
+    <label class="set-lab">ملاحظات</label><textarea class="inp" style="height:60px;" name="notes">{{ sub.Notes or '' }}</textarea>
+  </fieldset>
+</form>
+
+{{ papers_panel("SUB", sub.SubcontractorID, "أوراق المقاول", slots, others, folder, network, can('subcontractors.edit')) }}
+
+<section class="card" id="contracts" style="margin-top:1.5rem;">
+  <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+    <span>العقود ({{ contracts|length }}) <small class="set-hint" style="margin:0;">الأرشيف: {{ root_folder }}\العقود\عقد رقم XXX\ملفات العقد</small></span>
+    {% if can('contractgen.create') %}<a class="btn btn-primary" href="{{ url_for('contract_generate', party='sub:%d' % sub.SubcontractorID) }}">إنشاء عقد للمقاول</a>{% endif %}
+    {% if can('contracts.edit') %}<button class="btn" type="button" data-open="dlg-contract-new" title="عقد وُقّع خارج النظام: يُرفع للأرشفة والحفظ">+ إضافة عقد (مؤرشف)</button>{% endif %}</div>
+  <div class="tbl-wrap"><table class="list">
+    <thead><tr><th>رقم العقد</th><th>المشروع / الموقع</th><th>قيمة العقد</th><th>المنفّذ</th><th style="width:140px;">النسبة</th><th>المستحق</th><th>المصروف</th><th>الحالة</th><th>الملفات</th><th style="width:210px;">إجراءات</th></tr></thead>
+    <tbody>{% for c in contracts %}
+      <tr>
+        <td><b style="color:var(--accent);">{{ c.ContractNo or ('#' ~ c.ContractID) }}</b></td><td>{{ c.Project }}<br><small style="color:var(--text-secondary);">{{ c.sites|join('، ') }}</small></td>
+        <td>{{ '{:,.0f}'.format(c.value) if c.value else '—' }}</td><td>{{ '{:,.0f}'.format(c.executed) }}</td>
+        <td>{% if c.pct is not none %}<div class="pbar"><span style="width:{{ [c.pct,100]|min }}%;" class="{{ 'over' if c.pct >= 90 else '' }}"></span></div><small>{{ c.pct }}%</small>{% else %}—{% endif %}</td>
+        <td>{{ '{:,.0f}'.format(c.due) }}</td><td>{{ '{:,.0f}'.format(c.paid) }}</td>
+        <td><span class="badge {{ 'success' if (c.Status or 'ساري') == 'ساري' else 'neutral' }}">{{ c.Status or 'ساري' }}</span></td>
+        <td>{% if c.files %}<span class="badge success">{{ c.files|length }} ملف</span>{% else %}<span class="badge neutral">بلا ملف</span>{% endif %}</td>
+        <td><div class="row-form" style="display:flex; gap:6px;">
+          <button class="btn" type="button" data-open="dlg-contract-view-{{ c.ContractID }}">عرض</button>
+          {% if can('contracts.edit') %}<button class="btn" type="button" data-open="dlg-contract-edit-{{ c.ContractID }}">تعديل</button>{% endif %}
+          {% if can('contracts.delete') %}<form method="post" action="{{ url_for('contract_delete', contract_id=c.ContractID) }}" onsubmit="return confirm('حذف العقد؟ تُنقل ملفاته إلى سلة المحذوفات. (لا يُحذف عقد له مستخلصات)');"><button class="btn" type="submit" style="color:var(--danger);">حذف</button></form>{% endif %}</div></td></tr>
+    {% else %}<tr><td colspan="10" style="text-align:center; color:var(--text-secondary); padding:24px;">لا توجد عقود بعد. أضف أول عقد لهذا المقاول.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+
+<section class="card" id="certificates" style="margin-top:1.5rem;">
+  <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+    <span>كل مستخلصاته ({{ certs|length }})</span>
+    <span style="display:flex; gap:8px;"><a class="btn" href="{{ url_for('certificates_list', sub=sub.SubcontractorID) }}">عرض في تاب المستخلصات ←</a>
+      {% if can('certificates.edit') %}<button class="btn btn-primary" type="button" data-open="dlg-cert-new">+ إضافة مستخلص جديد</button>{% endif %}</span></div>
+  <div class="tbl-wrap"><table class="list">
+    <thead><tr><th>رقم</th><th>المشروع</th><th>الموقع</th><th>العقد</th><th>التاريخ</th><th>القيمة شامل الضريبة</th><th>خصومات</th><th>صافي المستحق</th><th>المصروف</th><th>الحالة</th><th style="width:160px;">إجراءات</th></tr></thead>
+    <tbody>{% for g in certs %}
+      <tr>
+        <td><b>{{ g.CertificateNo }}</b></td><td>{{ g.Project }}</td><td>{{ g.SiteName or '—' }}</td><td>{{ g.ContractNo or '—' }}</td>
+        <td>{{ (g.CertificateDate or g.CreatedAt).strftime('%Y-%m-%d') if (g.CertificateDate or g.CreatedAt) else '' }}</td>
+        <td>{{ '{:,.2f}'.format(g.Value) }}</td><td>{{ '{:,.2f}'.format((g.SuppliedMaterials or 0) + (g.Penalties or 0)) }}</td>
+        <td><b>{{ '{:,.2f}'.format(g.Total) }}</b></td><td>{{ '{:,.2f}'.format(g.Paid) }}</td>
+        <td><span class="badge {{ badge[g.Status] }}">{{ g.Status }}</span></td>
+        <td><div class="row-form" style="display:flex; gap:6px;">
+          <button class="btn" type="button" data-open="dlg-cert-{{ g.CertificateID }}">{{ 'تعديل' if can('certificates.edit') and g.Status in ('مُدخَل', 'مرفوض') else 'عرض' }}</button>
+          {% if can('certificates.delete') and g.Status in ('مُدخَل', 'مرفوض') and not g.CycleID %}<form method="post" action="{{ url_for('certificate_delete', cert_id=g.CertificateID) }}" onsubmit="return confirm('حذف هذا المستخلص؟ تُنقل ملفاته إلى سلة المحذوفات في الأرشيف.');"><button class="btn" type="submit" style="color:var(--danger);">حذف</button></form>{% endif %}</div></td></tr>
+    {% else %}<tr><td colspan="11" style="text-align:center; color:var(--text-secondary); padding:24px;">لا توجد مستخلصات بعد.</td></tr>{% endfor %}</tbody>
+    {% if certs %}<tfoot><tr><td colspan="5"><b>الإجمالي</b></td><td><b>{{ '{:,.2f}'.format(s.certs_value) }}</b></td><td></td><td><b>{{ '{:,.2f}'.format(certs|rejectattr('Status', 'equalto', 'مرفوض')|sum(attribute='Total')) }}</b></td><td><b>{{ '{:,.2f}'.format(s.paid) }}</b></td><td colspan="2"></td></tr></tfoot>{% endif %}
+  </table></div>
+</section>
+
+{% include "_ledger_section.html" %}
+
+{# ------------------------------------------------------------------ the windows #}
+{% if can('contracts.edit') %}<dialog id="dlg-contract-new" class="dlg">{{ contract_form(sub, None, 'new', form if open_dialog == 'contract-new' else None, projects_list, statuses, True) }}</dialog>{% endif %}
+{% for c in contracts %}
+<dialog id="dlg-contract-view-{{ c.ContractID }}" class="dlg">{{ contract_form(sub, c, 'view', None, projects_list, statuses, False) }}</dialog>
+{% if can('contracts.edit') %}<dialog id="dlg-contract-edit-{{ c.ContractID }}" class="dlg">{{ contract_form(sub, c, 'edit', None, projects_list, statuses, True) }}</dialog>{% endif %}
+{% endfor %}
+{% if can('certificates.edit') %}<dialog id="dlg-cert-new" class="dlg dlg-wide">{{ cert_form(sub, None, form if open_dialog == 'cert-new' else None, projects_list, contract_choices, True, False, None) }}</dialog>{% endif %}
+{% for g in certs %}<dialog id="dlg-cert-{{ g.CertificateID }}" class="dlg dlg-wide">{{ cert_form(sub, g, form if open_dialog == ('cert-%d' % g.CertificateID) else None, projects_list, contract_choices, can('certificates.edit'), can('certificates.delete'), cert_files[g.CertificateID]) }}</dialog>{% endfor %}
+
+<script>
+const SITES = {{ sites_by_project|tojson }}, NEXT = {{ next_numbers|tojson }};
+const fmt = n => (Number(n) || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+// ---- windows
+function openDlg(id) { const d = document.getElementById(id); if (d && !d.open) { d.showModal(); d.querySelectorAll('.cert-form').forEach(calc); } }
+document.addEventListener('click', e => {
+  const o = e.target.closest('[data-open]'); if (o) { openDlg(o.dataset.open); return; }
+  if (e.target.closest('[data-close]')) { e.target.closest('dialog').close(); }
+  if (e.target.tagName === 'DIALOG') e.target.close();          // click on the backdrop
+});
+// ---- certificate form: the net due, live
+function calc(f) {
+  const v = +f.querySelector('.cf-value').value || 0, m = +f.querySelector('.cf-mat').value || 0, p = +f.querySelector('.cf-pen').value || 0, due = v - m - p;
+  f.querySelector('.o-value').textContent = fmt(v); f.querySelector('.o-mat').textContent = '(' + fmt(m) + ')'; f.querySelector('.o-pen').textContent = '(' + fmt(p) + ')';
+  const d = f.querySelector('.o-due'); d.textContent = fmt(due); d.style.color = due < 0 ? '#B91C1C' : '';
+  f.querySelector('.o-vat').textContent = fmt(due - due / 1.15);
+}
+document.querySelectorAll('.cert-form').forEach(f => {
+  f.addEventListener('input', () => calc(f)); calc(f);
+  const pj = f.querySelector('.cf-project'), st = f.querySelector('.cf-site'), dl = document.getElementById('dl-cert-sites');
+  if (pj && st && dl) {
+    const fillSites = () => { dl.replaceChildren(...(SITES[pj.value.trim()] || []).map(n => Object.assign(document.createElement('option'), {value: n}))); };
+    const suggest = () => { const no = f.querySelector('.cf-no'), n = NEXT[pj.value.trim() + '|' + st.value.trim()]; if (no && !no.dataset.touched) no.value = n || (pj.value.trim() && st.value.trim() ? 1 : ''); };
+    pj.addEventListener('input', () => { fillSites(); suggest(); }); st.addEventListener('input', suggest); fillSites();
+  }
+  const no = f.querySelector('.cf-no'); if (no) no.addEventListener('input', () => { no.dataset.touched = '1'; });
+  f.addEventListener('submit', e => { const b = f.querySelector('button[type=submit]:not([formaction])'); if (b && e.submitter === b) { b.disabled = true; b.textContent = 'جارٍ الحفظ…'; } });
+});
+document.querySelectorAll('.dlg-form:not(.cert-form)').forEach(f => f.addEventListener('submit', e => { const b = e.submitter; if (b && b.classList.contains('btn-primary')) { b.disabled = true; b.textContent = 'جارٍ الحفظ…'; } }));
+// ---- the data section: locked until «تعديل»
+const fields = document.getElementById('dataFields'), eb = document.getElementById('dataEdit'), sb = document.getElementById('dataSave'), cb = document.getElementById('dataCancel');
+if (eb) {
+  eb.addEventListener('click', () => { fields.disabled = false; eb.hidden = true; sb.hidden = false; cb.hidden = false; fields.querySelector('input').focus(); });
+  cb.addEventListener('click', () => { document.getElementById('dataForm').reset(); fields.disabled = true; eb.hidden = false; sb.hidden = true; cb.hidden = true; });
+}
+window.addEventListener('pageshow', () => document.querySelectorAll('dialog form button[disabled]').forEach(b => { if (b.type === 'submit' && /جارٍ/.test(b.textContent)) { b.disabled = false; b.textContent = 'حفظ'; } }));
+{% if open_dialog %}openDlg({{ ('dlg-' ~ open_dialog)|tojson }});{% endif %}
+</script>
+{% endblock %}

@@ -1,0 +1,39 @@
+; =============================================================================
+;  تشغيل من قرص خارجي (Portable) - كل المسارات نسبية لمجلد المشروع po_web
+;  لا تتأثر بتغيّر حرف القرص (E: / F: / G:).
+;
+;  الترتيب المفترض على القرص:
+;     <القرص>\PO_System\
+;         po_web\                      <- مجلد المشروع (فيه config.ini هذا)
+;         Data\PurchaseSystem.accdb    <- نسخة القاعدة
+;         Archive\                     <- الأرشيف الجديد (يُنشأ تلقائيًا)
+;         old_po_web\uploads\          <- ملفات النسخة القديمة (إن وُجدت)
+;  ".." تعني «اصعد مجلدًا واحدًا من po_web».
+; =============================================================================
+[database]
+path = ..\Data\PurchaseSystem.accdb
+
+[storage]
+archive_root = ..\Archive
+legacy_uploads = ..\old_po_web\uploads
+max_upload_mb = 50
+; Dated copies of the database made before every update of its structure (keep this on ANOTHER disk if you can)
+backup_dir = ..\Backups
+backup_keep = 20
+
+[server]
+host = 0.0.0.0
+port = 5000
+threads = 8
+log_dir = logs
+
+[ocr]
+; Reading photos/scans of quotes. Install Tesseract (with Arabic) and, if it is not found automatically, write its full path:
+; tesseract_path = C:\Program Files\Tesseract-OCR\tesseract.exe
+language = ara+eng
+mode = auto
+
+[pdf]
+; PDF of every purchase order is made with Microsoft Edge / Google Chrome (found automatically). Only if not found:
+; browser_path = C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe
+mode = auto

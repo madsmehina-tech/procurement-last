@@ -1,0 +1,11 @@
+# secrets and live data must never be committed
+po_web/config.ini
+po_web/config.staging.ini
+po_web/instance/
+po_web/logs/
+po_web/backups/
+po_web/__pycache__/
+**/__pycache__/
+*.pyc
+*.accdb
+*.laccdb

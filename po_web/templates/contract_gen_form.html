@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% set active = "subcontractors" %}
+{% block title %}{{ 'تعديل بيانات العقد ' ~ contract.ContractNo if contract else 'إنشاء عقد / اتفاقية من قالب' }}{% endblock %}
+{% block subtitle %}يملأ النظام بيانات الأطراف من سجلاتها، والناقص يبقى بنقاط مظللة بالأصفر في ملف Word{% endblock %}
+{% block page_actions %}<a class="btn" href="{{ url_for('contract_detail', contract_id=contract.ContractID) if contract else url_for('contracts_list') }}">&rarr; {{ 'العقد' if contract else 'العقود' }}</a>
+<a class="btn" href="{{ url_for('contract_templates_guide') }}" target="_blank">دليل علامات القوالب</a>{% endblock %}
+{% block content %}
+<style>
+  .cg-sec{background:#fff;border:1px solid #E5EAF0;border-radius:14px;padding:18px 20px;margin-bottom:14px}.cg-sec h3{margin:0 0 4px;font-size:16px}.cg-sec .sub{color:#64748B;font-size:12.5px;margin:0 0 10px}
+  .cg-row{display:grid;gap:8px;align-items:center;margin-bottom:6px}.cg-row.h{font-size:12px;color:#64748B}
+  .cg-lines{grid-template-columns:30px 1fr 90px 90px 110px 34px}.cg-specs{grid-template-columns:30px 220px 1fr 34px}.cg-trs{grid-template-columns:30px 130px 80px 120px 1fr 34px}
+  .cg-warn{background:#FFF8E5;border:1px solid #F1D48A;border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:12px}.cg-tot{display:flex;gap:22px;flex-wrap:wrap;font-size:14px;margin-top:8px}.cg-tot b{font-variant-numeric:tabular-nums}
+  .cg-presets{display:flex;gap:6px;margin:6px 0}
+</style>
+<form method="post" id="cgForm">
+<input type="hidden" name="source_po" value="{{ v.source_po }}"><input type="hidden" name="source_compare" value="{{ v.source_compare }}">
+<div class="cg-sec">
+  <h3>1. الطرف والقالب</h3><p class="sub">اختر المقاول أو المورد المسجَّل (لا تُعاد كتابة بياناته)، ثم القالب. تغيير أحدهما يعيد تحميل الصفحة.</p>
+  <div class="form-2">
+    <div><label class="set-lab" style="margin-top:0;">المقاول / المورد</label>
+      <select class="inp" name="party" id="party" {{ 'disabled' if contract else '' }} onchange="reload()"><option value="">— اختر —</option>
+        <optgroup label="مقاولو الباطن">{% for val, name in subs %}<option value="{{ val }}" {{ 'selected' if val == party else '' }}>{{ name }}</option>{% endfor %}</optgroup>
+        <optgroup label="الموردون">{% for val, name in sups %}<option value="{{ val }}" {{ 'selected' if val == party else '' }}>{{ name }}</option>{% endfor %}</optgroup></select>
+      {% if contract %}<input type="hidden" name="party" value="{{ party }}">{% endif %}</div>
+    <div><label class="set-lab" style="margin-top:0;">قالب العقد</label>
+      <select class="inp" name="template_id" id="tpl" onchange="reload()"><option value="">— اختر —</option>{% for t in tpls %}<option value="{{ t.TemplateID }}" {{ 'selected' if tpl and tpl.TemplateID == t.TemplateID else '' }}>{{ t.Name }}</option>{% endfor %}</select>
+      {% if party and not tpls %}<p class="set-hint" style="color:#B02A1E;">لا توجد قوالب لهذا النوع من الأطراف. أضف قالبًا من «قوالب العقود».</p>{% endif %}</div>
+  </div>
+  <input type="hidden" name="_reload" id="reloadFlag" value="">
+</div>
+{% if ready %}
+{% if gaps or comp_gaps %}<div class="cg-warn"><b>بيانات ناقصة سيحتاجها القالب:</b>
+  {% if gaps %}في ملف {{ 'المورد' if kind == 'مورد' else 'المقاول' }}: {{ gaps|join('، ') }}. <a href="{{ url_for('supplier_detail', supplier_id=pid) if kind == 'مورد' else url_for('subcontractor_detail', sub_id=pid) }}" target="_blank">أكملها من ملفه</a> (أو أكمل العقد بدونها وتبقى بنقاط صفراء).{% endif %}
+  {% if comp_gaps %}<br>في بيانات الشركة: {{ comp_gaps|join('، ') }} — <a href="{{ url_for('settings_company') }}" target="_blank">الإعدادات ← بيانات الشركة</a>.{% endif %}</div>{% endif %}
+<div class="cg-sec"><h3>2. المشروع والنطاق</h3>
+  <div class="form-3"><div><label class="set-lab" style="margin-top:0;">المشروع</label><input class="inp" name="project" id="cgProject" list="dl-cg-p" autocomplete="off" value="{{ v.project }}"><datalist id="dl-cg-p">{% for p in projects %}<option value="{{ p }}">{% endfor %}</datalist></div>
+    <div><label class="set-lab" style="margin-top:0;">الموقع</label><input class="inp" name="site" id="cgSite" list="dl-cg-s" autocomplete="off" value="{{ v.site }}"><datalist id="dl-cg-s"></datalist></div>
+    <div><label class="set-lab" style="margin-top:0;">تاريخ العقد</label><input class="inp" type="date" name="contract_date" value="{{ v.contract_date }}"></div></div>
+  <div class="form-2"><div><label class="set-lab">رقم عرض السعر</label><input class="inp" name="quote_no" value="{{ v.quote_no }}"></div><div><label class="set-lab">تاريخ عرض السعر</label><input class="inp" type="date" name="quote_date" value="{{ v.quote_date }}"></div></div>
+  <label class="set-lab">نطاق العمل (جملة تُوضع في التمهيد)</label><textarea class="inp" name="scope" rows="2" placeholder="مثال: توريد وتركيب واختبار وتشغيل مضخات الري والمضخات الغاطسة">{{ v.scope }}</textarea>
+  <label class="set-lab">جدول مواصفات الأعمال (اختياري)</label>
+  <div class="cg-row cg-specs h"><span>#</span><span>العمل</span><span>الوصف</span><span></span></div><div id="specs">{% for r in v.specs %}<div class="cg-row cg-specs"><span>{{ loop.index }}</span><input class="inp" name="spec_name" value="{{ r[0] }}"><input class="inp" name="spec_desc" value="{{ r[1] }}"><button type="button" class="btn" onclick="this.parentNode.remove()">×</button></div>{% endfor %}</div>
+  <button type="button" class="btn" onclick="addSpec()">+ سطر مواصفات</button></div>
+<div class="cg-sec"><h3>3. الأسعار</h3><p class="sub">أدخل السعر <b>قبل الضريبة</b> (أو علّم «الأسعار شاملة الضريبة» وسيحوّلها النظام). الضريبة 15% والإجمالي والمبلغ بالحروف تلقائيًا.</p>
+  <div class="form-3"><div><label class="set-lab" style="margin-top:0;">نموذج التسعير</label><select class="inp" name="price_model" id="model" onchange="calc()">{% for m in models %}<option {{ 'selected' if v.price_model == m else '' }}>{{ m }}</option>{% endfor %}</select></div>
+    <div><label class="set-lab" style="margin-top:0;">&nbsp;</label><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" name="prices_incl_vat" value="1" id="incl" {{ 'checked' if v.incl else '' }} onchange="calc()"> الأسعار المُدخلة شاملة الضريبة</label></div><div></div></div>
+  <div class="cg-row cg-lines h"><span>#</span><span>البند</span><span>الوحدة</span><span>الكمية</span><span>سعر الوحدة</span><span></span></div>
+  <div id="lines">{% for r in v.lines %}<div class="cg-row cg-lines"><span>{{ loop.index }}</span><input class="inp" name="line_desc" value="{{ r[0] }}"><input class="inp" name="line_unit" value="{{ r[1] }}" placeholder="مقطوعية / م.ط / رحلة"><input class="inp num l-qty" type="number" step="any" name="line_qty" value="{{ r[2] }}" dir="ltr"><input class="inp num l-price" type="number" step="any" name="line_price" value="{{ r[3] }}" dir="ltr"><button type="button" class="btn" onclick="this.parentNode.remove(); calc();">×</button></div>{% endfor %}</div>
+  <button type="button" class="btn" onclick="addLine()">+ بند</button>
+  <div class="cg-tot"><span>قبل الضريبة: <b id="t-ex">—</b></span><span>الضريبة 15%: <b id="t-vat">—</b></span><span>شامل الضريبة: <b id="t-incl">—</b></span></div></div>
+<div class="cg-sec"><h3>4. المدة والدفعات</h3>
+  <div class="form-3"><div><label class="set-lab" style="margin-top:0;">مدة التنفيذ (يوم)</label><input class="inp" type="number" name="duration_days" value="{{ v.duration_days }}"></div>
+    <div><label class="set-lab" style="margin-top:0;">تاريخ البداية</label><input class="inp" type="date" name="start_date" value="{{ v.start_date }}"></div><div><label class="set-lab" style="margin-top:0;">تاريخ النهاية</label><input class="inp" type="date" name="end_date" value="{{ v.end_date }}"></div></div>
+  <label class="set-lab">الدفعات</label><div class="cg-presets"><span class="set-hint" style="margin:0 0 0 8px;">نماذج جاهزة:</span><button type="button" class="btn" onclick="preset([40,25,35])">40 / 25 / 35</button><button type="button" class="btn" onclick="preset([50,50])">50 / 50</button><button type="button" class="btn" onclick="preset([30,40,30])">30 / 40 / 30</button><button type="button" class="btn" onclick="preset([100])">دفعة واحدة</button></div>
+  <div class="cg-row cg-trs h"><span>#</span><span>الدفعة</span><span>النسبة %</span><span>المبلغ (اختياري)</span><span>موعد / شرط الاستحقاق</span><span></span></div>
+  <div id="trs">{% for r in v.trs %}<div class="cg-row cg-trs"><span>{{ loop.index }}</span><input class="inp" name="tr_label" value="{{ r[0] }}"><input class="inp num" type="number" step="any" name="tr_pct" value="{{ r[1] }}" dir="ltr"><input class="inp num" type="number" step="any" name="tr_amount" value="{{ r[2] }}" dir="ltr"><input class="inp" name="tr_due" value="{{ r[3] }}"><button type="button" class="btn" onclick="this.parentNode.remove()">×</button></div>{% endfor %}</div>
+  <button type="button" class="btn" onclick="addTr()">+ دفعة</button><p class="set-hint">إن تُركت النسبة فقط يحسب النظام المبلغ من قيمة العقد قبل الضريبة.</p></div>
+<div class="cg-sec"><h3>5. الشروط</h3>
+  <div class="form-3"><div><label class="set-lab" style="margin-top:0;">غرامة التأخير اليومية (ريال)</label><input class="inp" type="number" step="any" name="penalty_per_day" value="{{ v.penalty_per_day }}"></div>
+    <div><label class="set-lab" style="margin-top:0;">الحد الأقصى للغرامة (% من قيمة العقد)</label><input class="inp" type="number" step="any" name="penalty_max_pct" value="{{ v.penalty_max_pct }}"></div>
+    <div><label class="set-lab" style="margin-top:0;">مدة الضمان</label><input class="inp" name="warranty" value="{{ v.warranty }}" placeholder="12 شهراً من الاستلام الابتدائي"></div></div>
+  {% if custom %}<h4 style="margin:14px 0 6px;">حقول خاصة بهذا القالب</h4><div class="form-2">{% for f in custom %}<div {{ 'style="grid-column:1/-1;"'|safe if f.get('kind') in ('list', 'text') else '' }}><label class="set-lab" style="margin-top:0;">{{ f.label }}{{ ' (اختياري)' if f.get('optional') else '' }}{% if f.get('kind') == 'list' %} <small style="font-weight:400;color:#64748B;">— كل سطر بند</small>{% endif %}</label>
+    {% if f.options %}<select class="inp" name="cf_{{ f.key }}"><option value="">— اختر —</option>{% for o in f.options %}<option {{ 'selected' if v.data.get(f.key) == o else '' }}>{{ o }}</option>{% endfor %}</select>
+    {% elif f.get('kind') in ('list', 'text') %}<textarea class="inp" name="cf_{{ f.key }}" rows="{{ 5 if f.get('kind') == 'list' else 3 }}">{{ v.data.get(f.key, '') }}</textarea>
+    {% else %}<input class="inp" name="cf_{{ f.key }}" value="{{ v.data.get(f.key, '') }}">{% endif %}</div>{% endfor %}</div>{% endif %}
+  <label class="set-lab">ملاحظات داخلية (لا تظهر في العقد)</label><input class="inp" name="notes" value="{{ v.notes }}"></div>
+<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:30px;">
+  <button class="btn btn-primary btn-lg" type="submit" name="action" value="generate">حفظ وإنشاء الملفات (Word + PDF)</button>
+  <button class="btn btn-lg" type="submit" name="action" value="draft">حفظ كمسودة فقط</button></div>
+{% else %}<div class="cg-sec" style="text-align:center;color:#64748B;">اختر الطرف والقالب لتظهر بقية الحقول.</div>{% endif %}
+</form>
+<script>
+const $ = s => document.querySelector(s), fmt = n => n == null || isNaN(n) ? '—' : n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+function reload() { $('#reloadFlag').value = '1'; const f = $('#cgForm'); f.method = 'post'; f.submit(); }
+function addLine() { const d = document.createElement('div'); d.className = 'cg-row cg-lines'; d.innerHTML = '<span></span><input class="inp" name="line_desc"><input class="inp" name="line_unit"><input class="inp num l-qty" type="number" step="any" name="line_qty" dir="ltr"><input class="inp num l-price" type="number" step="any" name="line_price" dir="ltr"><button type="button" class="btn" onclick="this.parentNode.remove(); calc();">×</button>'; $('#lines').appendChild(d); }
+function addSpec() { const d = document.createElement('div'); d.className = 'cg-row cg-specs'; d.innerHTML = '<span></span><input class="inp" name="spec_name"><input class="inp" name="spec_desc"><button type="button" class="btn" onclick="this.parentNode.remove()">×</button>'; $('#specs').appendChild(d); }
+const ORD = ['الأولى','الثانية','الثالثة','الرابعة','الخامسة','السادسة'];
+function addTr(label, pct) { const d = document.createElement('div'); d.className = 'cg-row cg-trs'; d.innerHTML = '<span></span><input class="inp" name="tr_label"><input class="inp num" type="number" step="any" name="tr_pct" dir="ltr"><input class="inp num" type="number" step="any" name="tr_amount" dir="ltr"><input class="inp" name="tr_due"><button type="button" class="btn" onclick="this.parentNode.remove()">×</button>'; $('#trs').appendChild(d); if (label) { d.querySelector('[name=tr_label]').value = label; d.querySelector('[name=tr_pct]').value = pct; } }
+function preset(list) { $('#trs').innerHTML = ''; list.forEach((p, i) => addTr(ORD[i], p)); }
+function calc() { const model = $('#model') ? $('#model').value : 'مقطوعية', incl = $('#incl') && $('#incl').checked; let ex = 0, ok = false, allQty = true, any = false;
+  document.querySelectorAll('#lines .cg-row').forEach(r => { const q = parseFloat(r.querySelector('.l-qty').value), p = parseFloat(r.querySelector('.l-price').value); if (isNaN(p)) return; any = true; const price = incl ? p / 1.15 : p; const qty = isNaN(q) ? (model === 'مقطوعية' ? 1 : null) : q; if (qty == null) { allQty = false; return; } ex += qty * price; ok = true; });
+  if (!any || (model === 'بالوحدة' && !allQty) || !ok) { ['#t-ex', '#t-vat', '#t-incl'].forEach(s => { if ($(s)) $(s).textContent = '—'; }); return; }
+  $('#t-ex').textContent = fmt(ex); $('#t-vat').textContent = fmt(ex * 0.15); $('#t-incl').textContent = fmt(ex * 1.15); }
+document.addEventListener('input', e => { if (e.target.closest && e.target.closest('#lines')) calc(); });
+const SITES = {{ sites_by_project|tojson }}, pj = $('#cgProject'), dl = $('#dl-cg-s');
+function fillSites() { if (!pj) return; dl.replaceChildren(...((SITES[pj.value.trim()] || []).map(n => Object.assign(document.createElement('option'), {value: n})))); }
+if (pj) { pj.addEventListener('input', fillSites); fillSites(); } calc();
+</script>
+{% endblock %}

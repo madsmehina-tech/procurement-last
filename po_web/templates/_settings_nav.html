@@ -1,0 +1,10 @@
+<div class="subnav no-print">
+  <a class="{{ 'on' if tab == 'account' else '' }}" href="{{ url_for('settings_account') }}">حسابي</a>
+  {% if can('settings.users') %}<a class="{{ 'on' if tab == 'users' else '' }}" href="{{ url_for('settings_users') }}">المستخدمون{% if pending_users %} <span class="nav-badge">{{ pending_users }}</span>{% endif %}</a>{% endif %}
+  {% if can('settings.roles') %}<a class="{{ 'on' if tab == 'roles' else '' }}" href="{{ url_for('settings_roles') }}">الأدوار والصلاحيات</a>
+  <a class="{{ 'on' if tab == 'groups' else '' }}" href="{{ url_for('settings_groups') }}">المجموعات</a>{% endif %}
+  {% if can('settings.projects') %}<a class="{{ 'on' if tab == 'projects' else '' }}" href="{{ url_for('settings_projects') }}">المشاريع</a>{% endif %}
+  {% if can('settings.projects') %}<a class="{{ 'on' if tab == 'sites' else '' }}" href="{{ url_for('settings_sites') }}">المواقع</a>{% endif %}
+  {% if can('settings.system') %}<a class="{{ 'on' if tab == 'archive' else '' }}" href="{{ url_for('settings_archive') }}">صحة الأرشيف</a>{% endif %}
+  {% if can('settings.audit') %}<a class="{{ 'on' if tab == 'audit' else '' }}" href="{{ url_for('settings_audit') }}">سجل التدقيق</a>{% endif %}
+</div>

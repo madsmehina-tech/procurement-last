@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% set active = "settings_roles" %}
+{% block title %}الأدوار والصلاحيات{% endblock %}
+{% block subtitle %}حدّد ما يستطيع كل دور فعله · Roles &amp; permissions{% endblock %}
+{% block content %}
+{% include "_settings_nav.html" %}
+
+<form method="post" action="{{ url_for('roles_save') }}">
+<div class="card">
+  <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+    <span>مصفوفة الصلاحيات</span>
+    <button class="btn btn-primary" type="submit">حفظ الصلاحيات</button>
+  </div>
+  <table class="list perm-grid">
+    <thead>
+      <tr>
+        <th>الصلاحية</th>
+        {% for r in roles %}
+        <th class="perm-col">{{ r.RoleName }}<br><small>{{ counts.get(r.RoleID, 0) }} مستخدم</small></th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+    {% for group, items in catalog %}
+      <tr class="perm-group"><td colspan="{{ roles|length + 1 }}">{{ group }}</td></tr>
+      {% for code, label in items %}
+      <tr>
+        <td>{{ label }}</td>
+        {% for r in roles %}
+        <td class="perm-col">
+          {% if r.RoleKey == admin_key %}<span class="perm-all" title="كل الصلاحيات">&#10003;</span>
+          {% else %}<input type="checkbox" name="p_{{ r.RoleID }}_{{ code }}" {{ 'checked' if code in granted.get(r.RoleID, []) else '' }}>{% endif %}
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+</form>
+
+<div class="set-grid" style="margin-top:1.5rem;">
+  <div class="card set-card">
+    <h3 class="set-title">إنشاء دور جديد</h3>
+    <form method="post" action="{{ url_for('role_create') }}">
+      <label class="set-lab">اسم الدور</label>
+      <input class="search-box" style="width:100%;" type="text" name="name" required>
+      <label class="set-lab">وصف (اختياري)</label>
+      <input class="search-box" style="width:100%;" type="text" name="description">
+      <button class="btn btn-primary" type="submit">إنشاء</button>
+    </form>
+    <p class="set-hint">بعد الإنشاء يظهر عمود جديد في المصفوفة: علّم صلاحياته ثم اضغط «حفظ الصلاحيات».</p>
+  </div>
+  <div class="card set-card">
+    <h3 class="set-title">الأدوار الحالية</h3>
+    {% for r in roles %}
+    <div class="role-row">
+      <div><b>{{ r.RoleName }}</b><br><small>{{ r.Description or '' }}</small></div>
+      {% if not r.IsSystem %}
+      <form method="post" action="{{ url_for('role_delete', role_id=r.RoleID) }}" onsubmit="return confirm('حذف هذا الدور؟');"><button class="btn" type="submit" style="color:var(--danger); border-color:var(--danger);">حذف</button></form>
+      {% else %}<span class="badge neutral">أساسي</span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

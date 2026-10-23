@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% from "_documents.html" import documents_panel %}
+{% set active = "cycles" %}
+{% set own_header = true %}
+{% block title %}دورة الصرف رقم {{ d.cycle.CycleNo }}{% endblock %}
+{% block subtitle %}{% endblock %}
+{% block content %}
+{% set c = d.cycle %}{% set t = d.totals %}
+<header class="cy-head">
+  <div><div class="cy-crumb"><a href="{{ url_for('cycles_list') }}">دورة الصرف</a> / <a href="{{ url_for('cycles_history') }}">الدورات السابقة</a> / {{ c.CycleNo }}</div>
+    <h1>دورة الصرف رقم {{ c.CycleNo }}
+      <span class="cy-chip-st {{ 'ok' if c.Status == ST.ST_DONE else '' }}">{{ 'مرسلة للمالية · مقفلة' if (c.SentToFinanceAt and c.Status == ST.ST_DONE) else ('منفّذة' if c.Status == ST.ST_DONE else ('مرسلة للمالية' if c.SentToFinanceAt else 'معتمدة · بانتظار التوقيع والإرسال')) }}</span></h1>
+    <div class="cy-sub">اعتمدها {{ c.ApprovedBy or 'المدير' }} في {{ c.ApprovedAt.strftime('%Y-%m-%d') if c.ApprovedAt else '—' }} · لا يمكن تعديل القرارات بعد الاعتماد</div></div>
+  <div class="cy-actions">
+    <a class="btn btn-lg" href="{{ url_for('cycle_bank_file', cycle_id=c.CycleID) }}">ملف التحويل البنكي المجمّع</a>
+    <a class="btn btn-primary btn-lg" href="{{ url_for('cycle_orders_print', cycle_id=c.CycleID) }}" target="_blank">طباعة أوامر الصرف ({{ t.n_orders }})</a>
+  </div>
+</header>
+{% include "_cycle_stepper.html" %}
+
+<section class="cy-kpis">
+  <div class="cy-card"><div class="cy-l">المعتمد للصرف</div><div class="cy-v">{{ '{:,.0f}'.format(t.approved) }}</div><div class="cy-h">{{ t.subs }} مقاولين</div></div>
+  <div class="cy-card"><div class="cy-l">تم تحويله</div><div class="cy-v ok">{{ '{:,.0f}'.format(t.transferred) }}</div><div class="cy-h">{{ t.receipts }} إيصالات مرفقة</div></div>
+  <div class="cy-card"><div class="cy-l">بانتظار التحويل</div><div class="cy-v warn">{{ '{:,.0f}'.format(t.pending) }}</div><div class="cy-h">{{ ('أقدمها منذ %d يوم' % d.oldest_waiting) if t.pending else 'لا شيء بانتظار التحويل' }}</div></div>
+</section>
+
+{% if d.stage == 4 %}
+<section class="cy-card cy-call">
+  <div><b>الخطوة التالية: النسخة النهائية</b><p class="set-hint" style="margin:4px 0 0;">اطبع الكشف النهائي ← وقّعه ← ارفع سكانه ← سجّل إرساله للمالية.</p></div>
+  <div class="cy-call-btns">
+    <a class="btn" href="{{ url_for('cycle_export', cycle_id=c.CycleID, version='final') }}">طباعة النسخة النهائية</a>
+    {% if can('cycles.manage') %}<form method="post" action="{{ url_for('cycle_signed', cycle_id=c.CycleID) }}" enctype="multipart/form-data"><label class="btn btn-primary">رفع الكشف الموقّع<input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" onchange="this.form.submit()"></label></form>
+    <form method="post" action="{{ url_for('cycle_sent', cycle_id=c.CycleID) }}"><button class="btn" type="submit">تسجيل: أُرسل للمالية</button></form>{% endif %}</div>
+</section>
+{% endif %}
+
+<div class="cy-two">
+  <section class="cy-card" aria-label="متابعة التحويل" style="padding:0;">
+    <div class="cy-sec-h"><h2>متابعة تنفيذ التحويلات</h2></div>
+    <div class="cy-trow cy-thd"><div>المقاول</div><div>المرجع</div><div>المبلغ المعتمد</div><div>أمر الصرف</div><div>حالة التحويل</div></div>
+    {% for l in orders %}
+    <div class="cy-trow">
+      <div><b>{{ l.SubName }}</b></div><div>م-{{ '%02d' % (l.CertNo|int) if l.CertNo is number else l.CertNo }}</div><div class="cy-num">{{ '{:,.0f}'.format(l.Approved) }}</div>
+      <div><a href="{{ url_for('cycle_detail', cycle_id=c.CycleID, preview=l.CertificateID) }}">{{ l.OrderNo }}</a></div>
+      <div>{% if l.Done %}<div class="cy-done"><span>تم التحويل · {{ l.LastPay.strftime('%Y-%m-%d') if l.LastPay else '' }}</span><small>مرجع {{ l.Pays[-1].BankRef or '—' }} · {{ 'الإيصال مرفق' if l.Pays[-1].DocID else 'بلا إيصال' }}</small></div>
+        {% else %}<div class="cy-wait"><span>{% if l.Transferred %}محوَّل جزئيًا {{ '{:,.0f}'.format(l.Transferred) }} من {{ '{:,.0f}'.format(l.Approved) }}{% else %}بانتظار التحويل · {{ d.oldest_waiting }} يوم{% endif %}</span>
+          {% if can('certificates.pay') and c.Status == ST.ST_APPROVED %}<button class="btn" type="button" data-up="up-{{ l.CertificateID }}">رفع الإيصال</button>{% endif %}</div>{% endif %}
+        {% if l.Transferred and can('certificates.pay') %}<form method="post" action="{{ url_for('cycle_transfer_undo', cycle_id=c.CycleID, cert_id=l.CertificateID) }}" onsubmit="return confirm('إلغاء آخر تحويل مسجَّل؟ (سنده يبقى في الأرشيف)');"><button class="cy-link" type="submit">إلغاء آخر تحويل</button></form>{% endif %}</div>
+    </div>
+    {% if can('certificates.pay') and c.Status == ST.ST_APPROVED and not l.Done %}
+    <form method="post" action="{{ url_for('cycle_transfer', cycle_id=c.CycleID, cert_id=l.CertificateID) }}" enctype="multipart/form-data" class="cy-up" id="up-{{ l.CertificateID }}" hidden>
+      <div><label>مبلغ التحويل</label><input class="search-box" type="number" step="any" min="0" name="amount" value="{{ l.Pending }}" dir="ltr" required></div>
+      <div><label>تاريخ التحويل</label><input class="search-box" type="date" name="pay_date" value="{{ today_iso }}"></div>
+      <div><label>مرجع التحويل البنكي</label><input class="search-box" name="bank_ref" maxlength="80"></div>
+      <div><label>الإيصال</label><input type="file" name="proof_file" accept=".pdf,.jpg,.jpeg,.png"></div>
+      <div><button class="btn btn-primary" type="submit">تسجيل التحويل</button></div>
+    </form>{% endif %}
+    {% else %}<div class="cy-empty">لا أوامر صرف في هذه الدورة.</div>{% endfor %}
+    <div class="cy-note">بعد رفع الإيصال ينتقل البند تلقائياً إلى تاب الدفعات، وعند اكتمال الكل تتحول الدورة إلى "مصروفة"</div>
+  </section>
+
+  <section class="cy-card" aria-label="نموذج أمر الصرف" style="padding:0;">
+    <div class="cy-sec-h"><h2>معاينة أمر الصرف</h2><span class="set-hint" style="margin:0;">يُولَّد تلقائياً لكل مقاول</span></div>
+    {% if preview %}<div class="cy-paper">{% set o = preview %}{% include "_payment_order.html" %}</div>
+    <div class="cy-prev-btns"><a class="btn" href="{{ url_for('cycle_order', cycle_id=c.CycleID, cert_id=preview.line.CertificateID) }}" target="_blank">طباعة هذا الأمر</a>
+      {% if can('cycles.manage') %}<form method="post" action="{{ url_for('cycle_order_pdf', cycle_id=c.CycleID, cert_id=preview.line.CertificateID) }}"><button class="btn" type="submit">حفظ PDF في الأرشيف</button></form>{% endif %}</div>
+    {% else %}<div class="cy-empty">لا أمر صرف للمعاينة.</div>{% endif %}
+  </section>
+</div>
+
+<div class="cy-foot2">
+  {% if c.Status == ST.ST_APPROVED and t.transferred == 0 and can('cycles.manage') %}<form method="post" action="{{ url_for('cycle_reopen', cycle_id=c.CycleID) }}" onsubmit="return confirm('إعادة القرارات للتصحيح؟ (لم تُسجَّل أي تحويلات بعد)');"><button class="cy-link" type="submit">إعادة فتح القرارات لتصحيح خطأ</button></form>{% endif %}
+  <a class="cy-link" href="{{ url_for('cycle_export', cycle_id=c.CycleID, version='final') }}">تصدير / طباعة الكشف النهائي</a>
+</div>
+<details class="cy-card" style="margin-top:1rem; padding:12px 18px;"><summary style="cursor:pointer; font-weight:600;">ملفات الدورة في الأرشيف</summary>{{ documents_panel("CYCLE", c.CycleID, docs, folder, True, network) }}</details>
+<script>document.querySelectorAll('[data-up]').forEach(b => b.addEventListener('click', () => { const f = document.getElementById(b.dataset.up); f.hidden = !f.hidden; }));</script>
+{% endblock %}

@@ -1,0 +1,40 @@
+{# Charts for the executive dashboards: plain HTML / CSS (and one SVG ring) - they print and export to PDF exactly as they look, and Arabic text is never drawn inside an SVG. #}
+{% macro short(v) %}{{ ('%.1fM' % (v / 1000000)).replace('.0M', 'M') if v >= 1000000 else (('%.0fk' % (v / 1000)) if v >= 1000 else ('%d' % v)) }}{% endmacro %}
+
+{% macro hbars(items, color='var(--p0)') %}
+  {% if items %}{% set mx = items|map(attribute='value')|max %}
+  <div class="hb">{% for it in items %}<div class="hb-row"><span class="hb-l" title="{{ it.label }}">{{ it.label }}</span>
+    <span class="hb-t"><i style="width: {{ (it.value / mx * 100) if mx else 0 }}%; background: {{ color }};"></i></span><b class="hb-v">{{ '{:,.0f}'.format(it.value) }}</b></div>{% endfor %}</div>
+  {% else %}<div class="ex-empty">لا توجد بيانات ضمن هذا الفلتر.</div>{% endif %}
+{% endmacro %}
+
+{% macro vcols(labels, series) %}
+  {% set ns = namespace(mx=0) %}{% for s in series %}{% for v in s['values'] %}{% if v > ns.mx %}{% set ns.mx = v %}{% endif %}{% endfor %}{% endfor %}
+  {% if ns.mx > 0 %}
+  <div class="vc" style="--n: {{ labels|length }};">{% for lab in labels %}{% set i = loop.index0 %}
+    <div class="vc-g"><div class="vc-bars">{% for s in series %}{% set v = s['values'][i] %}
+      <div class="vc-b" title="{{ s.name }} · {{ lab }} · {{ '{:,.0f}'.format(v) }}"><em>{{ short(v) if v else '' }}</em><i style="height: {{ (v / ns.mx * 100) if ns.mx else 0 }}%; background: {{ s.color }};"></i></div>{% endfor %}</div>
+      <span class="vc-l">{{ lab }}</span></div>{% endfor %}</div>
+  {% if series|length > 1 %}<div class="lg">{% for s in series %}<span><i style="background: {{ s.color }};"></i>{{ s.name }}</span>{% endfor %}</div>{% endif %}
+  {% else %}<div class="ex-empty">لا توجد بيانات ضمن هذا الفلتر.</div>{% endif %}
+{% endmacro %}
+
+{% macro donut(parts, center='') %}
+  {% set total = parts|sum(attribute='value') %}
+  {% if total > 0 %}
+  <div class="dn"><div class="dn-ring"><svg viewBox="0 0 42 42" aria-hidden="true"><circle cx="21" cy="21" r="15.9155" fill="none" stroke="var(--c-track)" stroke-width="5.5"/>
+    {% set ns = namespace(off=25) %}{% for p in parts %}{% if p.value > 0 %}{% set pct = p.value / total * 100 %}
+    <circle cx="21" cy="21" r="15.9155" fill="none" stroke="{{ p.color }}" stroke-width="5.5" stroke-dasharray="{{ '%.3f' % pct }} {{ '%.3f' % (100 - pct) }}" stroke-dashoffset="{{ '%.3f' % ns.off }}"/>
+    {% set ns.off = ns.off - pct %}{% endif %}{% endfor %}</svg><div class="dn-c">{{ center }}</div></div>
+    <div class="dn-lg">{% for p in parts %}<div><i style="background: {{ p.color }};"></i><span>{{ p.label }}</span><b>{{ '{:,.0f}'.format(p.value) }}</b><small>{{ '%.1f' % (p.value / total * 100) }}%</small></div>{% endfor %}</div></div>
+  {% else %}<div class="ex-empty">لا توجد بيانات ضمن هذا الفلتر.</div>{% endif %}
+{% endmacro %}
+
+{% macro grouped(rows) %}
+  {% if rows %}{% set ns = namespace(mx=0) %}{% for r in rows %}{% for v in (r.dues, r.paid, r.remaining) %}{% if v > ns.mx %}{% set ns.mx = v %}{% endif %}{% endfor %}{% endfor %}
+  <div class="gp">{% for r in rows %}<div class="gp-row"><span class="gp-n" title="{{ r.name }}">{{ r.name }}</span><div class="gp-bars">
+    {% for key, color, lab in (('dues', 'var(--p0)', 'المستحقات'), ('paid', 'var(--p2)', 'المصروف'), ('remaining', 'var(--c-rust)', 'المتبقي')) %}{% set v = r[key] %}
+    <div class="gp-b"><span class="gp-t"><i style="width: {{ ((v if v > 0 else 0) / ns.mx * 100) if ns.mx else 0 }}%; background: {{ color }};"></i></span><b>{{ '{:,.0f}'.format(v) }}</b></div>{% endfor %}</div></div>{% endfor %}</div>
+  <div class="lg"><span><i style="background: var(--p0);"></i>المستحقات</span><span><i style="background: var(--p2);"></i>المصروف</span><span><i style="background: var(--c-rust);"></i>المتبقي</span></div>
+  {% else %}<div class="ex-empty">لا توجد بيانات ضمن هذا الفلتر.</div>{% endif %}
+{% endmacro %}

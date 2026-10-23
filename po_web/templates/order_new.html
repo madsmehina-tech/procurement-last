@@ -1,0 +1,325 @@
+{% extends "base.html" %}
+{% set active = "order_new" %}
+{% block title %}{{ ('تعديل أمر الشراء ' ~ edit_po) if edit_po else 'إنشاء أمر شراء جديد' }}{% endblock %}
+{% block subtitle %}{{ 'كل تعديل يُحفظ في سجل النسخ ويمكن طباعة أي نسخة سابقة · Revise a purchase order' if edit_po else 'رقم الأمر تلقائي وقابل للتعديل · Create a purchase order — the number is auto-generated and editable' }}{% endblock %}
+
+{% block content %}
+{% if form.from_quote %}
+<div class="warn-box">
+  <b>راجع ما قُرئ من عرض السعر قبل الحفظ</b>
+  {% if warnings %}<ul>{% for w in warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}
+</div>
+{% endif %}
+
+<form method="post" id="poForm" action="{{ url_for('order_edit', po_number=edit_po) if edit_po else url_for('order_new') }}" enctype="multipart/form-data" autocomplete="off">
+<input type="hidden" name="compare_id" value="{{ form.compare_id or '' }}">
+
+  <div class="po-top">
+    <section class="card po-card">
+      <h2 class="po-h">بيانات أمر الشراء</h2>
+      <div class="po-grid">
+        <div class="f f-1"><label>رقم أمر الشراء</label>
+          <input class="inp" type="text" name="po_number" value="{{ edit_po or form.po_number or next_po }}" required {{ 'readonly' if edit_po else '' }}></div>
+        <div class="f f-1"><label>التاريخ (ميلادي)</label>
+          <input class="inp" type="date" name="order_date" value="{{ form.order_date or today_iso }}">
+          {% if hijri_today %}<small class="hint">الموافق (هجري): {{ hijri_today }}</small>{% endif %}</div>
+        <div class="f f-1"><label>رقم عرض السعر</label>
+          <input class="inp" type="text" maxlength="{{ limits.quote_no }}" name="quote_no" value="{{ form.quote_no or '' }}"></div>
+        <div class="f f-1"><label>الموقع</label>
+          <input class="inp" type="text" maxlength="{{ limits.location }}" name="location" list="locationList" placeholder="اختر أو اكتب (اختياري)" value="{{ form.location or '' }}">
+          <datalist id="locationList">{% for l in locations %}<option value="{{ l }}">{% endfor %}</datalist></div>
+
+        <div class="f f-2"><label>المورد</label>
+          <input class="inp" type="text" maxlength="{{ limits.supplier }}" name="supplier" list="supplierList" placeholder="اختر أو اكتب اسمًا جديدًا" value="{{ form.supplier or '' }}" required>
+          <datalist id="supplierList">{% for s in suppliers %}<option value="{{ s.SupplierName }}">{% endfor %}</datalist></div>
+        <div class="f f-2"><label>المشروع</label>
+          <input class="inp" type="text" maxlength="{{ limits.project }}" name="project" list="projectList" placeholder="اختر أو اكتب اسمًا جديدًا" value="{{ form.project or '' }}" required>
+          <datalist id="projectList">{% for p in projects %}<option value="{{ p.Project }}">{% endfor %}</datalist></div>
+
+        <div class="f f-2"><label>المستلم</label>
+          <input class="inp" type="text" maxlength="{{ limits.receiver }}" name="receiver" id="receiverField" list="receiverList" placeholder="اختر أو اكتب" value="{{ form.receiver or '' }}">
+          <datalist id="receiverList">{% for r in receivers %}<option value="{{ r.Name }}">{% endfor %}</datalist></div>
+        <div class="f f-2"><label>جوال المستلم</label>
+          <input class="inp" type="text" maxlength="{{ limits.phone }}" name="phone" id="phoneField" list="phoneList" value="{{ form.phone or '' }}" inputmode="tel">
+          <datalist id="phoneList">{% for r in receivers %}<option value="{{ r.Phone }}">{% endfor %}</datalist></div>
+      </div>
+    </section>
+
+    <section class="card po-card po-quote">
+      {% if not edit_po %}
+      <h2 class="po-h">عرض السعر</h2>
+      {% if form.quote_file_name %}
+      <div class="quote-got"><span class="badge success">مرفوع</span><span class="quote-name">{{ form.quote_file_name }}</span></div>
+      <input type="hidden" name="quote_file_path" value="{{ form.quote_file_path or '' }}">
+      {% endif %}
+      <label class="quote-pick">{{ 'رفع نسخة أخرى' if form.quote_file_name else 'اختر ملف عرض السعر' }}
+        <input type="file" name="quote_file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"></label>
+      <button type="submit" formaction="{{ url_for('order_parse_quote') }}" formnovalidate class="btn btn-primary" style="width:100%; justify-content:center;">قراءة تلقائية للأصناف</button>
+      <small class="hint">يقرأ الأصناف والكميات والأسعار من العرض (PDF أو Word أو Excel أو صورة).</small>
+      {% if form.quote_xlsx_name %}<a class="btn" style="width:100%; justify-content:center; margin-top:8px;" href="{{ url_for('order_quote_copy', filename=form.quote_xlsx_name) }}">تنزيل نسخة Excel للنسخ اليدوي</a>{% endif %}
+      {% else %}
+      <h2 class="po-h">تعديل أمر قائم</h2>
+      <p class="hint" style="font-size:13px; line-height:1.9;">تحدّث هذه الصفحة <b>الأمر نفسه</b> ولا تنشئ أمرًا جديدًا. تُحفظ النسخة الحالية في «النسخ السابقة» قبل التعديل، وتُنشأ نسخة PDF جديدة. أما المرفقات (عرض السعر، الفاتورة...) فتُدار من صفحة الأمر.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <section class="card items-card">
+    <div class="items-head">
+      <h2 class="po-h" style="margin:0;">الأصناف <span class="pill" id="itemCount">0</span></h2>
+      <div class="items-tip">اكتب اسم الصنف فتظهر أصنافك السابقة بآخر سعر · <kbd>Enter</kbd> للانتقال للحقل التالي</div>
+      <button type="button" class="btn btn-primary" id="addRowTop">+ إضافة صنف</button>
+    </div>
+
+    <div class="items-scroll">
+      <table class="items-tbl" id="itemsTable">
+        <thead>
+          <tr><th class="c-no">م</th><th class="c-name">الصنف</th><th class="c-unit">الوحدة</th><th class="c-qty">الكمية</th>
+              <th class="c-price">السعر</th><th class="c-total">الإجمالي</th><th class="c-act"></th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <datalist id="unitList">{% for u in units %}<option value="{{ u }}">{% endfor %}</datalist>
+    <ul id="suggest" class="suggest" hidden></ul>
+
+    <div class="items-foot">
+      <button type="button" class="btn" id="addRowBottom">+ إضافة صنف</button>
+      <div class="totals">
+        <div class="t-row"><span>الإجمالي</span><b id="subTotal">0.00</b></div>
+        <div class="t-row"><span>الضريبة (15%)</span><b id="vatTotal">0.00</b></div>
+        <div class="t-row"><span>الإجمالي شامل الضريبة</span><b id="totalWithVat">0.00</b></div>
+        <div class="t-row"><span>الخصم</span>
+          <input class="inp t-disc" type="number" step="any" min="0" name="discount" id="discountField" value="{{ form.discount or 0 }}" dir="ltr"></div>
+        <div class="t-row t-grand"><span>المطلوب سداده بعد الخصم</span><b id="grandTotal">0.00</b></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card po-card" style="margin-top:1.25rem;">
+    <h2 class="po-h">إعدادات الطباعة</h2>
+    <label class="lab">ملاحظات / شروط إضافية (كل سطر يظهر كصف منفصل في الطباعة)</label>
+    <textarea class="inp" style="height:84px;" name="extra_notes" placeholder="مثال: شروط الدفع: 50% مقدم، 50% عند الاستلام">{{ form.extra_notes or '' }}</textarea>
+    <label class="member" style="margin-top:12px;"><input type="checkbox" name="hide_warehouse_note" value="1" {{ 'checked' if form.hide_warehouse_note else '' }}>
+      إخفاء جملة "للتوريد والتوصيل... إدارة المستودعات" من طباعة هذا الأمر</label>
+  </section>
+
+  {% if form.from_quote %}
+  <label class="warn-box" style="display:block; cursor:pointer; margin-top:1.25rem;">
+    <input type="hidden" name="from_quote" value="1">
+    <span class="member"><input type="checkbox" name="quote_reviewed" value="1" {{ 'checked' if form.quote_reviewed else '' }}> <b>راجعت المورد والأصناف والكميات والأسعار وهي صحيحة</b></span>
+    <small>لا يُحفظ أمر الشراء المقروء من عرض سعر قبل تعليم هذا المربع.</small>
+  </label>
+  {% endif %}
+
+  <div class="po-actions">
+    <button type="submit" class="btn btn-primary btn-lg" id="saveBtn">{{ 'حفظ التعديل' if edit_po else 'حفظ أمر الشراء (PDF)' }}</button>
+    <button type="submit" class="btn btn-lg" formaction="{{ url_for('order_preview') }}" formtarget="_blank" formnovalidate>معاينة</button>
+    {% if edit_po %}<a class="btn btn-lg" href="{{ url_for('order_detail', po_number=edit_po) }}">إلغاء</a>
+    {% elif can('orders.edit') %}<button type="button" class="btn btn-lg" id="retrieveBtn">استرداد أمر شراء</button>{% endif %}
+    <span class="po-actions-total">المطلوب سداده: <b id="grandMirror">0.00</b> ريال</span>
+  </div>
+  {% if not edit_po and can('orders.edit') %}
+  <div id="retrieveBox" class="retrieve-box">
+    <b>استرداد أمر شراء محفوظ لتعديله</b>
+    <div style="display:flex; gap:8px; margin-top:8px;">
+      <input class="inp" id="retrievePo" list="poRecent" placeholder="اكتب رقم الأمر (مثال: PO-2026-004)" style="flex:1;">
+      <datalist id="poRecent">{% for n in recent_pos %}<option value="{{ n }}">{% endfor %}</datalist>
+      <button type="button" class="btn btn-primary" id="retrieveGo">فتح للتعديل</button>
+    </div>
+    <p class="set-hint">يُحفظ كل تعديل كنسخة جديدة وتبقى النسخة السابقة قابلة للطباعة من صفحة الأمر.</p>
+  </div>
+  {% endif %}
+</form>
+
+<script>
+const LIMITS = {{ limits|tojson }};                     // the database's real maximum length per field
+const CATALOG = {{ catalog|tojson }};                 // items bought before: n(ame), u(nit), p(rice), s(upplier)
+const RECEIVERS = {{ receivers|tojson }};
+const RETRIEVE_URL = {{ (url_for('orders_list') ~ '/')|tojson }};
+const fmt = n => (Number(n) || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const norm = s => (s || '').normalize('NFKC').replace(/[\u064B-\u065F\u0670\u0640]/g, '').replace(/[أإآٱ]/g, 'ا')
+  .replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/\s+/g, ' ').trim().toLowerCase();
+const CAT = CATALOG.map(c => ({...c, k: norm(c.n)}));
+const CAT_BY_KEY = new Map(CAT.map(c => [c.k, c]));
+const tbody = document.querySelector('#itemsTable tbody');
+const form = document.getElementById('poForm');
+const suggest = document.getElementById('suggest');
+let sugActive = -1;
+
+// receiver <-> phone memory
+document.getElementById('receiverField').addEventListener('input', e => {
+  const m = RECEIVERS.find(r => r.Name === e.target.value); if (m && m.Phone) document.getElementById('phoneField').value = m.Phone;
+});
+document.getElementById('phoneField').addEventListener('input', e => {
+  const m = RECEIVERS.find(r => r.Phone === e.target.value); if (m && m.Name) document.getElementById('receiverField').value = m.Name;
+});
+
+// ---------------------------------------------------------------- the items table
+// Rows are built with the DOM, never by pasting text into HTML: a name such as   D.I. VALVE 6" PN-16   (a quote mark!)
+// used to cut itself at the quote and be saved incomplete.
+const ROW_HTML = `
+  <td class="c-no"></td>
+  <td class="c-name"><textarea class="inp it-name" name="item_name" rows="1" placeholder="اسم الصنف" spellcheck="false"></textarea><small class="hint it-hint"></small><small class="it-count"></small></td>
+  <td class="c-unit"><input class="inp" type="text" name="item_unit" list="unitList" placeholder="الوحدة"></td>
+  <td class="c-qty"><input class="inp num" type="number" name="item_qty" step="any" min="0" inputmode="decimal" placeholder="0" dir="ltr"></td>
+  <td class="c-price"><input class="inp num" type="number" name="item_price" step="any" min="0" inputmode="decimal" placeholder="0.00" dir="ltr"></td>
+  <td class="c-total"><output class="line-total">0.00</output></td>
+  <td class="c-act"><button type="button" class="ico" data-act="dup" title="نسخ هذا الصنف">⧉</button><button type="button" class="ico ico-del" data-act="del" title="حذف">×</button></td>`;
+
+function autosize(t) { t.style.height = 'auto'; t.style.height = Math.max(44, t.scrollHeight + 2) + 'px'; }
+
+function addRow(name, unit, qty, price, focus) {
+  const tr = document.createElement('tr');
+  tr.innerHTML = ROW_HTML;
+  const f = n => tr.querySelector('[name="' + n + '"]');
+  f('item_name').value = name == null ? '' : name;
+  f('item_unit').value = unit == null ? '' : unit;
+  f('item_qty').value = (qty === '' || qty == null) ? '' : qty;
+  f('item_price').value = (price === '' || price == null) ? '' : price;
+  tbody.appendChild(tr);
+  autosize(f('item_name'));
+  showHint(tr); checkLength(tr);
+  renumber(); recalc();
+  if (focus) f('item_name').focus();
+  return tr;
+}
+function rows() { return Array.from(tbody.querySelectorAll('tr')); }
+function checkLength(tr) {                              // live: a counter near the limit, red the moment it is exceeded
+  const ta = tr.querySelector('.it-name'), out = tr.querySelector('.it-count'), unit = tr.querySelector('[name="item_unit"]');
+  const n = ta.value.length, lim = LIMITS.item;
+  ta.classList.toggle('over', n > lim);
+  out.className = 'it-count' + (n > lim ? ' over' : (n > lim * 0.8 ? ' near' : ''));
+  out.textContent = n > lim ? ('تجاوز الحد بـ ' + (n - lim) + ' حرفًا (المسموح ' + lim + ')') : (n > lim * 0.8 ? (n + ' / ' + lim) : '');
+  unit.classList.toggle('over', unit.value.length > LIMITS.unit);
+  return n <= lim && unit.value.length <= LIMITS.unit;
+}
+function renumber() { rows().forEach((tr, i) => tr.querySelector('.c-no').textContent = i + 1); document.getElementById('itemCount').textContent = rows().length; }
+function recalc() {
+  let sub = 0;
+  rows().forEach(tr => {
+    const q = parseFloat(tr.querySelector('[name="item_qty"]').value) || 0, p = parseFloat(tr.querySelector('[name="item_price"]').value) || 0;
+    tr.querySelector('.line-total').textContent = fmt(q * p); sub += q * p;
+  });
+  const vat = sub * 0.15, withVat = sub + vat, disc = parseFloat(document.getElementById('discountField').value) || 0;
+  document.getElementById('subTotal').textContent = fmt(sub); document.getElementById('vatTotal').textContent = fmt(vat);
+  document.getElementById('totalWithVat').textContent = fmt(withVat);
+  document.getElementById('grandTotal').textContent = fmt(withVat - disc); document.getElementById('grandMirror').textContent = fmt(withVat - disc);
+}
+function showHint(tr) {
+  const hint = tr.querySelector('.it-hint'), c = CAT_BY_KEY.get(norm(tr.querySelector('.it-name').value));
+  hint.textContent = c ? 'آخر شراء: ' + fmt(c.p) + (c.u ? ' / ' + c.u : '') + (c.s ? ' · ' + c.s : '') : '';
+}
+function pick(tr, c) {                                  // a known item was chosen: fill what is still empty
+  const f = n => tr.querySelector('[name="' + n + '"]');
+  f('item_name').value = c.n; autosize(f('item_name')); checkLength(tr);
+  if (!f('item_unit').value && c.u) f('item_unit').value = c.u;
+  if (!(parseFloat(f('item_price').value) > 0) && c.p) f('item_price').value = c.p;
+  showHint(tr); recalc(); closeSuggest();
+  f('item_qty').focus(); f('item_qty').select();
+}
+
+// ---------------------------------------------------------------- suggestions under the item name
+function closeSuggest() { suggest.hidden = true; sugActive = -1; }
+function hitsFor(ta) { const q = norm(ta.value); return q.length < 2 ? [] : CAT.filter(c => c.k.includes(q)).slice(0, 8); }
+function openSuggest(ta) {
+  const hits = hitsFor(ta);
+  if (!hits.length || (hits.length === 1 && hits[0].k === norm(ta.value))) return closeSuggest();
+  suggest.innerHTML = '';
+  hits.forEach(c => {
+    const li = document.createElement('li');
+    const b = document.createElement('b'); b.textContent = c.n;
+    const s = document.createElement('small'); s.textContent = fmt(c.p) + (c.u ? ' / ' + c.u : '') + (c.s ? ' · ' + c.s : '');
+    li.append(b, s);
+    li.addEventListener('mousedown', ev => { ev.preventDefault(); pick(ta.closest('tr'), c); });
+    suggest.appendChild(li);
+  });
+  const r = ta.getBoundingClientRect(), host = suggest.parentElement.getBoundingClientRect();     // (a hidden element has no offsetParent)
+  suggest.style.top = (r.bottom - host.top + 4) + 'px'; suggest.style.right = (host.right - r.right) + 'px'; suggest.style.width = Math.max(r.width, 340) + 'px';
+  suggest.hidden = false; sugActive = -1;
+}
+function moveSuggest(d) {
+  const items = suggest.querySelectorAll('li'); if (!items.length) return;
+  sugActive = (sugActive + d + items.length) % items.length;
+  items.forEach((li, i) => li.classList.toggle('on', i === sugActive));
+}
+
+tbody.addEventListener('input', e => {
+  const tr = e.target.closest('tr'); if (!tr) return;
+  if (e.target.classList.contains('it-name')) { autosize(e.target); showHint(tr); openSuggest(e.target); }
+  checkLength(tr); recalc();
+});
+tbody.addEventListener('focusout', e => { if (e.target.classList.contains('it-name')) setTimeout(() => { if (document.activeElement !== e.target) closeSuggest(); }, 120); });
+tbody.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const tr = b.closest('tr');
+  if (b.dataset.act === 'del') { tr.remove(); if (!rows().length) addRow(); renumber(); recalc(); }
+  else { const g = n => tr.querySelector('[name="' + n + '"]').value; const nr = addRow(g('item_name'), g('item_unit'), g('item_qty'), g('item_price'), false); tr.after(nr); renumber(); nr.querySelector('.it-name').focus(); }
+});
+
+// Enter walks through the fields (it never submits the form by accident); the last price field opens a new row
+tbody.addEventListener('keydown', e => {
+  const t = e.target;
+  if (t.classList.contains('it-name') && !suggest.hidden) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); return moveSuggest(1); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); return moveSuggest(-1); }
+    if (e.key === 'Escape') { return closeSuggest(); }
+    if (e.key === 'Enter' && sugActive >= 0) { e.preventDefault(); const c = hitsFor(t)[sugActive]; if (c) pick(t.closest('tr'), c); return; }
+  }
+  if (e.key !== 'Enter' || e.shiftKey) return;
+  e.preventDefault(); closeSuggest();
+  const tr = t.closest('tr'), order = ['item_name', 'item_unit', 'item_qty', 'item_price'], i = order.indexOf(t.name);
+  if (i < 0) return;
+  if (i < order.length - 1) { const nx = tr.querySelector('[name="' + order[i + 1] + '"]'); nx.focus(); if (nx.select) nx.select(); }
+  else { const next = tr.nextElementSibling || addRow(); next.querySelector('.it-name').focus(); }
+});
+form.addEventListener('keydown', e => {                  // the header fields: Enter = next field, not "save"
+  if (e.key !== 'Enter' || e.target.closest('#itemsTable')) return;
+  const t = e.target;
+  if (t.tagName === 'TEXTAREA' || t.tagName === 'BUTTON' || t.type === 'submit' || t.id === 'retrievePo') return;
+  e.preventDefault();
+  const f = Array.from(form.querySelectorAll('input:not([type=hidden]):not([type=file]):not([readonly]), select')).filter(x => x.offsetParent);
+  const nx = f[f.indexOf(t) + 1]; if (nx) nx.focus();
+});
+document.getElementById('discountField').addEventListener('input', recalc);
+['addRowTop', 'addRowBottom'].forEach(id => document.getElementById(id).addEventListener('click', () => addRow('', '', '', '', true)));
+window.addEventListener('resize', () => document.querySelectorAll('.it-name').forEach(autosize));
+
+// ---------------------------------------------------------------- retrieve an order
+const rb = document.getElementById('retrieveBtn');
+if (rb) {
+  rb.addEventListener('click', () => document.getElementById('retrieveBox').classList.toggle('show'));
+  document.getElementById('retrieveGo').addEventListener('click', () => { const v = document.getElementById('retrievePo').value.trim(); if (v) location.href = RETRIEVE_URL + encodeURIComponent(v) + '/edit'; });
+}
+
+// ---------------------------------------------------------------- saving: checks, and no double click
+const saveBtn = document.getElementById('saveBtn');
+const SAVE_LABEL = {{ ('حفظ التعديل' if edit_po else 'حفظ أمر الشراء (PDF)')|tojson }};
+form.addEventListener('submit', e => {
+  const s = e.submitter;
+  if (s && s !== saveBtn) return;                        // preview / quote reading: no checks
+  const tooLong = rows().map((tr, i) => checkLength(tr) ? 0 : i + 1).filter(Boolean);
+  if (tooLong.length) { e.preventDefault(); alert('اسم الصنف أو وحدته أطول من المسموح في السطر: ' + tooLong.join('، ') + '\nاختصره (العدّاد الأحمر تحت الاسم).'); rows()[tooLong[0] - 1].querySelector('.it-name').focus(); return; }
+  const filled = rows().filter(tr => tr.querySelector('.it-name').value.trim());
+  if (!filled.length) { e.preventDefault(); alert('أضف صنفًا واحدًا على الأقل قبل الحفظ.'); rows()[0].querySelector('.it-name').focus(); return; }
+  const incomplete = filled.filter(tr => !(parseFloat(tr.querySelector('[name="item_qty"]').value) > 0) || !(parseFloat(tr.querySelector('[name="item_price"]').value) > 0));
+  if (incomplete.length) {
+    incomplete.forEach(tr => tr.classList.add('row-warn'));
+    if (!confirm('يوجد ' + incomplete.length + ' صنف بلا كمية أو سعر (مظلّلة بالأصفر). هل تريد الحفظ كما هي؟')) {
+      e.preventDefault(); incomplete[0].querySelector('[name="item_qty"]').focus(); return;
+    }
+  }
+  saveBtn.disabled = true; saveBtn.textContent = 'جارٍ الحفظ وإنشاء ملف PDF…';
+});
+window.addEventListener('pageshow', () => { saveBtn.disabled = false; saveBtn.textContent = SAVE_LABEL; });
+
+{% if form.item_name %}
+{% for nm in form.item_name %}
+addRow({{ nm|tojson }}, {{ (form.item_unit[loop.index0] if form.item_unit else '')|tojson }},
+       {{ (form.item_qty[loop.index0] if form.item_qty else '')|tojson }}, {{ (form.item_price[loop.index0] if form.item_price else '')|tojson }});
+{% endfor %}
+{% else %}
+for (let i = 0; i < 3; i++) addRow();
+{% endif %}
+</script>
+{% endblock %}

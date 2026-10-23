@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>تقرير - {{ sub.Name }}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Tahoma, Arial, sans-serif; color: #1f1f1d; margin: 0; padding: 24px; }
+  .toolbar {
+    display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap;
+    background: #f0f0ee; border-radius: 8px; padding: 14px 16px; margin-bottom: 20px;
+  }
+  .toolbar label { font-size: 13.5px; display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .toolbar button {
+    background: #185fa5; color: #fff; border: none; padding: 9px 18px;
+    border-radius: 6px; font-size: 14px; cursor: pointer; align-self: center;
+  }
+  .rep-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 2px solid #1f1f1d; padding-bottom: 10px; margin-bottom: 14px; }
+  .rep-head img { height: 58px; width: auto; object-fit: contain; } .rep-head .co { font-size: 13px; color: #6b6a63; font-weight: 600; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .subtitle { color: #6b6a63; font-size: 13px; margin: 0 0 20px; }
+  h2 { font-size: 15px; border-bottom: 1px solid #ccc; padding-bottom: 6px; margin: 24px 0 10px; }
+  .info-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 24px; font-size: 13.5px; margin-bottom: 8px; }
+  .info-grid span.k { color: #6b6a63; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-bottom: 16px; }
+  th, td { border: 1px solid #ccc; padding: 5px 7px; text-align: center; }
+  th { background: #f0f0ee; }
+  td.name { text-align: right; }
+  .contract-summary { margin-bottom: 4px; font-size: 13.5px; }
+  @media print {
+    .toolbar { display: none; }
+    body { padding: 0; }
+    section { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+  <div class="toolbar no-print">
+    <div>
+      <label><input type="checkbox" class="sec" data-target="sec-basic" checked> البيانات الأساسية</label><br>
+      <label><input type="checkbox" class="sec" data-target="sec-bank" checked> السجل التجاري والضريبي والحساب البنكي</label>
+    </div>
+    <div>
+      <label><input type="checkbox" class="sec" data-target="sec-contracts" checked> ملخص العقود</label><br>
+      <label><input type="checkbox" class="sec" data-target="sec-certs" checked> تفاصيل المستخلصات</label>
+    </div>
+    <button type="button" onclick="window.print()">طباعة</button>
+  </div>
+
+  <div class="rep-head"><div><div class="co">شركة الهضب للتجارة والمقاولات</div><h1>تقرير مقاول باطن</h1><p class="subtitle" style="margin:0;">تاريخ التقرير: {{ report_date }}</p></div>
+    <img src="{{ company_logo }}" alt="شعار الشركة"></div>
+
+  <section id="sec-basic">
+    <h2>البيانات الأساسية</h2>
+    <div class="info-grid">
+      <div><span class="k">الاسم:</span> {{ sub.Name }}</div>
+      <div><span class="k">الجوال:</span> {{ sub.Phone or '-' }}</div>
+    </div>
+  </section>
+
+  <section id="sec-bank">
+    <h2>السجل التجاري والضريبي والحساب البنكي</h2>
+    <div class="info-grid">
+      <div><span class="k">السجل التجاري:</span> {{ sub.CR or '-' }}</div>
+      <div><span class="k">الرقم الضريبي:</span> {{ sub.TaxNumber or '-' }}</div>
+      <div><span class="k">رقم الحساب البنكي (آيبان):</span> {{ sub.BankAccount or '-' }}</div>
+    </div>
+  </section>
+
+  <section id="sec-contracts">
+    <h2>ملخص العقود</h2>
+    <table>
+      <thead><tr><th>المشروع</th><th>إجمالي المستخلَص</th><th>إجمالي المصروف</th><th>مستحق (معتمد غير مصروف)</th><th>الحالة</th></tr></thead>
+      <tbody>
+        {% for c in contracts %}
+        <tr>
+          <td>{{ c.Project }}</td>
+          <td>{{ "%.2f"|format(c.certified_total) }}</td>
+          <td>{{ "%.2f"|format(c.paid_total) }}</td>
+          <td>{{ "%.2f"|format(c.certified_total - c.paid_total) }}</td>
+          <td>{{ c.Status }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5">لا توجد عقود.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section id="sec-certs">
+    <h2>تفاصيل المستخلصات</h2>
+    {% for c in contracts %}
+    <p class="contract-summary"><strong>{{ c.Project }}</strong></p>
+    <table>
+      <thead><tr><th>رقم</th><th>الموقع</th><th>التاريخ</th><th>إجمالي الأعمال</th><th>مواد مورّدة</th><th>غرامات</th><th>استقطاع</th><th>الصافي</th><th>الضريبة</th><th>الإجمالي</th><th>الحالة</th></tr></thead>
+      <tbody>
+        {% for g in c.certificates %}
+        <tr>
+          <td>{{ g.CertificateNo }}</td>
+          <td>{{ g.SiteName }}</td>
+          <td>{{ g.CertificateDate.strftime('%Y-%m-%d') if g.CertificateDate else '' }}</td>
+          <td>{{ "%.2f"|format(g.GrossAmount) }}</td>
+          <td>{{ "%.2f"|format(g.SuppliedMaterials or 0) }}</td>
+          <td>{{ "%.2f"|format(g.Penalties or 0) }}</td>
+          <td>{{ "%.2f"|format(g.Retention) }}</td>
+          <td>{{ "%.2f"|format(g.Net) }}</td>
+          <td>{{ "%.2f"|format(g.Vat) }}</td>
+          <td>{{ "%.2f"|format(g.Total) }}</td>
+          <td>{{ g.Status }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="11">لا توجد مستخلصات لهذا العقد.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p>لا توجد عقود لهذا المقاول.</p>
+    {% endfor %}
+  </section>
+
+  <script>
+    document.querySelectorAll('.sec').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        document.getElementById(cb.dataset.target).style.display = cb.checked ? '' : 'none';
+      });
+    });
+  </script>
+</body>
+</html>

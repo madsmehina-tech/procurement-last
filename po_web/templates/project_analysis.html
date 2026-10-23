@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% set active = "project_analysis" %}
+{% block title %}تحليل المشروع{% endblock %}
+{% block subtitle %}كم صرفنا على المشروع؟ أوامر الشراء والعقود والمستخلصات والمصروف والمتبقي · Project Analysis{% endblock %}
+{% block page_actions %}
+<button type="button" class="btn" id="themeBtn" title="الوضع الداكن / الفاتح">الوضع الداكن / الفاتح</button>
+{% if a and can('analytics.export') %}<a class="btn" href="{{ url_for('project_analysis_print', **qs) }}" target="_blank">طباعة</a>
+<a class="btn" href="{{ url_for('project_analysis_pdf', **qs) }}">تصدير PDF</a><a class="btn btn-primary" href="{{ url_for('project_analysis_xlsx', **qs) }}">تصدير Excel</a>{% endif %}
+{% endblock %}
+{% block content %}
+{% include "_exec_css.html" %}
+{% include "_exec_extra_css.html" %}
+<div class="exec" id="exec" data-theme="light">
+  <form method="get" class="ex-filters">
+    <label>المشروع <select class="search-box" name="project" onchange="this.form.submit()">{% for p in projects %}<option {{ 'selected' if f.project == p else '' }}>{{ p }}</option>{% endfor %}</select></label>
+    <label>من <input class="search-box" type="date" name="date_from" value="{{ f.date_from }}"></label>
+    <label>إلى <input class="search-box" type="date" name="date_to" value="{{ f.date_to }}"></label>
+    <button class="btn btn-primary" type="submit">تطبيق</button>
+  </form>
+  {% if a %}{% include "_project_body.html" %}{% else %}<div class="ex-card ex-c12"><div class="ex-empty">لا توجد مشاريع بعد. تظهر المشاريع هنا تلقائيًا من أوامر الشراء والمستخلصات والعقود.</div></div>{% endif %}
+</div>
+<script>
+(function () {
+  const root = document.getElementById('exec'), btn = document.getElementById('themeBtn'), key = 'po-exec-theme';
+  try { if (localStorage.getItem(key) === 'dark') root.dataset.theme = 'dark'; } catch (e) {}
+  btn.addEventListener('click', () => { root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark'; try { localStorage.setItem(key, root.dataset.theme); } catch (e) {} });
+})();
+</script>
+{% endblock %}

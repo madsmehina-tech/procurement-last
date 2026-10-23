@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% set active = "settings_audit" %}
+{% block title %}سجل التدقيق{% endblock %}
+{% block subtitle %}من فعل ماذا ومتى ومن أي جهاز · Audit log{% endblock %}
+{% block content %}
+{% include "_settings_nav.html" %}
+<form method="get" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:1rem;" class="no-print">
+  <input class="search-box sb-search" type="text" name="user" placeholder="اسم المستخدم" value="{{ q_user }}" style="width:170px;">
+  <input class="search-box" type="text" name="action" placeholder="نوع العملية (مثل: مستخلص)" value="{{ q_action }}" style="width:200px;">
+  <label style="font-size:13px; color:var(--text-secondary);">من <input class="search-box" type="date" name="date_from" value="{{ d_from }}" style="width:150px;"></label>
+  <label style="font-size:13px; color:var(--text-secondary);">إلى <input class="search-box" type="date" name="date_to" value="{{ d_to }}" style="width:150px;"></label>
+  <button class="btn btn-primary" type="submit">تصفية</button>
+  <a class="btn" href="{{ url_for('settings_audit') }}">مسح</a>
+</form>
+<div class="card">
+  <div class="card-header">آخر {{ rows|length }} عملية {% if total > rows|length %}<small style="color:var(--text-secondary); font-weight:400;">(من إجمالي {{ total }})</small>{% endif %}</div>
+  <table class="list">
+    <thead><tr><th>الوقت</th><th>المستخدم</th><th>العملية</th><th>على</th><th>تفاصيل</th><th>الجهاز</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td style="white-space:nowrap;">{{ r.LoggedAt.strftime('%Y-%m-%d %H:%M:%S') if r.LoggedAt else '' }}</td>
+        <td dir="ltr" style="text-align:right;">{{ r.Username or '-' }}</td>
+        <td>{{ r.Label }}</td>
+        <td>{{ r.EntityType or '' }} {{ r.EntityKey or '' }}</td>
+        <td>{{ r.Details or '' }}</td>
+        <td dir="ltr" style="text-align:right;">{{ r.IPAddress or '' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" style="text-align:center; color:var(--text-secondary); padding:28px;">لا توجد عمليات مطابقة.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

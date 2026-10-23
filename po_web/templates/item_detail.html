@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% set active = "items" %}
+{% block title %}{{ item.name }}{% endblock %}
+{% block subtitle %}{{ item.unit or '—' }} · اشتُري {{ item.count }} مرة · سجل الأسعار · Item price history{% endblock %}
+{% block page_actions %}<a class="btn" href="{{ url_for('items_list') }}">&rarr; الأصناف</a>{% endblock %}
+
+{% block content %}
+<div class="kpi-grid">
+  <div class="kpi-card"><p class="kpi-label">آخر سعر شراء</p><p class="kpi-value">{{ '{:,.2f}'.format(item.last_price) }}</p><p class="set-hint">{{ item.last_date.strftime('%Y-%m-%d') if item.last_date else '' }} · {{ item.last_supplier }}</p></div>
+  <div class="kpi-card"><p class="kpi-label">متوسط السعر</p><p class="kpi-value">{{ '{:,.2f}'.format(item.avg_price) }}</p></div>
+  <div class="kpi-card"><p class="kpi-label">أعلى سعر</p><p class="kpi-value">{{ '{:,.2f}'.format(item.max_price) }}</p></div>
+  <div class="kpi-card"><p class="kpi-label">أقل سعر</p><p class="kpi-value">{{ '{:,.2f}'.format(item.min_price) }}</p></div>
+</div>
+
+<div class="set-grid" style="margin-bottom:1.5rem;">
+  <div class="card set-card">
+    <h3 class="set-title">تطور السعر</h3>
+    {% if spark %}
+    <svg viewBox="0 0 320 72" style="width:100%; height:auto;" role="img" aria-label="تطور سعر الصنف">
+      <polyline points="{{ spark }}" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+      {% for p in spark.split(' ') %}{% set xy = p.split(',') %}<circle cx="{{ xy[0] }}" cy="{{ xy[1] }}" r="3.2" fill="var(--accent)"/>{% endfor %}
+    </svg>
+    <p class="set-hint">الأحدث على اليسار · {{ item.history|length }} عملية شراء</p>
+    {% else %}<p class="set-hint">يلزم شراءان على الأقل لرسم تطور السعر.</p>{% endif %}
+  </div>
+  <div class="card set-card">
+    <h3 class="set-title">مقارنة الموردين لهذا الصنف</h3>
+    <table class="list" style="font-size:13px;">
+      <thead><tr><th>المورد</th><th>مرات</th><th>متوسط السعر</th><th>آخر سعر</th></tr></thead>
+      <tbody>{% for s in item.suppliers %}<tr><td>{{ s.supplier }}</td><td>{{ s.count }}</td><td>{{ '{:,.2f}'.format(s.avg_price) }}</td><td>{{ '{:,.2f}'.format(s.last_price) }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">سجل الشراء</div>
+  <table class="list">
+    <thead><tr><th>التاريخ</th><th>أمر الشراء</th><th>المورد</th><th>المشروع</th><th>الموقع</th><th>الكمية</th><th>السعر</th><th>التغيّر عن السابق</th><th>الإجمالي</th></tr></thead>
+    <tbody>
+    {% for h in item.history %}
+      <tr style="cursor:pointer;" onclick="location.href='{{ url_for('order_detail', po_number=h.po) }}'">
+        <td>{{ h.date.strftime('%Y-%m-%d') if h.date else '' }}</td>
+        <td><b style="color:var(--accent);">{{ h.po }}</b></td>
+        <td>{{ h.supplier }}</td><td>{{ h.project }}</td><td>{{ h.site }}</td>
+        <td>{{ '{:,.2f}'.format(h.qty).rstrip('0').rstrip('.') }}</td>
+        <td>{{ '{:,.2f}'.format(h.price) }}</td>
+        <td>{% if h.change is none %}<span class="badge neutral">أول شراء</span>
+            {% elif h.change > 0 %}<span class="badge danger">▲ {{ h.change }}%</span>
+            {% elif h.change < 0 %}<span class="badge success">▼ {{ -h.change }}%</span>
+            {% else %}<span class="badge neutral">ثابت</span>{% endif %}</td>
+        <td>{{ '{:,.2f}'.format(h.total) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

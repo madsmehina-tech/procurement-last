@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% set active = "dashboard" %}
+{% block title %}لوحة التحكم{% endblock %}
+{% block subtitle %}نظرة عامة على المشتريات · Procurement overview{% endblock %}
+
+{% macro status_class(s) -%}
+  {%- if s in ["مكتمل", "تم الاستلام", "تم السداد", "تم الإصدار"] -%}success
+  {%- elif s in ["استلام جزئي"] -%}danger
+  {%- elif s in ["معلق", "بانتظار الفاتورة", "بانتظار السداد", "بانتظار الاستلام", "لم يبدأ"] -%}warning
+  {%- else -%}neutral
+  {%- endif -%}
+{%- endmacro %}
+
+{% block content %}
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <p class="kpi-label">إجمالي عدد الأوامر</p>
+    <p class="kpi-value">{{ orders_count }}</p>
+  </div>
+  <div class="kpi-card">
+    <p class="kpi-label">إجمالي القيمة (ريال)</p>
+    <p class="kpi-value">{{ '{:,.0f}'.format(total_amount) }}</p>
+  </div>
+  <div class="kpi-card warning">
+    <p class="kpi-label">فواتير مستحقة خلال 7 أيام</p>
+    <p class="kpi-value">{{ due_soon }}</p>
+  </div>
+  <div class="kpi-card danger">
+    <p class="kpi-label">استلام جزئي معلّق</p>
+    <p class="kpi-value">{{ partial_receipt }}</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">أحدث أوامر الشراء</div>
+  <table class="list">
+    <thead>
+      <tr>
+        <th>رقم الأمر</th><th>المورد</th><th>المشروع</th><th>الإجمالي</th>
+        <th>الاستلام</th><th>الفاتورة</th><th>السداد</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for o in recent %}
+      <tr onclick="location.href='{{ url_for('order_detail', po_number=o.PONumber) }}'" style="cursor:pointer;">
+        <td>{{ o.PONumber }}</td>
+        <td>{{ o.SupplierName }}</td>
+        <td>{{ o.Project }}</td>
+        <td>{{ '{:,.0f}'.format(o.TotalAmount or 0) }}</td>
+        <td><span class="badge {{ status_class(o.ReceiptStatus) }}">{{ o.ReceiptStatus }}</span></td>
+        <td><span class="badge {{ status_class(o.InvoiceStatus) }}">{{ o.InvoiceStatus }}</span></td>
+        <td><span class="badge {{ status_class(o.PaymentStatus) }}">{{ o.PaymentStatus }}</span></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" style="text-align:center; color:var(--text-secondary); padding:2rem;">لا توجد أوامر مسجّلة بعد.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

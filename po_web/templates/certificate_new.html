@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% set active = "certificates" %}
+{% block title %}إضافة مستخلص{% endblock %}
+{% block subtitle %}المراجعة الحسابية تتم يدويًا كما هي عادتكم — هذه الشاشة لحفظ المستخلص وأرشفته · New certificate{% endblock %}
+{% block content %}
+<form method="post" action="{{ url_for('certificate_new_any') }}" enctype="multipart/form-data" id="certForm" class="steps">
+
+  <section class="card step">
+    <div class="step-n">1</div>
+    <div class="step-body"><h3 class="set-title">ملف المستخلص</h3>
+      <p class="set-hint" style="margin-top:-8px;">ارفع المستخلص كما وصل (من الواتساب أو البريد). يُحفظ في «ملف المستخلص» داخل مجلده.</p>
+      <div class="form-3">
+        <label class="quote-pick">المستخلص المعتمد (PDF)<input type="file" name="certificate_file" accept=".pdf,.jpg,.jpeg,.png"></label>
+        <label class="quote-pick">نموذج طلب الصرف (اختياري)<input type="file" name="request_file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"></label>
+        <label class="quote-pick">الفاتورة الضريبية (اختياري)<input type="file" name="invoice_file" accept=".pdf,.jpg,.jpeg,.png"></label>
+      </div></div>
+  </section>
+
+  <section class="card step">
+    <div class="step-n">2</div>
+    <div class="step-body"><h3 class="set-title">العقد</h3>
+      <select class="inp" name="contract_id" id="contractSel" required>
+        <option value="">— اختر العقد —</option>
+        {% for c in choices %}<option value="{{ c.ContractID }}" {{ 'selected' if (form.contract_id or contract_id)|string == c.ContractID|string else '' }}>{{ c.SubName }} — {{ c.Project }}{% if c.ContractNo %} — {{ c.ContractNo }}{% endif %}</option>{% endfor %}
+      </select>
+      <div class="ref" id="contractRef"></div></div>
+  </section>
+
+  <section class="card step">
+    <div class="step-n">3</div>
+    <div class="step-body"><h3 class="set-title">بيانات المستخلص</h3>
+      <div class="form-4">
+        <div><label class="set-lab">الموقع</label><select class="inp" name="site_name" id="siteSel"></select></div>
+        <div><label class="set-lab">رقم المستخلص (تلقائي لكل موقع)</label><input class="inp" type="number" min="1" name="cert_no" id="certNo" value="{{ form.cert_no or '' }}"></div>
+        <div><label class="set-lab">تاريخ المستخلص</label><input class="inp" type="date" name="cert_date" value="{{ form.cert_date or today_iso }}"></div>
+        <div><label class="set-lab">إجمالي الأعمال</label><input class="inp num" type="number" step="any" min="0" name="gross_amount" id="gross" value="{{ form.gross_amount or '' }}" dir="ltr" required></div>
+      </div></div>
+  </section>
+
+  <section class="card step">
+    <div class="step-n">4</div>
+    <div class="step-body"><h3 class="set-title">الخصومات</h3>
+      <div class="form-3">
+        <div><label class="set-lab">مواد موردة</label><input class="inp num" type="number" step="any" min="0" name="supplied_materials" id="supplied" value="{{ form.supplied_materials or '' }}" dir="ltr"></div>
+        <div><label class="set-lab">غرامات</label><input class="inp num" type="number" step="any" min="0" name="penalties" id="penalties" value="{{ form.penalties or '' }}" dir="ltr"></div>
+        <div><label class="set-lab">نسبة الاستقطاع (المحتجز) %</label><input class="inp num" type="number" step="any" min="0" name="retention" id="retention" value="{{ form.retention or '' }}" dir="ltr"></div>
+      </div></div>
+  </section>
+
+  <section class="card step step-total">
+    <div class="step-n">5</div>
+    <div class="step-body"><h3 class="set-title">الصافي المحسوب</h3>
+      <div class="totals" style="width:100%;">
+        <div class="t-row"><span>إجمالي الأعمال</span><b id="tGross">0.00</b></div>
+        <div class="t-row"><span>(-) مواد موردة + غرامات</span><b id="tDed">0.00</b></div>
+        <div class="t-row"><span>(-) المحتجز</span><b id="tRet">0.00</b></div>
+        <div class="t-row"><span>الصافي</span><b id="tNet">0.00</b></div>
+        <div class="t-row"><span>ضريبة القيمة المضافة 15%</span><b id="tVat">0.00</b></div>
+        <div class="t-row t-grand"><span>الصافي شامل الضريبة</span><b id="tTotal">0.00</b></div>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:14px;"><button class="btn btn-primary btn-lg" type="submit" id="saveBtn">حفظ المستخلص وأرشفته</button>
+        <a class="btn btn-lg" href="{{ url_for('certificates_list') }}">إلغاء</a></div></div>
+  </section>
+</form>
+<script>
+const CONTRACTS = {{ choices|map(attribute='ContractID')|list|tojson }};
+const INFO = { {% for c in choices %}"{{ c.ContractID }}": {value: {{ (c.ContractValue or 0)|tojson }}, ret: {{ (c.RetentionPct if c.RetentionPct is not none else '')|tojson }}, adv: {{ (c.AdvancePct if c.AdvancePct is not none else '')|tojson }}, no: {{ (c.ContractNo or '')|tojson }}}{{ ',' if not loop.last }}{% endfor %} };
+const SITES = {{ sites|tojson }};
+const NEXT = {{ next_by_site|tojson }};
+const KEEP_SITE = {{ (form.site_name or '')|tojson }}, KEEP_NO = {{ (form.cert_no or '')|tojson }}, KEEP_RET = {{ (form.retention or '')|tojson }};
+const fmt = n => (Number(n) || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const $ = id => document.getElementById(id);
+function onContract(first) {
+  const id = $('contractSel').value, sites = SITES[id] || [], info = INFO[id];
+  $('siteSel').innerHTML = '';
+  sites.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; $('siteSel').appendChild(o); });
+  if (first && KEEP_SITE) $('siteSel').value = KEEP_SITE;
+  const ref = $('contractRef'); ref.textContent = '';
+  if (info) {
+    ref.textContent = 'قيمة العقد: ' + (info.value ? fmt(info.value) : '—') + '  ·  الاستقطاع: ' + (info.ret === '' ? '—' : info.ret + '%') + '  ·  الدفعة المقدمة (مرجعية): ' + (info.adv === '' ? '—' : info.adv + '%') + (info.no ? '  ·  رقم العقد: ' + info.no : '');
+    if (!(first && KEEP_RET !== '')) $('retention').value = info.ret === '' ? 0 : info.ret;
+  }
+  onSite(first);
+}
+function onSite(first) {
+  const k = $('contractSel').value + '|' + $('siteSel').value;
+  if (!(first && KEEP_NO !== '')) $('certNo').value = NEXT[k] || 1;
+  calc();
+}
+function calc() {
+  const g = +$('gross').value || 0, ded = (+$('supplied').value || 0) + (+$('penalties').value || 0), ret = Math.round(g * (+$('retention').value || 0)) / 100;
+  const net = g - ded - ret, vat = Math.round(net * 15) / 100;
+  $('tGross').textContent = fmt(g); $('tDed').textContent = fmt(ded); $('tRet').textContent = fmt(ret);
+  $('tNet').textContent = fmt(net); $('tVat').textContent = fmt(vat); $('tTotal').textContent = fmt(net + vat);
+}
+$('contractSel').addEventListener('change', () => onContract(false));
+$('siteSel').addEventListener('change', () => onSite(false));
+['gross', 'supplied', 'penalties', 'retention'].forEach(id => $(id).addEventListener('input', calc));
+$('certForm').addEventListener('submit', () => { $('saveBtn').disabled = true; $('saveBtn').textContent = 'جارٍ الحفظ…'; });
+window.addEventListener('pageshow', () => { $('saveBtn').disabled = false; $('saveBtn').textContent = 'حفظ المستخلص وأرشفته'; });
+onContract(true);
+</script>
+{% endblock %}

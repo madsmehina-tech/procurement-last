@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% set active = "compare" %}
+{% set step_now = 5 %}
+{% set quotes = a.quotes %}
+{% set printing = False %}
+{% block title %}مقارنة: {{ c.Title }}{% endblock %}
+{% block subtitle %}الخطوة 5: المقارنة ولوحة القرار · {{ c.ProjectName or 'بدون مشروع' }}{% if c.SiteName %} / {{ c.SiteName }}{% endif %} · <span class="badge {{ 'success' if c.Status == 'تمت الترسية' else 'neutral' }}">{{ c.Status }}</span>{% endblock %}
+{% block page_actions %}<a class="btn" href="{{ url_for('compare_view', compare_id=c.CompareID) }}">&rarr; العروض</a><a class="btn" href="{{ url_for('compare_print', compare_id=c.CompareID) }}" target="_blank">طباعة</a>
+<a class="btn" href="{{ url_for('compare_pdf', compare_id=c.CompareID) }}">تصدير PDF</a><a class="btn btn-primary" href="{{ url_for('compare_xlsx', compare_id=c.CompareID) }}">تصدير Excel</a>{% endblock %}
+{% block content %}
+{% include "_compare_css.html" %}{% include "_compare_steps.html" %}
+{% if not a.confirmed and editable %}<div class="warn-box">مطابقة البنود <b>غير مؤكدة</b>{% if a.review %} ({{ a.review }} خلية بحاجة لمراجعتك){% endif %}. لا يمكن الترسية قبل تأكيدها. <a href="{{ url_for('compare_match', compare_id=c.CompareID) }}">افتح خطوة المطابقة ←</a></div>{% endif %}
+{% if winner %}<div class="cp-box cp-win"><h3 style="margin:0 0 6px;">✔ تمت الترسية على: {{ winner.name }}</h3>
+  <div class="row" style="display:flex; gap:24px; flex-wrap:wrap; font-size:14px;"><span>الإجمالي المعدّل: <b>{{ '{:,.2f}'.format(c.WinnerTotal) }}</b> ريال</span><span>الوفر مقابل متوسط باقي العروض: <b>{{ '{:,.2f}'.format(c.SavingsVsAvg) }}</b></span><span>الوفر مقابل أعلى عرض: <b>{{ '{:,.2f}'.format(c.SavingsVsMax) }}</b></span><span>بتاريخ {{ c.AwardedAt.strftime('%Y-%m-%d') if c.AwardedAt else '' }} · {{ c.AwardedBy }}</span></div>
+  {% if c.AwardReason %}<p style="margin:8px 0 0;">سبب الترسية: {{ c.AwardReason }}</p>{% endif %}
+  <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; align-items:center;">
+    {% if c.NextKind == 'عقد' %}<a class="btn btn-primary" href="{{ url_for('compare_to_contract', compare_id=c.CompareID) }}">إنشاء عقد من العرض الفائز</a>{% else %}<a class="btn btn-primary" href="{{ url_for('compare_to_order', compare_id=c.CompareID) }}">إنشاء أمر شراء من العرض الفائز</a>{% endif %}
+    {% if c.NextRef %}<span class="badge success">رُبط بـ {{ c.NextKind }} {{ c.NextRef }}</span>{% elif can('compare.award') %}<form method="post" action="{{ url_for('compare_next_ref', compare_id=c.CompareID) }}" style="display:flex; gap:6px;"><input class="search-box" name="ref" placeholder="ربط برقم {{ c.NextKind }}" style="height:38px; width:170px;"><button class="btn" type="submit">ربط</button></form>
+      <form method="post" action="{{ url_for('compare_reopen', compare_id=c.CompareID) }}" onsubmit="return confirm('إلغاء الترسية وإعادة فتح المقارنة؟');"><button class="btn" type="submit" style="color:var(--danger);">إلغاء الترسية</button></form>{% endif %}</div></div>{% endif %}
+{% include "_compare_body.html" %}
+<h3 style="margin:18px 0 8px;">ملخص العروض</h3>
+<div class="cp-offers">{% for s in a.summary %}{% set q = s.quote %}<div class="cp-offer {{ 'cp-win' if c.WinnerQuoteID == q.QuoteID else '' }}"><h4>{{ s.name }}</h4>
+  <div class="row"><span>الإجمالي بالكمية المطلوبة</span><b>{{ '{:,.0f}'.format(s.normalized) }}</b></div><div class="row"><span>الإجمالي المعدّل</span><b>{{ '{:,.0f}'.format(s.adjusted) }}</b></div>
+  <div class="row"><span>الاكتمال</span><b>{{ s.complete|round|int }}%</b></div><div class="cp-bar {{ 'low' if s.complete < th.complete else '' }}"><i style="width:{{ s.complete }}%;"></i></div>
+  <div class="row"><span>الأرخص في</span><b>{{ s.lowest_items }} بند</b></div><div class="row"><span>أسعار حمراء</span><b>{{ s.red }}</b></div>
+  {% if q.PaymentTerms %}<div class="row"><span>شروط الدفع</span><b>{{ q.PaymentTerms }}</b></div>{% endif %}{% if q.DeliveryDays is not none %}<div class="row"><span>مدة التوريد</span><b>{{ q.DeliveryDays }} يوم</b></div>{% endif %}
+  {% for f in s.flags %}<span class="cp-flag">{{ f }}</span>{% endfor %}
+  {% if editable and can('compare.award') and a.confirmed %}<details style="margin-top:10px;"><summary class="btn btn-primary" style="cursor:pointer;">اعتماد هذا العرض</summary>
+    <form method="post" action="{{ url_for('compare_award', compare_id=c.CompareID) }}" style="margin-top:8px; display:grid; gap:6px;"><input type="hidden" name="quote_id" value="{{ q.QuoteID }}">
+      <textarea class="inp" name="reason" rows="2" placeholder="سبب الترسية{{ ' (مطلوب لهذا العرض)' if (q.QuoteID != a.panel.cheapest_adjusted.quote.QuoteID and q.QuoteID != a.panel.best_value.quote.QuoteID) or s.complete < th.complete or s.very_low else ' (اختياري)' }}"></textarea>
+      <button class="btn btn-primary" type="submit">تأكيد الترسية</button></form></details>{% endif %}</div>{% endfor %}</div>
+<div class="cp-box"><b>الأرشيف:</b> المشتريات ← مقارنات الأسعار ← {{ c.ProjectName or 'بدون مشروع' }} ← {{ c.Title }}
+  {% for d in docs %}<a href="{{ url_for('document_view', doc_id=d.DocID) }}" target="_blank" style="display:block; margin-top:4px;">{{ d.DocType }} · {{ d.OriginalName }}</a>{% endfor %}
+  {% if can('compare.edit') %}<form method="post" action="{{ url_for('compare_report_archive', compare_id=c.CompareID) }}" style="margin-top:8px;"><button class="btn" type="submit">حفظ التقرير (PDF) في الأرشيف</button></form>{% endif %}</div>
+{% endblock %}

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% set active = "subs_dashboard" %}
+{% block title %}لوحة مؤشرات مقاولي الباطن{% endblock %}
+{% block subtitle %}للإدارة العليا ومدير العقود والمشتريات · Subcontractors Dashboard{% endblock %}
+{% block page_actions %}
+<button type="button" class="btn" id="themeBtn" title="الوضع الداكن / الفاتح">الوضع الداكن / الفاتح</button>
+{% if can('analytics.export') %}<a class="btn" href="{{ url_for('subs_dashboard_print', **qs) }}" target="_blank">طباعة</a>
+<a class="btn" href="{{ url_for('subs_dashboard_pdf', **qs) }}">تصدير PDF</a>
+<a class="btn btn-primary" href="{{ url_for('subs_dashboard_xlsx', **qs) }}">تصدير Excel</a>{% endif %}
+{% endblock %}
+{% block content %}
+{% include "_exec_css.html" %}
+{% include "_exec_extra_css.html" %}
+<div class="exec" id="exec" data-theme="light">
+  <form method="get" class="ex-filters">
+    <label>المشروع <select class="search-box" name="project" id="fProject"><option value="">كل المشاريع</option>{% for p in projects %}<option {{ 'selected' if f.project == p else '' }}>{{ p }}</option>{% endfor %}</select></label>
+    <label>الموقع <select class="search-box" name="site" id="fSite"><option value="">كل المواقع</option>{% for s in sites %}<option {{ 'selected' if f.site == s else '' }}>{{ s }}</option>{% endfor %}</select></label>
+    <label>المقاول <select class="search-box" name="sub"><option value="">كل المقاولين</option>{% for s in subs %}<option value="{{ s.SubcontractorID }}" {{ 'selected' if f.sub == s.SubcontractorID else '' }}>{{ s.Name }}</option>{% endfor %}</select></label>
+    <label>من <input class="search-box" type="date" name="date_from" value="{{ f.date_from }}"></label>
+    <label>إلى <input class="search-box" type="date" name="date_to" value="{{ f.date_to }}"></label>
+    <button class="btn btn-primary" type="submit">تطبيق</button>{% if f.any %}<a class="btn" href="{{ url_for('subs_dashboard') }}">مسح</a>{% endif %}
+  </form>
+  {% include "_subs_dashboard_body.html" %}
+</div>
+<script>
+(function () {
+  const root = document.getElementById('exec'), btn = document.getElementById('themeBtn'), key = 'po-exec-theme';
+  try { if (localStorage.getItem(key) === 'dark') root.dataset.theme = 'dark'; } catch (e) {}
+  btn.addEventListener('click', () => { root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark'; try { localStorage.setItem(key, root.dataset.theme); } catch (e) {} });
+  const SITES = {{ sites_by_project|tojson }}, p = document.getElementById('fProject'), s = document.getElementById('fSite');
+  const all = [...new Set(Object.values(SITES).flat())].sort();
+  p.addEventListener('change', () => { const list = p.value ? (SITES[p.value] || []) : all; s.replaceChildren(Object.assign(document.createElement('option'), {value: '', textContent: 'كل المواقع'}), ...list.map(n => Object.assign(document.createElement('option'), {value: n, textContent: n}))); });
+})();
+</script>
+{% endblock %}

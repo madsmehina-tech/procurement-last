@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% set active = "certificates" %}
+{% block title %}المستخلصات{% endblock %}
+{% block subtitle %}شاشة متابعة لكل مستخلصات كل المقاولين — تُضاف المستخلصات من صفحة المقاول · Certificates{% endblock %}
+{% block page_actions %}<a class="btn" href="{{ url_for('certificates_export', **f) }}">تصدير Excel</a>{% endblock %}
+{% block content %}
+<div class="kpi-grid">
+  {% for s in statuses %}
+  <a class="kpi-card {{ 'kpi-on' if f.status == s else '' }}" href="{{ url_for('certificates_list', status=s if f.status != s else '', sub=f.sub, project=f.project, q=f.q) }}" style="text-decoration:none; color:inherit;">
+    <p class="kpi-label"><span class="badge {{ badge[s] }}">{{ s }}</span></p><p class="kpi-value">{{ by_status[s].n }}</p>
+    <p class="set-hint" style="margin:0;">{{ '{:,.0f}'.format(by_status[s].total) }} ريال</p></a>
+  {% endfor %}
+</div>
+<form method="get" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:1rem;">
+  <input class="search-box sb-search" type="text" name="q" value="{{ f.q }}" placeholder="رقم المستخلص أو المقاول أو المشروع أو الموقع" style="width:280px;">
+  <select class="search-box" name="status" style="width:150px;"><option value="">كل الحالات</option>{% for s in statuses %}<option {{ 'selected' if f.status == s else '' }}>{{ s }}</option>{% endfor %}</select>
+  <select class="search-box" name="sub" style="width:200px;"><option value="">كل المقاولين</option>{% for s in subs %}<option value="{{ s.SubcontractorID }}" {{ 'selected' if f.sub == s.SubcontractorID else '' }}>{{ s.Name }}</option>{% endfor %}</select>
+  <select class="search-box" name="project" style="width:180px;"><option value="">كل المشاريع</option>{% for p in projects %}<option {{ 'selected' if f.project == p else '' }}>{{ p }}</option>{% endfor %}</select>
+  <label style="font-size:13px; color:var(--text-secondary);">من <input class="search-box" type="date" name="date_from" value="{{ f.date_from }}" style="width:145px;"></label>
+  <label style="font-size:13px; color:var(--text-secondary);">إلى <input class="search-box" type="date" name="date_to" value="{{ f.date_to }}" style="width:145px;"></label>
+  <button class="btn btn-primary" type="submit">تطبيق</button>{% if f.q or f.status or f.sub or f.project or f.date_from or f.date_to %}<a class="btn" href="{{ url_for('certificates_list') }}">مسح</a>{% endif %}
+</form>
+<div class="card"><div class="tbl-wrap">
+  <table class="list">
+    <thead><tr><th>مسلسل</th><th>رقم المستخلص</th><th>اسم المقاول</th><th>المشروع</th><th>الموقع</th><th>تاريخ الإدخال للنظام</th><th>قيمة المستخلص شامل الضريبة</th><th>خصومات المواد</th><th>صافي المستحق</th><th>المصروف</th><th>رقم دورة الصرف</th><th>تاريخ الصرف</th><th>المتبقي</th><th>الحالة</th><th>إجراء</th></tr></thead>
+    <tbody>
+    {% for g in rows %}
+      <tr>
+        <td style="color:var(--text-secondary);">{{ loop.index }}</td><td><b style="color:var(--accent);">{{ g.CertificateNo }}</b></td><td>{{ g.SubcontractorName }}</td><td>{{ g.Project }}</td><td>{{ g.SiteName or '—' }}</td>
+        <td>{{ g.CreatedAt.strftime('%Y-%m-%d') if g.CreatedAt else '—' }}</td><td>{{ '{:,.2f}'.format(g.Value) }}</td><td>{{ '{:,.2f}'.format(g.SuppliedMaterials or 0) }}</td>
+        <td><b>{{ '{:,.2f}'.format(g.Total) }}</b></td><td>{{ '{:,.2f}'.format(g.Paid) }}</td><td>{{ g.CycleNo or '—' }}</td>
+        <td>{{ g.LastPayDate.strftime('%Y-%m-%d') if g.LastPayDate else '—' }}</td><td>{{ '{:,.2f}'.format(g.Remaining) }}</td><td><span class="badge {{ badge[g.Status] }}">{{ g.Status }}</span></td>
+        <td><a class="btn" href="{{ url_for('subcontractor_detail', sub_id=g.SubcontractorID, cert=g.CertificateID) }}">عرض</a></td>
+      </tr>
+    {% else %}<tr><td colspan="15" style="text-align:center; color:var(--text-secondary); padding:28px;">لا توجد مستخلصات مطابقة.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endblock %}

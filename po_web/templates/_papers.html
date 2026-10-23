@@ -1,0 +1,56 @@
+{# Papers of a party (subcontractor ...): single slots + «ملفات أخرى» (several files with a type). Import "with context". #}
+{% macro expiry_badge(d) %}{% if d.expiry_state %}
+  {% if d.expiry_state[0] == 'expired' %}<span class="badge danger">منتهٍ منذ {{ d.expiry_state[1] }} يومًا</span>
+  {% elif d.expiry_state[0] == 'soon' %}<span class="badge warning">ينتهي خلال {{ d.expiry_state[1] }} يومًا</span>
+  {% else %}<span class="doc-date">ينتهي {{ d.ExpiryDate.strftime('%Y-%m-%d') }}</span>{% endif %}
+{% endif %}{% endmacro %}
+
+{% macro file_line(d, can_edit) %}
+<div class="doc-file">
+  <span class="badge success">✓ مرفق</span>
+  {% if d.DocType not in slot_names %}<span class="badge neutral">{{ d.DocType }}</span>{% endif %}
+  <span class="doc-name">{{ d.OriginalName }}</span>
+  <span class="doc-date">{{ d.UploadedAt.strftime('%Y-%m-%d') if d.UploadedAt else '' }}</span>
+  {{ expiry_badge(d) }}
+  <a class="btn" href="{{ url_for('document_view', doc_id=d.DocID) }}" target="_blank">فتح</a>
+  <a class="btn" href="{{ url_for('document_view', doc_id=d.DocID, download=1) }}">تنزيل</a>
+  {% if can_edit %}<form method="post" action="{{ url_for('document_hide', doc_id=d.DocID) }}" class="row-form" onsubmit="return confirm('إزالة هذا الملف من القائمة؟ (لا يُحذف من الأرشيف)');"><button class="btn" type="submit" style="color:var(--danger);">إزالة</button></form>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro upload_form(entity_type, key, doc_type, label, with_type=False) %}
+<form method="post" action="{{ url_for('document_upload') }}" enctype="multipart/form-data" class="sup-up">
+  <input type="hidden" name="entity_type" value="{{ entity_type }}"><input type="hidden" name="entity_key" value="{{ key }}">
+  {% if with_type %}<select class="search-box" name="doc_type" style="width:150px;">{% for t in other_types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}</select>
+  {% else %}<input type="hidden" name="doc_type" value="{{ doc_type }}">{% endif %}
+  <label class="doc-exp">ينتهي في <input class="search-box" type="date" name="expiry" style="width:150px;"></label>
+  <label class="btn btn-primary">{{ label }}<input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx" style="display:none;" onchange="this.form.submit()"></label>
+</form>
+{% endmacro %}
+
+{% macro papers_panel(entity_type, key, title, slots, others, folder, network, can_edit) %}
+<div class="card doc-panel">
+  <div class="doc-head">
+    <div><h3 class="doc-title">{{ title }}</h3><div class="doc-en">{{ filled }} / {{ slots_total }}</div></div>
+    <span class="badge {{ 'success' if filled >= slots_total else 'neutral' }}">{{ filled }} / {{ slots_total }} ملفات</span>
+  </div>
+  <p class="doc-path">مجلد الأرشيف: <bdi>{{ folder }}</bdi></p>
+  {% if network %}<input class="search-box doc-net" readonly value="{{ network }}" onclick="this.select()">{% endif %}
+  {% for name in slot_names %}
+  <div class="doc-row">
+    <div class="doc-type">{{ name }}</div>
+    <div class="doc-files">
+      {% for d in slots[name].current %}{{ file_line(d, can_edit) }}{% else %}<span class="badge neutral">غير مرفوع</span>{% endfor %}
+      {% if slots[name].history %}<details class="doc-hist"><summary>النسخ السابقة ({{ slots[name].history|length }})</summary>
+        {% for d in slots[name].history %}<div><a href="{{ url_for('document_view', doc_id=d.DocID) }}" target="_blank">{{ d.OriginalName }}</a> <span class="doc-date">{{ d.UploadedAt.strftime('%Y-%m-%d') if d.UploadedAt else '' }}</span></div>{% endfor %}</details>{% endif %}
+    </div>
+    {% if can_edit %}{{ upload_form(entity_type, key, name, 'استبدال' if slots[name].current else 'رفع') }}{% endif %}
+  </div>
+  {% endfor %}
+  <div class="doc-row">
+    <div class="doc-type">ملفات أخرى<br><small class="doc-date">{{ other_types|join(' · ') }}</small></div>
+    <div class="doc-files">{% for d in others %}{{ file_line(d, can_edit) }}{% else %}<span class="badge neutral">غير مرفوع</span>{% endfor %}</div>
+    {% if can_edit %}{{ upload_form(entity_type, key, '', 'إضافة ملف', True) }}{% endif %}
+  </div>
+</div>
+{% endmacro %}

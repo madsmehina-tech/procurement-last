@@ -1,0 +1,14 @@
+; Staging (test) copy - runs beside the real system with its OWN data, so a mistake here costs nothing.
+; Copy to config.staging.ini and use deploy\start_staging.bat
+[database]
+; a COPY of the real database (copy PurchaseSystem.accdb to this new name first)
+path = D:\PO System\PurchaseSystem_STAGING.accdb
+
+[storage]
+archive_root = D:\PO_Archive_STAGING
+share_path = \\SERVER\PO_Archive_STAGING
+
+[server]
+port = 5001
+environment = staging
+log_dir = D:\po_web\logs_staging

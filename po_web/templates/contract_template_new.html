@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% set active = "contract_templates" %}
+{% block title %}قالب عقد جديد{% endblock %}
+{% block subtitle %}ارفع ملف Word فيه العلامات {{ '{{...}}' }} و[[...]]؛ يفحصه النظام ويعرض ما وجده{% endblock %}
+{% block page_actions %}<a class="btn" href="{{ url_for('contract_templates') }}">&rarr; القوالب</a><a class="btn" href="{{ url_for('contract_templates_guide') }}" target="_blank">دليل العلامات</a>{% endblock %}
+{% block content %}
+<form method="post" enctype="multipart/form-data" class="card" style="padding:22px; max-width:780px;">
+  <div class="form-2"><div><label class="set-lab" style="margin-top:0;">اسم القالب</label><input class="inp" name="name" required value="{{ form.get('name', '') }}" placeholder="اتفاقية توريد"></div>
+    <div><label class="set-lab" style="margin-top:0;">الرمز (إنجليزي، فريد)</label><input class="inp" name="code" required value="{{ form.get('code', '') }}" placeholder="SUPPLY" dir="ltr" style="text-align:right;"></div></div>
+  <div class="form-3"><div><label class="set-lab">النوع (يظهر في سجل العقود)</label><input class="inp" name="contract_type" value="{{ form.get('contract_type', '') }}" placeholder="اتفاقية توريد"></div>
+    <div><label class="set-lab">لمن؟</label><select class="inp" name="party_kind"><option {{ 'selected' if form.get('party_kind') == 'مقاول' else '' }}>مقاول</option><option {{ 'selected' if form.get('party_kind') == 'مورد' else '' }}>مورد</option></select></div>
+    <div><label class="set-lab">بادئة الترقيم</label><input class="inp" name="prefix" value="{{ form.get('prefix', '') }}" placeholder="SA" dir="ltr" style="text-align:right;"></div></div>
+  <label class="set-lab">وصف</label><input class="inp" name="description" value="{{ form.get('description', '') }}">
+  <label class="set-lab">ملف Word للقالب (.docx)</label><input type="file" name="template_file" accept=".docx" required>
+  <div style="margin-top:16px;"><button class="btn btn-primary btn-lg" type="submit">إضافة القالب</button></div></form>
+{% endblock %}

@@ -1,0 +1,37 @@
+{% from "_exec_charts.html" import hbars, vcols, donut %}
+{% macro kpi(label, en, value, note='', cls='', unit='') %}<div class="ex-card ex-c3 ex-kpi {{ cls }}"><div class="ex-kpi-lab">{{ label }}<small>{{ en }}</small></div><div class="ex-kpi-val">{{ value }}{% if unit %}<small>{{ unit }}</small>{% endif %}</div><div class="ex-muted">{{ note }}</div></div>{% endmacro %}
+{% macro card(title, en, cols='ex-c6') %}<div class="ex-card {{ cols }}"><div class="ex-head"><div><h3 class="ex-title">{{ title }}</h3><div class="ex-en">{{ en }}</div></div></div>{{ caller() }}</div>{% endmacro %}
+{% macro table(title, en, headers, nums=()) %}<div class="ex-card ex-c12" style="margin-top:16px;"><div class="ex-head"><div><h3 class="ex-title">{{ title }}</h3><div class="ex-en">{{ en }}</div></div></div>
+  <table class="ex-tbl"><thead><tr>{% for h in headers %}<th class="{{ 'n' if loop.index in nums else '' }}">{{ h }}</th>{% endfor %}</tr></thead><tbody>{{ caller() }}</tbody></table></div>{% endmacro %}
+{% set k = a.kpi %}
+<div class="ex-grid" style="margin-bottom:16px;">
+  {{ kpi('إجمالي قيمة أوامر الشراء', 'Purchase Orders Value', '{:,.0f}'.format(k.po_total), '%d أمر شراء · %d مورد' % (k.orders, k.suppliers), unit='ريال') }}
+  {{ kpi('إجمالي قيمة العقود', 'Contracts Value', '{:,.0f}'.format(k.contracts_value), '%d عقد · %d مقاول' % (k.contracts, k.contractors), unit='ريال') }}
+  {{ kpi('إجمالي قيمة المستخلصات', 'Certificates Value', '{:,.0f}'.format(k.certs_total), '%d مستخلص (صافي المستحق)' % k.certs, unit='ريال') }}
+  {{ kpi('إجمالي المصروف', 'Total Paid', '{:,.0f}'.format(k.paid_total), 'مقاولين %s + مشتريات %s' % ('{:,.0f}'.format(k.sub_paid), '{:,.0f}'.format(k.po_paid)), 'ok', 'ريال') }}
+  {{ kpi('إجمالي المتبقي', 'Total Remaining', '{:,.0f}'.format(k.remaining_total), 'مقاولين %s + مشتريات غير مسددة %s' % ('{:,.0f}'.format(k.sub_remaining), '{:,.0f}'.format(k.po_remaining)), 'warn', 'ريال') }}
+  {{ kpi('مصروف المقاولين', 'Subcontractors Paid', '{:,.0f}'.format(k.sub_paid), 'دفعات منفّذة وحركات دائنة', 'sm', 'ريال') }}
+  {{ kpi('مصروف المشتريات', 'Purchases Paid', '{:,.0f}'.format(k.po_paid), 'أوامر شراء «تم السداد»', 'sm', 'ريال') }}
+  {{ kpi('استحقاقات يدوية', 'Other Entitlements', '{:,.0f}'.format(k.manual_debit), 'رد خصم / رد ضريبة على المشروع', 'sm', 'ريال') }}
+  {{ kpi('عدد الموردين', 'Suppliers', k.suppliers, '', 'sm') }}{{ kpi('عدد المقاولين', 'Contractors', k.contractors, '', 'sm') }}
+  {{ kpi('عدد العقود', 'Contracts', k.contracts, '', 'sm') }}{{ kpi('عدد المستخلصات', 'Certificates', k.certs, '', 'sm') }}
+</div>
+<p class="ex-note">أوامر الشراء ومستخلصات المقاولين مفصولة: «مصروف المشتريات» أوامر الشراء المسددة، و«مصروف المقاولين» ما دُفع على مستخلصات المشروع. الحركات اليدوية التي بلا مشروع لا تدخل هنا.</p>
+<div class="ex-grid">
+  {% call card('المصروف الشهري للمشروع', 'Monthly Spending') %}{{ vcols(charts.months, [{'name': 'مقاولين', 'color': 'var(--p0)', 'values': a.monthly.subs}, {'name': 'مشتريات', 'color': 'var(--p2)', 'values': a.monthly.pos}]) }}{% endcall %}
+  {% call card('توزيع التكاليف بالمشروع', 'Cost Distribution') %}{{ donut(charts.cost, '') }}{% endcall %}
+  {% call card('أكبر المقاولين بالمشروع', 'Top Contractors (certificates value)') %}{{ hbars(a.top_contractors, 'var(--p0)') }}{% endcall %}
+  {% call card('أكبر الموردين بالمشروع', 'Top Suppliers (orders value)') %}{{ hbars(a.top_suppliers, 'var(--p2)') }}{% endcall %}
+</div>
+{% call table('أوامر الشراء الخاصة بالمشروع', 'Purchase Orders', ['رقم الأمر', 'التاريخ', 'المورد', 'الموقع', 'الإجمالي', 'مسدد'], (5,)) %}
+  {% for r in a.po_rows %}<tr><td>{{ r.po }}</td><td class="n">{{ r.date.strftime('%Y-%m-%d') if r.date else '' }}</td><td>{{ r.supplier }}</td><td>{{ r.site }}</td><td class="n">{{ '{:,.2f}'.format(r.total) }}</td><td>{{ 'نعم' if r.paid else 'لا' }}</td></tr>
+  {% else %}<tr><td colspan="6" class="ex-muted" style="text-align:center; padding:18px;">لا توجد أوامر شراء.</td></tr>{% endfor %}{% endcall %}
+{% call table('العقود الخاصة بالمشروع', 'Contracts', ['رقم العقد', 'المقاول', 'الموقع', 'قيمة العقد', 'الحالة'], (4,)) %}
+  {% for r in a.contract_rows %}<tr><td>{{ r.no }}</td><td>{{ r.sub }}</td><td>{{ r.site }}</td><td class="n">{{ '{:,.2f}'.format(r.value) }}</td><td>{{ r.status }}</td></tr>
+  {% else %}<tr><td colspan="5" class="ex-muted" style="text-align:center; padding:18px;">لا توجد عقود.</td></tr>{% endfor %}{% endcall %}
+{% call table('المستخلصات الخاصة بالمشروع', 'Certificates', ['رقم', 'المقاول', 'الموقع', 'التاريخ', 'القيمة', 'المصروف', 'المتبقي', 'الحالة'], (1, 4, 5, 6, 7)) %}
+  {% for r in a.cert_rows %}<tr><td class="n">{{ r.no }}</td><td>{{ r.sub }}</td><td>{{ r.site }}</td><td class="n">{{ r.date.strftime('%Y-%m-%d') if r.date else '' }}</td><td class="n">{{ '{:,.2f}'.format(r.total) }}</td><td class="n">{{ '{:,.2f}'.format(r.paid) }}</td><td class="n">{{ '{:,.2f}'.format(r.remaining) }}</td><td>{{ r.status }}</td></tr>
+  {% else %}<tr><td colspan="8" class="ex-muted" style="text-align:center; padding:18px;">لا توجد مستخلصات.</td></tr>{% endfor %}{% endcall %}
+{% call table('الدفعات الخاصة بالمشروع', 'Payments', ['التاريخ', 'المقاول', 'الموقع', 'رقم الدفعة', 'البيان', 'المبلغ'], (4, 6)) %}
+  {% for r in a.pay_rows %}<tr><td class="n">{{ r.date.strftime('%Y-%m-%d') if r.date else '' }}</td><td>{{ r.sub }}</td><td>{{ r.site }}</td><td class="n">{{ r.no or '—' }}</td><td>{{ r.desc }}</td><td class="n">{{ '{:,.2f}'.format(r.amount) }}</td></tr>
+  {% else %}<tr><td colspan="6" class="ex-muted" style="text-align:center; padding:18px;">لا توجد دفعات.</td></tr>{% endfor %}{% endcall %}

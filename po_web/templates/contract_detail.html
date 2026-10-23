@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% set active = "subcontractors" %}
+{% block title %}{{ contract.ContractType or 'عقد' }} {{ contract.ContractNo or ('#' ~ contract.ContractID) }} — {{ sub.Name }}{% endblock %}
+{% block subtitle %}{{ contract.Project or '' }} · {{ sites|join('، ') }} · {{ contract.ContractType or 'Contract' }} · <span class="badge {{ 'success' if contract.Origin == 'مولَّد' else 'neutral' }}">{{ contract.Origin or 'مؤرشف' }}</span>{% endblock %}
+{% block page_actions %}
+<a class="btn" href="{{ url_for('contracts_list') }}">&rarr; العقود</a>
+{% if is_supplier %}<a class="btn" href="{{ url_for('supplier_detail', supplier_id=contract.SupplierID) }}">ملف المورد</a>{% else %}<a class="btn" href="{{ url_for('subcontractor_detail', sub_id=contract.SubcontractorID) }}">ملف المقاول</a>
+{% if can('certificates.edit') and contract.Status not in ('مسودة', 'صادر') %}<a class="btn btn-primary" href="{{ url_for('certificate_new_any', contract_id=contract.ContractID) }}">+ مستخلص جديد</a>{% endif %}{% endif %}
+{% endblock %}
+{% block content %}
+{% if gen %}{% include "_contract_generated.html" %}{% endif %}
+{% if not is_supplier %}<div class="kpi-grid">
+  <div class="kpi-card"><p class="kpi-label">قيمة العقد</p><p class="kpi-value">{{ '{:,.0f}'.format(fig.value) if fig.value else '—' }}</p></div>
+  <div class="kpi-card"><p class="kpi-label">المنفّذ (إجمالي الأعمال)</p><p class="kpi-value">{{ '{:,.0f}'.format(fig.executed) }}</p>
+    {% if fig.pct is not none %}<div class="pbar" style="margin-top:6px;"><span style="width:{{ [fig.pct,100]|min }}%;" class="{{ 'over' if fig.pct >= 90 else '' }}"></span></div><small>{{ fig.pct }}% من قيمة العقد</small>{% endif %}</div>
+  <div class="kpi-card"><p class="kpi-label">المصروف</p><p class="kpi-value">{{ '{:,.0f}'.format(fig.paid) }}</p></div>
+  <div class="kpi-card {{ 'warning' if fig.remaining > 0 else '' }}"><p class="kpi-label">المتبقي للصرف</p><p class="kpi-value">{{ '{:,.0f}'.format(fig.remaining) }}</p></div>
+</div>{% endif %}
+
+<div class="set-grid" style="margin-bottom:1.5rem;">
+  <form method="post" action="{{ url_for('contract_edit', contract_id=contract.ContractID) }}" class="card set-card">
+    <div class="doc-head"><h3 class="set-title" style="margin:0;">بيانات العقد</h3>{% if can('contracts.edit') %}<button class="btn btn-primary" type="submit">حفظ</button>{% endif %}</div>
+    {% set ro = '' if can('contracts.edit') else 'readonly' %}
+    <div class="form-2">
+      <div><label class="set-lab">رقم العقد (اختياري)</label><input class="search-box" style="width:100%;" name="contract_no" value="{{ contract.ContractNo or '' }}" placeholder="SC-2026-006" {{ ro }}></div>
+      <div><label class="set-lab">الحالة</label><select class="search-box" style="width:100%;" name="status" {{ 'disabled' if ro else '' }}>{% for s in statuses %}<option {{ 'selected' if (contract.Status or 'ساري') == s else '' }}>{{ s }}</option>{% endfor %}</select></div>
+      <div><label class="set-lab">قيمة العقد</label><input class="search-box" style="width:100%;" name="contract_value" value="{{ contract.ContractValue if contract.ContractValue is not none else '' }}" {{ 'readonly' if gen else ro }}></div>
+      {% if not gen %}<div><label class="set-lab">نسبة الاستقطاع (المحتجز) %</label><input class="search-box" style="width:100%;" name="retention_pct" value="{{ contract.RetentionPct if contract.RetentionPct is not none else '' }}" {{ ro }}></div>
+      <div><label class="set-lab">نسبة الدفعة المقدمة % (مرجعية)</label><input class="search-box" style="width:100%;" name="advance_pct" value="{{ contract.AdvancePct if contract.AdvancePct is not none else '' }}" {{ ro }}></div>{% endif %}
+    </div>
+    <label class="set-lab">ملاحظات</label><textarea class="search-box" style="width:100%; height:60px;" name="notes" {{ ro }}>{{ contract.Notes or '' }}</textarea>
+  </form>
+  <div class="card set-card">
+    <h3 class="set-title">المواقع ونسخة العقد</h3>
+    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">{% for s in sites %}<span class="badge neutral" style="font-size:13px;">{{ s }}</span>{% endfor %}</div>
+    {% if can('contracts.edit') %}
+    <form method="post" action="{{ url_for('contract_site_add', contract_id=contract.ContractID) }}" class="row-form" style="display:flex; gap:8px; margin-bottom:16px;">
+      <input class="search-box" name="site_name" placeholder="اسم موقع جديد" required style="flex:1;"><button class="btn" type="submit">+ إضافة موقع</button></form>{% endif %}
+    {% if contract.ContractFile %}<a class="btn" href="{{ url_for('contract_file_view', contract_id=contract.ContractID) }}" target="_blank">فتح العقد الموقّع</a>{% else %}<span class="badge neutral">لم يُرفع العقد الموقّع</span>{% endif %}
+    {% if can('contracts.edit') %}
+    <form method="post" action="{{ url_for('contract_file_upload', contract_id=contract.ContractID) }}" enctype="multipart/form-data" style="margin-top:10px;">
+      <label class="btn btn-primary">{{ 'استبدال العقد' if contract.ContractFile else 'رفع العقد الموقّع' }}<input type="file" name="contract_file" style="display:none;" onchange="this.form.submit()"></label>
+      <p class="set-hint">يُحفظ في «أوراق المقاول ← العقود».</p></form>{% endif %}
+  </div>
+</div>
+
+{% if not is_supplier %}
+<div class="card">
+  <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;"><span>مستخلصات العقد ({{ fig.count }})</span>
+    <a class="btn" href="{{ url_for('certificates_list', sub=contract.SubcontractorID, project=contract.Project) }}">عرض في تاب المستخلصات ←</a></div>
+  <div class="tbl-wrap"><table class="list">
+    <thead><tr><th>الموقع</th><th>رقم المستخلص</th><th>التاريخ</th><th>إجمالي الأعمال</th><th>الصافي شامل الضريبة</th><th>المصروف</th><th>الحالة</th></tr></thead>
+    <tbody>
+    {% for g in fig.certs %}
+      <tr style="cursor:pointer;" onclick="location.href='{{ url_for('certificate_detail', cert_id=g.CertificateID) }}'">
+        <td>{{ g.SiteName or contract.SiteName }}</td><td><b>{{ g.CertificateNo }}</b></td>
+        <td>{{ g.CertificateDate.strftime('%Y-%m-%d') if g.CertificateDate else '' }}</td>
+        <td>{{ '{:,.2f}'.format(g.GrossAmount or 0) }}</td><td>{{ '{:,.2f}'.format(g.Total) }}</td><td>{{ '{:,.2f}'.format(g.Paid) }}</td>
+        <td><span class="badge {{ {'مُدخَل':'neutral','ضمن دورة صرف':'warning','مصروف':'success','مرفوض':'danger'}[g.Status] }}">{{ g.Status }}</span></td>
+      </tr>
+    {% else %}<tr><td colspan="7" style="text-align:center; color:var(--text-secondary); padding:24px;">لا توجد مستخلصات بعد.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+{% endblock %}

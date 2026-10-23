@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>سجل الموردين</title>
+<style>
+  @page { size: A4 landscape; margin: 9mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Tahoma, Arial, sans-serif; color: #0F172A; margin: 0; font-size: 11px; }
+  .bar { display: flex; justify-content: space-between; align-items: center; background: #1E293B; color: #fff; padding: 12px 16px; border-radius: 8px; }
+  .bar h1 { margin: 0; font-size: 19px; } .bar small { color: #CBD5E1; display: block; margin-top: 3px; font-size: 11px; }
+  .bar img { width: 46px; height: 46px; border-radius: 50%; background: #fff; }
+  .kpis { display: flex; gap: 10px; margin: 10px 0; }
+  .kpi { flex: 1; border: 1px solid #E2E8F0; border-top: 3px solid #29595E; border-radius: 6px; padding: 8px 10px; }
+  .kpi b { display: block; font-size: 17px; margin-top: 2px; } .kpi span { color: #64748B; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #29595E; color: #fff; font-weight: 600; padding: 7px 6px; text-align: right; font-size: 10.5px; }
+  td { padding: 6px; border-bottom: 1px solid #E2E8F0; vertical-align: top; }
+  tr:nth-child(even) td { background: #F8FAFC; }
+  thead { display: table-header-group; } tr { page-break-inside: avoid; }
+  .num { text-align: left; direction: ltr; white-space: nowrap; }
+  .ok { color: #15803D; font-weight: 600; } .warn { color: #B45309; font-weight: 600; } .bad { color: #B91C1C; font-weight: 600; }
+  tfoot td { font-weight: 700; border-top: 2px solid #29595E; background: #fff !important; }
+  .foot { margin-top: 8px; color: #64748B; font-size: 10px; text-align: center; }
+  .toolbar { text-align: center; padding: 10px; } .toolbar button { font: inherit; padding: 8px 20px; }
+  @media print { .toolbar { display: none; } }
+</style>
+</head>
+<body>
+<div class="toolbar"><button onclick="window.print()">طباعة / حفظ PDF</button></div>
+<div class="bar">
+  <div><h1>سجل الموردين</h1><small>شركة الهضب للتجارة والمقاولات · {{ label }} · صدر في {{ now }}</small></div>
+  <img src="{{ logo_src or company_logo }}" alt="شعار الشركة">
+</div>
+<div class="kpis">
+  <div class="kpi"><span>عدد الموردين</span><b>{{ kpi.count }}</b></div>
+  <div class="kpi"><span>إجمالي المشتريات</span><b>{{ '{:,.0f}'.format(kpi.total) }} ريال</b></div>
+  <div class="kpi"><span>أوراق ناقصة</span><b>{{ kpi.incomplete }}</b></div>
+  <div class="kpi"><span>أوراق منتهية أو قاربت</span><b>{{ kpi.expiring }}</b></div>
+</div>
+<table>
+  <thead><tr><th>#</th><th>المورد</th><th>المندوب</th><th>الجوال</th><th>السجل التجاري</th><th>الرقم الضريبي</th><th>الأوامر</th><th>إجمالي المشتريات</th><th>آخر أمر</th><th>الأوراق</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr><td>{{ loop.index }}</td><td><b>{{ r.Name }}</b></td><td>{{ r.RepName or '—' }}</td><td class="num">{{ r.Phone or '—' }}</td><td>{{ r.CR or '—' }}</td><td>{{ r.TaxNumber or '—' }}</td>
+      <td class="num">{{ r.orders }}</td><td class="num">{{ '{:,.2f}'.format(r.total) }}</td><td class="num">{{ r.last.strftime('%Y-%m-%d') if r.last else '—' }}</td>
+      <td class="{{ 'ok' if r.files >= slots_total else 'warn' }}">{{ r.files }} / {{ slots_total }}{% if r.worst %} <span class="bad">{{ 'منتهية' if r.worst[0] == 'expired' else 'تنتهي قريبًا' }}</span>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="10" style="text-align:center; padding:18px;">لا يوجد موردون مطابقون.</td></tr>{% endfor %}
+  </tbody>
+  <tfoot><tr><td></td><td>الإجمالي</td><td colspan="4"></td><td class="num">{{ rows|sum(attribute='orders') }}</td><td class="num">{{ '{:,.2f}'.format(kpi.total) }}</td><td colspan="2"></td></tr></tfoot>
+</table>
+<div class="foot">أُنشئ هذا التقرير من نظام إدارة العقود والمشتريات</div>
+</body>
+</html>

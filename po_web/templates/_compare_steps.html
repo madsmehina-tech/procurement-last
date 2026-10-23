@@ -1,0 +1,7 @@
+{# the five steps of a comparison: 1 the comparison · 2 the offers · 3 check what was read · 4 match the items · 5 compare and award #}
+{% set n_q = (quotes|length) if quotes is defined else 0 %}
+<div class="cp-steps">
+  {% for i, label, href in ((1, 'بيانات المقارنة', url_for('compare_view', compare_id=c.CompareID)), (2, 'رفع العروض', url_for('compare_view', compare_id=c.CompareID) ~ '#offers'), (3, 'مراجعة القراءة', url_for('compare_view', compare_id=c.CompareID) ~ '#offers'),
+                             (4, 'مطابقة البنود', url_for('compare_match', compare_id=c.CompareID)), (5, 'المقارنة والقرار', url_for('compare_table', compare_id=c.CompareID))) %}
+  <a class="cp-step {{ 'now' if i == step_now else ('done' if i < step_now else '') }}" href="{{ href }}" style="text-decoration:none;"><b>{{ i }}</b>{{ label }}</a>{% endfor %}
+</div>

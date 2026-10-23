@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% from "_documents.html" import documents_panel %}
+{% set active = "cycles" %}
+{% set own_header = true %}
+{% block title %}دورة الصرف رقم {{ d.cycle.CycleNo }}{% endblock %}
+{% block subtitle %}{% endblock %}
+{% block content %}
+{% set c = d.cycle %}{% set t = d.totals %}{% set stage = d.stage %}
+{% set names = {} %}{% for l in d.lines %}{% if names.update({l.CertificateID: l.SubName ~ ' · م-' ~ l.CertNo}) %}{% endif %}{% endfor %}
+<header class="cy-head">
+  <div><div class="cy-crumb"><a href="{{ url_for('cycles_list') }}">دورة الصرف</a> / <a href="{{ url_for('cycles_history') }}">الدورات السابقة</a> / {{ c.CycleNo }}</div>
+    <h1>دورة الصرف رقم {{ c.CycleNo }}{% if c.Title %} <small>— {{ c.Title }}</small>{% endif %}
+      <span class="cy-chip-st {{ 'ok' if c.Status == ST.ST_DONE else '' }}">{{ ST.STAGE_NAME.get(c.Status, c.Status) }}</span></h1>
+    <div class="cy-sub">أُنشئت {{ (c.CycleDate or c.CreatedAt).strftime('%Y-%m-%d') }} · {{ 'قرار الإدارة لا يعني أن التحويل تم؛ المبلغ لا يُحتسب مصروفًا إلا عند «تم التحويل».' }}</div></div>
+  <div class="cy-actions">
+    <a class="btn btn-lg" href="{{ url_for('cycle_export', cycle_id=c.CycleID) }}">طباعة / تصدير الكشف…</a>
+    {% if orders and stage >= 3 %}<a class="btn btn-lg" href="{{ url_for('cycle_orders_print', cycle_id=c.CycleID) }}" target="_blank">أوامر الصرف ({{ orders|length }})</a>{% endif %}
+    {% if can('cycles.manage') and c.Status in (ST.ST_WAITING, ST.ST_APPROVED, ST.ST_DONE) %}
+    <form method="post" action="{{ url_for('cycle_reopen', cycle_id=c.CycleID) }}" onsubmit="return confirm('{{ 'إعادة فتح الدورة المغلقة لتعديل حالة التنفيذ؟' if c.Status == ST.ST_DONE else ('الرجوع لمرحلة قرار الإدارة؟ لا يتم هذا إلا إذا لم يبقَ أي تحويل مسجَّل.' if c.Status == ST.ST_APPROVED else 'الرجوع لمرحلة الإنشاء؟ القرارات المحفوظة تبقى.') }}');">
+      <button class="btn btn-lg" type="submit">{{ 'إعادة فتح الدورة' if c.Status == ST.ST_DONE else ('الرجوع لمرحلة قرار الإدارة' if c.Status == ST.ST_APPROVED else 'الرجوع لمرحلة الإنشاء') }}</button></form>{% endif %}
+    {% if can('cycles.manage') and can_delete and c.Status != ST.ST_CANCELLED %}
+    <form method="post" action="{{ url_for('cycle_delete', cycle_id=c.CycleID) }}" onsubmit="return confirm('حذف دورة الصرف رقم {{ c.CycleNo }}؟ تعود مستخلصاتها للقائمة المفتوحة، ويبقى سجل الدورة محفوظًا.');">
+      <button class="btn btn-lg" type="submit" style="color:var(--danger);">حذف الدورة</button></form>{% endif %}
+  </div>
+</header>
+{% include "_cycle_stepper.html" %}
+
+<section class="cy-kpis" style="grid-template-columns: repeat(4, minmax(0, 1fr));">
+  <div class="cy-card"><div class="cy-l">عدد المستخلصات</div><div class="cy-v">{{ t.n_all }}</div><div class="cy-h">من كل المقاولين والمشاريع</div></div>
+  <div class="cy-card"><div class="cy-l">إجمالي المتبقي</div><div class="cy-v">{{ '{:,.0f}'.format(t.all) }}</div><div class="cy-h">ما ينتظر الصرف قبل قرار الإدارة</div></div>
+  <div class="cy-card"><div class="cy-l">مبلغ الصرف المعتمد</div><div class="cy-v ok" id="vApproved">{{ '{:,.0f}'.format(t.approved) if stage >= 2 else '—' }}</div><div class="cy-h">{{ t.decided }} من {{ t.n_all }} عليها قرار</div></div>
+  <div class="cy-card"><div class="cy-l">تم تحويله فعلاً</div><div class="cy-v">{{ '{:,.0f}'.format(t.transferred) }}</div><div class="cy-h">{{ t.executed }} تم التحويل · {{ t.not_executed }} لم يتم التنفيذ</div></div>
+</section>
+
+{% if c.Status == ST.ST_CANCELLED %}<section class="cy-card"><b>دورة ملغاة (من نسخة سابقة)</b> — مستخلصاتها عادت «مُدخَل». للعرض والطباعة فقط.</section>{% endif %}
+
+{% if noting %}<form method="post" action="{{ url_for('cycle_decisions', cycle_id=c.CycleID) }}" id="decForm">
+{% elif deciding %}<form method="post" action="{{ url_for('cycle_decisions', cycle_id=c.CycleID) }}" id="decForm">{% endif %}
+{% set ncols = 12 if stage >= 3 else 11 %}
+<section class="cy-card" style="padding:0;" aria-label="شيت دورة الصرف">
+  <div class="cy-sec-h"><h2>{{ 'مرحلة الإنشاء — شيت الدورة' if noting else ('مرحلة قرار الإدارة — أدخل القرار والمبلغ لكل مستخلص' if deciding else ('المرحلة النهائية — تنفيذ التحويل' if c.Status == ST.ST_APPROVED else 'شيت الدورة')) }}</h2>
+    <span class="set-hint" style="margin:0;">{{ 'يمكنك كتابة ملاحظات الآن. القرار والمبلغ في المرحلة التالية.' if noting else ('اكتب «مبلغ الصرف المعتمد» لكل مقاول ثم «وزّع» ليتوزع تلقائيًا على مستخلصاته (الأقدم أولًا)، أو اختر القرار والمبلغ لكل مستخلص بنفسك. القرار الأخير لك.' if deciding else 'الخانات مقفلة للقراءة. المتاح فقط تحديد حالة التحويل لكل مقاول (تحويل واحد لكل مقاول).') }}</span></div>
+  <div class="cy3-wrap"><table class="cy3">
+    <colgroup>{% if stage >= 3 %}<col style="width:3.8%"><col style="width:5.3%"><col style="width:10%"><col style="width:9.2%"><col style="width:7.5%"><col style="width:7.5%"><col style="width:7.5%"><col style="width:11.5%"><col style="width:10%"><col style="width:8.2%"><col style="width:10.5%"><col style="width:9%">
+      {% else %}<col style="width:4%"><col style="width:5.5%"><col style="width:11%"><col style="width:10%"><col style="width:8%"><col style="width:8%"><col style="width:8%"><col style="width:12.5%"><col style="width:11%"><col style="width:9%"><col style="width:13%">{% endif %}</colgroup>
+    <thead><tr><th>مسلسل</th><th>رقم المستخلص</th><th>المشروع</th><th>الموقع</th><th>قيمة المستخلص</th><th>المصروف سابقاً</th><th>المتبقي</th><th>الحالة</th><th>القرار</th><th>مبلغ الصرف</th><th>الملاحظات</th>{% if stage >= 3 %}<th>حالة التنفيذ</th>{% endif %}</tr></thead>
+    {% for gp in d.groups %}
+    <tbody class="cy3-grp" data-sub="{{ gp.sub_id }}">
+      <tr class="gh"><td colspan="{{ ncols }}"><div class="gh-in">
+        <span class="gh-name">{{ gp.name }}</span><span class="gh-n">{{ gp.lines|length }} بند</span>
+        <span class="gh-tot">الإجمالي: <b>{{ '{:,.0f}'.format(gp.total) }}</b></span>
+        {% if gp.has_entries %}<span class="gh-tot">دفعات مسجّلة: <b>{{ '{:,.0f}'.format(gp.entries_total) }}</b></span>{% endif %}
+        {% if deciding and gp.total > 0 %}<label class="gh-dist">مبلغ الصرف المعتمد
+          <input class="search-box dist" type="number" step="any" min="0" dir="ltr" name="dist_{{ gp.sub_id }}" value="{{ gp.approved if gp.decided else '' }}" placeholder="0" onkeydown="if(event.key==='Enter'){event.preventDefault();this.parentNode.querySelector('button').click();}">
+          <button class="btn" type="submit" name="intent" value="distribute:{{ gp.sub_id }}">وزّع على المستخلصات</button></label>
+        {% elif stage >= 2 %}<span class="gh-tot">مبلغ الصرف المعتمد: <b class="gsum">{{ '{:,.0f}'.format(gp.approved) }}</b></span>{% endif %}
+      </div></td></tr>
+      {% for l in gp.lines %}
+      <tr class="{{ 'cy3-defer' if l.Decision == D_DEFER and stage >= 3 else '' }}" data-req="{{ l.Requested }}" data-entry="{{ 1 if l.IsEntry else 0 }}">
+        <td class="num">{{ loop.index }}</td>
+        <td class="num">{% if l.IsEntry %}—{% else %}<a href="{{ url_for('subcontractor_detail', sub_id=l.SubcontractorID, cert=l.CertificateID) }}">{{ l.CertNo }}</a>{% endif %}</td>
+        <td>{{ l.Project or '—' }}</td><td>{{ l.Site or '—' }}</td>
+        <td class="num">{{ '{:,.0f}'.format(l.Total) }}</td><td class="num">{{ '{:,.0f}'.format(l.PaidBefore) }}</td><td class="num"><b>{{ '{:,.0f}'.format(l.Requested) }}</b></td>
+        <td>{% if l.IsEntry %}<span class="cy3-pill">دفعة مباشرة</span><br><small>{{ l.Description }}</small>{% elif l.DeferredBefore %}<span class="cy3-pill wait">{{ l.StatusLabel }}</span>{% elif l.PaidBefore > 0 %}<span class="cy3-pill">{{ l.StatusLabel }}</span>{% else %}{{ l.StatusLabel }}{% endif %}</td>
+        <td>{% if deciding %}
+          <select class="search-box dsel" name="decision_{{ l.DecisionID }}"><option value="">— اختر —</option>
+            <option value="{{ D_FULL }}" {{ 'selected' if l.Decision == D_FULL else '' }}>يصرف بالكامل</option>
+            {% if not l.IsEntry %}<option value="{{ D_PART }}" {{ 'selected' if l.Decision == D_PART else '' }}>يصرف جزئياً</option>{% endif %}
+            <option value="{{ D_DEFER }}" {{ 'selected' if l.Decision == D_DEFER else '' }}>مؤجل</option></select>
+          {% elif stage >= 3 %}{{ l.DecisionLabel or '—' }}{% else %}—{% endif %}</td>
+        <td class="num">{% if deciding %}
+          <span class="amt-text" style="display:{{ 'none' if l.Decision == D_PART else 'inline' }};">{{ ('%s' % '{:,.0f}'.format(l.Approved)) if l.Decision else '—' }}</span>
+          <input class="search-box part" type="number" step="any" min="0" dir="ltr" name="partial_{{ l.DecisionID }}" value="{{ l.Approved if l.Decision == D_PART else '' }}" style="display:{{ 'inline-block' if l.Decision == D_PART else 'none' }};">
+          {% elif stage >= 3 %}{{ '{:,.0f}'.format(l.Approved) if l.Decision else '—' }}{% else %}—{% endif %}</td>
+        <td>{% if noting or deciding %}<input class="search-box" type="text" maxlength="250" name="note_{{ l.DecisionID }}" value="{{ l.Note }}" placeholder="اختياري">{% else %}{{ l.Note }}{% endif %}</td>
+        {% if stage >= 3 %}<td>{% if not l.Payable %}—{% elif l.Exec == EX_DONE %}<span class="cy3-pill ok">تم التحويل</span>{% elif l.Exec == EX_NOT %}<span class="cy3-pill no">لم يتم التنفيذ</span>{% else %}<span class="cy3-pill wait">بانتظار التنفيذ</span>{% endif %}</td>{% endif %}
+      </tr>
+      {% endfor %}
+      {% if stage >= 3 and gp.payable > 0 %}
+      <tr class="cy3-x"><td colspan="{{ ncols }}">
+        <div class="cy3-xbox"><div><b>تحويل {{ gp.name }}: {{ '{:,.2f}'.format(gp.payable) }} ريال</b><br><small>أمر الصرف {{ gp.order_no }} · البيان: {{ gp.statement or '—' }}</small></div>
+          <a class="btn" href="{{ url_for('cycle_order', cycle_id=c.CycleID, sub_id=gp.sub_id) }}" target="_blank">أمر الصرف</a></div>
+        {% if can('certificates.pay') %}
+        {% if gp.exec == EX_DONE or gp.exec == EX_NOT or gp.exec == 'mixed' %}
+        {% set paid = gp.lines|selectattr('Pay')|list %}{% set pi = payinfo.get(gp.sub_id) %}
+        <div class="cy3-xbox" style="margin-top:8px;"><span class="{{ 'cy3-ok' if gp.exec == EX_DONE else 'cy3-no' }}">{{ gp.exec if gp.exec != 'mixed' else 'حالات مختلفة (من نسخة سابقة)' }}{% if pi %} · دفعة رقم {{ pi.no }}{% endif %}</span>
+          {% if gp.exec == EX_DONE %}<span>{% if paid %}{{ paid[0].Pay.PaidAt.strftime('%Y-%m-%d') if paid[0].Pay.PaidAt else '' }}{% if paid[0].Pay.BankRef %} · مرجع {{ paid[0].Pay.BankRef }}{% endif %}{% endif %}</span>
+          {% elif gp.exec == EX_NOT %}<span>لم يُصرف شيء، وعاد المستخلص للدورة القادمة.</span>{% endif %}
+          {% if c.Status == ST.ST_APPROVED %}<form method="post" action="{{ url_for('cycle_transfer_undo', cycle_id=c.CycleID, sub_id=gp.sub_id) }}" onsubmit="return confirm('إلغاء حالة التنفيذ لهذا المقاول وتحديدها من جديد؟');"><button class="cy-link" type="submit">تغيير الحالة</button></form>{% endif %}</div>
+        {% if pi %}
+        <div class="cy3-xbox" style="margin-top:8px;">
+          <div><b>ملفات التحويل في الأرشيف ({{ pi.docs|length }})</b>
+            {% for d in pi.docs %}<br><a href="{{ url_for('document_view', doc_id=d.DocID) }}" target="_blank">{{ d.DocType }} · {{ d.OriginalName }}</a>{% endfor %}
+            <br><small style="color:var(--text-secondary);">{{ pi.folder }}</small></div>
+          <form method="post" action="{{ url_for('cycle_transfer_files', cycle_id=c.CycleID, sub_id=gp.sub_id) }}" enctype="multipart/form-data" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <input type="file" name="proof_file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx" required>
+            <button class="btn btn-primary" type="submit">رفع ملفات التحويل</button>
+            <small style="color:var(--text-secondary);">أمر الصرف الموقّع + صورة تحويل البنك: تُحفظ في فولدر الدفعة وفي كل مستخلص دُفع بها (سند الصرف).</small></form></div>
+        {% endif %}
+        {% else %}
+        <div class="cy3-xbox" style="margin-top:8px;">
+          <details><summary>تم التحويل</summary>
+            <form method="post" action="{{ url_for('cycle_transfer', cycle_id=c.CycleID, sub_id=gp.sub_id) }}" enctype="multipart/form-data" class="cy3-xform">
+              <input type="hidden" name="state" value="{{ EX_DONE }}">
+              <div><label>تاريخ التحويل</label><input class="search-box" type="date" name="pay_date" value="{{ today_iso }}"></div>
+              <div><label>مرجع التحويل (اختياري)</label><input class="search-box" type="text" name="bank_ref" maxlength="80"></div>
+              <div><label>رفع معاملة المستخلص (اختياري - يمكن رفعها لاحقًا)</label><input type="file" name="proof_file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"></div>
+              <div><button class="btn btn-primary" type="submit">تأكيد: تم التحويل</button></div>
+            </form></details>
+          <form method="post" action="{{ url_for('cycle_transfer', cycle_id=c.CycleID, sub_id=gp.sub_id) }}" onsubmit="return confirm('تأكيد: لم يتم التنفيذ؟ لن يُحتسب أي مبلغ مصروفًا، وتعود مستخلصات المقاول للدورة القادمة.');">
+            <input type="hidden" name="state" value="{{ EX_NOT }}"><button class="btn" type="submit">لم يتم التنفيذ</button></form></div>
+        {% endif %}
+        {% endif %}
+      </td></tr>
+      {% endif %}
+    </tbody>
+    {% else %}<tbody><tr><td colspan="{{ ncols }}" class="cy-empty">لا مستخلصات في هذه الدورة.</td></tr></tbody>{% endfor %}
+    <tfoot><tr><td colspan="4">الإجمالي</td>
+      <td class="num">{{ '{:,.0f}'.format(d.lines|sum(attribute='Total')) }}</td><td class="num">{{ '{:,.0f}'.format(d.lines|sum(attribute='PaidBefore')) }}</td><td class="num">{{ '{:,.0f}'.format(t.all) }}</td>
+      <td></td><td></td><td class="num" id="tApproved">{{ '{:,.0f}'.format(t.approved) if stage >= 2 else '' }}</td><td></td>{% if stage >= 3 %}<td></td>{% endif %}</tr></tfoot>
+  </table></div>
+</section>
+{% if noting %}
+<div class="cy3-bar">
+  <button class="btn btn-lg" type="submit" name="intent" value="save">حفظ الملاحظات</button>
+  <button class="btn btn-primary btn-lg" type="submit" name="intent" value="next" onclick="return confirm('الانتقال لمرحلة قرار الإدارة؟ يُحفظ كشف الدورة، ويمكنك الرجوع لمرحلة الإنشاء متى أردت.');">الانتقال للمرحلة التالية</button>
+  <button class="btn btn-lg" type="submit" form="refreshForm">إعادة احتساب القائمة</button>
+  <span class="set-hint" style="margin:0;">إعادة الاحتساب تقرأ المستخلصات المفتوحة من جديد (الجديد يدخل، والمقفل أو المسدَّد يخرج) والملاحظات تبقى.</span></div>
+</form>
+<form method="post" id="refreshForm" action="{{ url_for('cycle_refresh', cycle_id=c.CycleID) }}"></form>
+{% elif deciding %}
+<div class="cy3-bar">
+  <button class="btn btn-lg" type="submit" name="intent" value="save">حفظ</button>
+  <button class="btn btn-primary btn-lg" type="submit" name="intent" value="finalize" onclick="return confirm('الانتقال للمرحلة النهائية؟ تُقفل كل الخانات (القرار والمبلغ والملاحظات) ولا يبقى مفتوحًا غير حالة التنفيذ. يمكنك الرجوع لمرحلة القرار طالما لم يُسجَّل تحويل.');">الانتقال للمرحلة النهائية</button>
+  <span class="set-hint" style="margin:0;">القرار لا يعني أن الصرف تم. الصرف الفعلي يُحدَّد في المرحلة النهائية.</span></div>
+</form>
+{% endif %}
+
+{% if stage >= 2 and c.Status != ST.ST_CANCELLED %}
+<section class="cy-card" style="margin-top:16px;">
+  <h3 style="margin:0 0 6px;">رفع مستندات الدورة المعتمدة</h3>
+  <p class="set-hint" style="margin:0 0 10px;">نسخة دورة الصرف الموقّعة وأي مرفقات مرتبطة بها. تُحفظ في أرشيف الدورة.</p>
+  {% if can('cycles.manage') %}<form method="post" action="{{ url_for('cycle_signed', cycle_id=c.CycleID) }}" enctype="multipart/form-data" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    <select class="search-box" name="doc_type" style="max-width:220px;"><option value="الكشف الموقّع">نسخة دورة الصرف الموقّعة</option><option value="مرفق إضافي">مرفق إضافي</option></select>
+    <input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx" required>
+    <button class="btn btn-primary" type="submit">رفع</button></form>{% endif %}
+  <details style="margin-top:12px;"><summary style="cursor:pointer; font-weight:600;">ملفات الدورة في الأرشيف</summary>{{ documents_panel("CYCLE", c.CycleID, docs, folder, True, network) }}</details>
+</section>
+{% endif %}
+
+<details class="cy-card" style="margin-top:16px; padding:12px 18px;"><summary style="cursor:pointer; font-weight:600;">سجل الدورة ({{ d.log|length }}) — كل القرارات والتعديلات</summary>
+  <table class="cy3-log" style="width:100%; margin-top:10px; border-collapse:collapse;"><thead><tr><th style="text-align:right;">الوقت</th><th style="text-align:right;">المستخدم</th><th style="text-align:right;">الإجراء</th><th style="text-align:right;">المستخلص</th><th style="text-align:right;">التفاصيل</th></tr></thead><tbody>
+  {% for r in d.log %}<tr><td>{{ r.ActionAt.strftime('%Y-%m-%d %H:%M') if r.ActionAt else '' }}</td><td>{{ r.ActionBy }}</td><td>{{ r.Action }}</td><td>{{ names.get(r.CertificateID, '') }}</td><td>{{ r.Detail }}</td></tr>
+  {% else %}<tr><td colspan="5" style="color:var(--text-secondary);">لا سجل بعد.</td></tr>{% endfor %}</tbody></table></details>
+
+{% if deciding %}
+<script>
+const fmt = n => Math.round(n).toLocaleString('en-US');
+function recalc() {
+  let sum = 0;
+  document.querySelectorAll('.cy3-grp').forEach(gp => {
+    let gsum = 0, any = false;
+    gp.querySelectorAll('tr[data-req]').forEach(tr => {
+      const sel = tr.querySelector('.dsel'), txt = tr.querySelector('.amt-text'), inp = tr.querySelector('.part'), req = +tr.dataset.req;
+      if (!sel) return;
+      const v = sel.value;
+      inp.style.display = v === '{{ D_PART }}' ? 'inline-block' : 'none';
+      txt.style.display = v === '{{ D_PART }}' ? 'none' : 'inline';
+      if (v) any = true;
+      if (v === '{{ D_FULL }}') { txt.textContent = fmt(req); gsum += req; }
+      else if (v === '{{ D_DEFER }}') { txt.textContent = '0'; }
+      else if (v === '{{ D_PART }}') { gsum += Math.min(req, +inp.value || 0); }
+      else { txt.textContent = '—'; }
+    });
+    const di = gp.querySelector('.dist'); if (di && any && document.activeElement !== di) di.value = Math.round(gsum * 100) / 100;
+    sum += gsum;
+  });
+  const a = document.getElementById('vApproved'), b = document.getElementById('tApproved');
+  if (a) a.textContent = fmt(sum); if (b) b.textContent = fmt(sum);
+}
+document.querySelectorAll('.dsel').forEach(s => s.addEventListener('change', recalc));
+document.querySelectorAll('.part').forEach(i => i.addEventListener('input', recalc));
+recalc();
+</script>
+{% endif %}
+{% endblock %}

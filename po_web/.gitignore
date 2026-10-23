@@ -1,0 +1,8 @@
+config.ini
+config.staging.ini
+instance/
+logs*/
+archive*/
+uploads/
+__pycache__/
+*.pyc

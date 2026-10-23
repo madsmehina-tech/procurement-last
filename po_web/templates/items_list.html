@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% set active = "items" %}
+{% block title %}الأصناف{% endblock %}
+{% block subtitle %}يُعبَّأ تلقائيًا من أوامر الشراء — سجل تاريخي بالأسعار لكل صنف · Items &amp; price history{% endblock %}
+
+{% macro th(label, key) %}<th><a href="{{ url_for('items_list', q=q, supplier=f_supplier, project=f.project, site=f.site, view=view, sort=key, dir=('asc' if (sort == key and desc) else 'desc') if key != 'name' else ('desc' if (sort == key and not desc) else 'asc')) }}" class="th-sort">{{ label }}{% if sort == key %} {{ '▼' if desc else '▲' }}{% endif %}</a></th>{% endmacro %}
+
+{% block content %}
+<div class="kpi-grid">
+  <div class="kpi-card"><p class="kpi-label">عدد الأصناف</p><p class="kpi-value">{{ kpi.count }}</p></div>
+  <div class="kpi-card"><p class="kpi-label">مرات الشراء</p><p class="kpi-value">{{ kpi.purchases }}</p></div>
+  <div class="kpi-card"><p class="kpi-label">إجمالي القيمة</p><p class="kpi-value">{{ '{:,.0f}'.format(kpi.value) }}</p></div>
+  <div class="kpi-card"><p class="kpi-label">الأعلى قيمة</p><p class="kpi-value" style="font-size:20px; line-height:1.4;">{{ kpi.top }}</p></div>
+</div>
+
+<form method="get" class="card" style="padding:14px 16px; margin-bottom:1rem; display:grid; grid-template-columns: 1.3fr 1fr 1fr 1fr auto; gap:10px; align-items:end;">
+  <div><label class="set-lab" style="margin-top:0;">ابحث باسم الصنف</label><input class="search-box sb-search" type="text" name="q" value="{{ q }}" placeholder="اسم الصنف" style="width:100%;"></div>
+  <div><label class="set-lab" style="margin-top:0;">المشروع</label><select class="search-box" name="project" style="width:100%;" onchange="this.form.submit()"><option value="">كل المشاريع</option>{% for p in projects %}<option {{ 'selected' if f.project == p else '' }}>{{ p }}</option>{% endfor %}</select></div>
+  <div><label class="set-lab" style="margin-top:0;">الموقع</label><select class="search-box" name="site" style="width:100%;"><option value="">كل المواقع</option>{% for st in sites %}<option {{ 'selected' if f.site == st else '' }}>{{ st }}</option>{% endfor %}</select></div>
+  <div><label class="set-lab" style="margin-top:0;">المورد</label><select class="search-box" name="supplier" style="width:100%;"><option value="">كل الموردين</option>{% for s in suppliers %}<option value="{{ s }}" {{ 'selected' if f_supplier == s else '' }}>{{ s }}</option>{% endfor %}</select></div>
+  <input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ 'desc' if desc else 'asc' }}"><input type="hidden" name="view" value="{{ view }}">
+  <div style="display:flex; gap:8px;"><button class="btn btn-primary" type="submit">تطبيق</button>{% if q or f_supplier or f.project or f.site %}<a class="btn" href="{{ url_for('items_list', view=view) }}">مسح</a>{% endif %}</div>
+</form>
+
+<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+  <div class="cy-seg" style="width:340px;"><a class="btn {{ 'btn-primary' if view == 'items' else '' }}" style="flex:1; justify-content:center;" href="{{ url_for('items_list', q=q, supplier=f_supplier, project=f.project, site=f.site, view='items') }}">حسب الصنف</a>
+    <a class="btn {{ 'btn-primary' if view == 'analysis' else '' }}" style="flex:1; justify-content:center;" href="{{ url_for('items_list', q=q, supplier=f_supplier, project=f.project, site=f.site, view='analysis') }}">تحليل (صنف × مشروع × موقع)</a></div>
+  <div style="display:flex; gap:8px;"><a class="btn" href="{{ url_for('items_export_xlsx', q=q, supplier=f_supplier, project=f.project, site=f.site) }}">تصدير Excel</a>
+    <a class="btn" href="{{ url_for('items_export_pdf', q=q, supplier=f_supplier, project=f.project, site=f.site) }}">تصدير PDF</a>
+    <a class="btn" href="{{ url_for('items_print', q=q, supplier=f_supplier, project=f.project, site=f.site) }}" target="_blank">طباعة</a></div>
+</div>
+{% if f.project or f.site %}<p class="set-hint" style="margin:0 0 10px;">المعروض مشتريات {{ f.label }} فقط: الكميات والقيم والأسعار محسوبة عليها.</p>{% endif %}
+
+{% if view == 'analysis' %}
+<div class="card"><div class="tbl-wrap">
+  <table class="list">
+    <thead><tr><th>اسم الصنف</th><th>الوحدة</th><th>المشروع</th><th>الموقع</th><th>إجمالي الكمية</th><th>إجمالي القيمة</th><th>متوسط السعر</th><th>عدد أوامر الشراء</th></tr></thead>
+    <tbody>
+    {% for r in rows %}<tr><td><b>{{ r.item }}</b></td><td>{{ r.unit or '—' }}</td><td>{{ r.project }}</td><td>{{ r.site }}</td>
+      <td>{{ '{:,.2f}'.format(r.qty).rstrip('0').rstrip('.') }}</td><td>{{ '{:,.0f}'.format(r.value) }}</td><td>{{ '{:,.2f}'.format(r.avg) }}</td><td>{{ r.orders }}</td></tr>
+    {% else %}<tr><td colspan="8" style="text-align:center; color:var(--text-secondary); padding:30px;">لا توجد مشتريات مطابقة.</td></tr>{% endfor %}
+    </tbody>
+    <tfoot><tr style="background:#F7F5EF; font-weight:700;"><td colspan="4">الإجمالي ({{ rows|length }} صف)</td><td>{{ '{:,.2f}'.format(rows|sum(attribute='qty')).rstrip('0').rstrip('.') }}</td><td>{{ '{:,.0f}'.format(rows|sum(attribute='value')) }}</td><td colspan="2"></td></tr></tfoot>
+  </table>
+</div></div>
+{% else %}
+<div class="card">
+  <table class="list">
+    <thead><tr>
+      {{ th('الصنف', 'name') }}{{ th('مرات الشراء', 'count') }}{{ th('إجمالي الكميات', 'qty') }}{{ th('إجمالي القيمة', 'value') }}
+      {{ th('متوسط السعر', 'avg') }}{{ th('آخر سعر', 'last') }}{{ th('أعلى سعر', 'max') }}{{ th('أقل سعر', 'min') }}
+      <th>أكثر الموردين توريدًا</th><th>آخر مورد</th>
+    </tr></thead>
+    <tbody>
+    {% for i in items %}
+      <tr style="cursor:pointer;" onclick="location.href='{{ url_for('item_detail', k=i.key) }}'">
+        <td><b>{{ i.name }}</b><br><small style="color:var(--text-secondary);">{{ i.unit or '—' }} · اشتُري {{ i.count }} مرة</small></td>
+        <td>{{ i.count }}</td>
+        <td>{{ '{:,.2f}'.format(i.total_qty).rstrip('0').rstrip('.') }}</td>
+        <td>{{ '{:,.0f}'.format(i.total_value) }}</td>
+        <td>{{ '{:,.2f}'.format(i.avg_price) }}</td>
+        <td><b>{{ '{:,.2f}'.format(i.last_price) }}</b></td>
+        <td>{{ '{:,.2f}'.format(i.max_price) }}</td>
+        <td>{{ '{:,.2f}'.format(i.min_price) }}</td>
+        <td>{{ i.top_supplier }}</td>
+        <td>{{ i.last_supplier }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="10" style="text-align:center; color:var(--text-secondary); padding:30px;">لا توجد أصناف مطابقة. تظهر الأصناف هنا تلقائيًا بعد حفظ أوامر الشراء.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% set active = "suppliers" %}
+{% block title %}مورد جديد{% endblock %}
+{% block subtitle %}تسجيل مورد جديد (أو اكتبه في أمر الشراء فيُضاف تلقائيًا) · Register a new supplier{% endblock %}
+{% block content %}
+<form method="post" style="max-width:680px;">
+  <div class="card" style="padding:24px;">
+    {% set f = supplier or {} %}
+    <label class="set-lab" style="margin-top:0;">اسم المورد *</label>
+    <input class="search-box" style="width:100%;" type="text" name="name" value="{{ f.get('name', '') }}" required maxlength="255">
+    <div class="form-2">
+      <div><label class="set-lab">السجل التجاري</label><input class="search-box" style="width:100%;" name="cr" value="{{ f.get('cr', '') }}"></div>
+      <div><label class="set-lab">الرقم الضريبي</label><input class="search-box" style="width:100%;" name="tax_number" value="{{ f.get('tax_number', '') }}"></div>
+    </div>
+    <h3 class="set-title" style="margin:18px 0 0;">المندوب</h3>
+    <div class="form-3">
+      <div><label class="set-lab">اسم المندوب</label><input class="search-box" style="width:100%;" name="rep_name" value="{{ f.get('rep_name', '') }}" maxlength="100"></div>
+      <div><label class="set-lab">جوال المندوب</label><input class="search-box" style="width:100%;" name="phone" value="{{ f.get('phone', '') }}" inputmode="tel" dir="ltr"></div>
+      <div><label class="set-lab">البريد الإلكتروني (اختياري)</label><input class="search-box" style="width:100%;" type="email" name="rep_email" value="{{ f.get('rep_email', '') }}" dir="ltr" maxlength="150"></div>
+    </div>
+    <label class="set-lab">الحساب البنكي (آيبان)</label><input class="search-box" style="width:100%; direction:ltr; text-align:right;" name="bank_account" value="{{ f.get('bank_account', '') }}">
+    <label class="set-lab">ملاحظات</label><textarea class="search-box" style="width:100%; height:70px;" name="notes">{{ f.get('notes', '') }}</textarea>
+    <p class="set-hint">بعد الحفظ تُرفع أوراق المورد (السجل التجاري، الشهادة الضريبية، الكتالوج، ملفات أخرى) من صفحته.</p>
+  </div>
+  <div style="margin-top:1.25rem; display:flex; gap:10px;"><button type="submit" class="btn btn-primary">حفظ المورد</button><a class="btn" href="{{ url_for('suppliers_list') }}">إلغاء</a></div>
+</form>
+{% endblock %}

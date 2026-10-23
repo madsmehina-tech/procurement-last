@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% set active = "suppliers" %}
+{% block title %}الموردون{% endblock %}
+{% block subtitle %}يُضاف المورد تلقائيًا عند أول أمر شراء له · Suppliers directory{% endblock %}
+{% block page_actions %}
+<a class="btn" href="{{ url_for('suppliers_export_xlsx', **f) }}">تصدير Excel</a>
+<a class="btn" href="{{ url_for('suppliers_export_pdf', **f) }}" target="_blank">تصدير PDF</a>
+{% if can('suppliers.edit') %}<a class="btn btn-primary" href="{{ url_for('supplier_new') }}">+ مورد جديد</a>{% endif %}
+{% endblock %}
+{% block content %}
+<div class="kpi-grid">
+  <div class="kpi-card"><p class="kpi-label">عدد الموردين</p><p class="kpi-value">{{ kpi.count }}</p></div>
+  <div class="kpi-card"><p class="kpi-label">إجمالي المشتريات</p><p class="kpi-value">{{ '{:,.0f}'.format(kpi.total) }}</p></div>
+  <div class="kpi-card {{ 'warning' if kpi.incomplete else '' }}"><p class="kpi-label">موردون بأوراق ناقصة</p><p class="kpi-value">{{ kpi.incomplete }}</p></div>
+  <div class="kpi-card {{ 'danger' if kpi.expiring else '' }}"><p class="kpi-label">أوراق منتهية أو قاربت</p><p class="kpi-value">{{ kpi.expiring }}</p></div>
+</div>
+
+<form method="get" class="filter-bar">
+  <input class="search-box sb-search" type="text" name="q" value="{{ f.q }}" placeholder="الاسم، المندوب، الجوال، السجل، الرقم الضريبي" style="flex:1; min-width:240px;">
+  <select class="search-box" name="sort" style="width:180px;">{% for k, v in sorts.items() %}<option value="{{ k }}" {{ 'selected' if f.sort == k else '' }}>الترتيب: {{ v }}</option>{% endfor %}</select>
+  <button type="button" class="btn {{ 'btn-primary' if filtered else '' }}" onclick="document.getElementById('fpanel').classList.toggle('show')">⚲ فلترة{% if filtered %} (مفعّلة){% endif %}</button>
+  <button class="btn btn-primary" type="submit">تطبيق</button>
+  {% if filtered or f.sort != 'name' %}<a class="btn" href="{{ url_for('suppliers_list') }}">مسح</a>{% endif %}
+  <div id="fpanel" class="fpanel {{ 'show' if filtered else '' }}">
+    <div><label class="set-lab" style="margin-top:0;">المشروع (تعامل معه في)</label>
+      <select class="search-box" name="project" style="width:100%;"><option value="">كل المشاريع</option>{% for p in projects %}<option {{ 'selected' if f.project == p else '' }}>{{ p }}</option>{% endfor %}</select></div>
+    <div><label class="set-lab" style="margin-top:0;">حالة الأوراق</label>
+      <select class="search-box" name="docs" style="width:100%;">{% for k, v in docs_opts.items() %}<option value="{{ k }}" {{ 'selected' if f.docs == k else '' }}>{{ v }}</option>{% endfor %}</select></div>
+    <div><label class="set-lab" style="margin-top:0;">النشاط</label>
+      <select class="search-box" name="activity" style="width:100%;">{% for k, v in act_opts.items() %}<option value="{{ k }}" {{ 'selected' if f.activity == k else '' }}>{{ v }}</option>{% endfor %}</select></div>
+  </div>
+</form>
+
+<div class="card"><div class="tbl-wrap">
+  <table class="list">
+    <thead><tr><th>المورد</th><th>المندوب</th><th>أوامر الشراء</th><th>إجمالي المشتريات</th><th>آخر أمر</th><th>الأوراق</th><th>السجل التجاري</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr style="cursor:pointer;" onclick="location.href='{{ url_for('supplier_detail', supplier_id=r.SupplierID) }}'">
+        <td><b>{{ r.Name }}</b></td>
+        <td>{{ r.RepName or '—' }}{% if r.Phone %}<br><small dir="ltr" style="color:var(--text-secondary);">{{ r.Phone }}</small>{% endif %}</td>
+        <td>{{ r.orders }}</td>
+        <td>{{ '{:,.0f}'.format(r.total) }}</td>
+        <td>{{ r.last.strftime('%Y-%m-%d') if r.last else '—' }}</td>
+        <td><span class="badge {{ 'success' if r.files >= slots_total else 'neutral' }}">{{ r.files }} / {{ slots_total }}</span>
+          {% if r.worst %}<span class="badge {{ 'danger' if r.worst[0] == 'expired' else 'warning' }}">{{ 'منتهية' if r.worst[0] == 'expired' else 'تنتهي خلال %d يومًا'|format(r.worst[1]) }}</span>{% endif %}</td>
+        <td>{{ r.CR or '—' }}</td>
+      </tr>
+    {% else %}<tr><td colspan="7" style="text-align:center; color:var(--text-secondary); padding:28px;">لا يوجد موردون مطابقون.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endblock %}
