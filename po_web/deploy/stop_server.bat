@@ -1,6 +1,5 @@
 @echo off
-rem PO Web - stop the server that is listening on the configured port (default 5000).
+rem PO Web - stop the server cleanly (it finishes any save in progress first). Use this before shutting the PC down.
 set PORT=5000
-powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort %PORT% -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force; 'Stopped process ' + $_.OwningProcess }"
-echo Done.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0stop_server.ps1" -Port %PORT%
 pause
