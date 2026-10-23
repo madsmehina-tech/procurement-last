@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% set active = "payments" %}
+{% block title %}الدفعات{% endblock %}
+{% block subtitle %}السجل التاريخي لكل تحويل فعلي عبر كل دورات الصرف — بخلاف "دورة الصرف" التي هي القرار والاعتماد لدورة واحدة{% endblock %}
+{% block page_actions %}<a class="btn" href="{{ url_for('payments_export', sub=f.sub, type=f.type, cycle=f.cycle) }}">تصدير Excel</a>{% endblock %}
+{% block content %}
+<form method="get" class="pay-filters" id="payF">
+  <select class="search-box" name="sub" onchange="this.form.submit()"><option value="">الكل</option>{% for s in subs %}<option value="{{ s.SubcontractorID }}" {{ 'selected' if f.sub == s.SubcontractorID else '' }}>{{ s.Name }}</option>{% endfor %}</select>
+  <select class="search-box" name="type" onchange="this.form.submit()"><option value="">كل الأنواع</option><option value="cert" {{ 'selected' if f.type == 'cert' else '' }}>مستخلص</option></select>
+  <input class="search-box" type="text" name="cycle" value="{{ f.cycle }}" placeholder="رقم الدورة (مثال: 12)" onchange="this.form.submit()">
+</form>
+<div class="card" style="margin-bottom:1.5rem;"><div class="tbl-wrap">
+  <table class="list">
+    <thead><tr><th>التاريخ</th><th>المقاول</th><th>النوع</th><th>الدورة</th><th>المشروع</th><th>المبلغ</th><th>المرجع البنكي</th><th>السند</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td>{{ r.PaidAt.strftime('%Y-%m-%d') if r.PaidAt else '' }}</td>
+        <td><a href="{{ url_for('subcontractor_detail', sub_id=r.SubcontractorID) }}">{{ r.SubName }}</a></td>
+        <td><span class="cy-type">{{ r.Type }}</span></td><td>{{ ('دورة ' ~ r.CycleNo) if r.CycleNo else 'صرف مباشر' }}</td>
+        <td>{{ r.Project }}{% if r.SiteName %} / {{ r.SiteName }}{% endif %}</td><td><b>{{ '{:,.0f}'.format(r.Amount) }}</b></td>
+        <td dir="ltr" style="text-align:right;">{{ r.BankRef or '—' }}</td>
+        <td>{% if r.DocID %}<a href="{{ url_for('document_view', doc_id=r.DocID) }}" target="_blank" style="text-decoration:underline;">عرض السند</a>{% else %}<span style="color:var(--text-secondary);">—</span>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="8" style="text-align:center; color:var(--text-secondary); padding:28px;">لا توجد تحويلات مطابقة.</td></tr>{% endfor %}
+    </tbody>
+    <tfoot><tr style="background:#F7F5EF; font-weight:700;"><td colspan="5">إجمالي المعروض</td><td>{{ '{:,.0f}'.format(total) }}</td><td colspan="2"></td></tr></tfoot>
+  </table>
+</div></div>
+<div class="card" style="padding:0;">
+  <div class="card-header">الرصيد المتحرك لكل مقاول</div>
+  <div class="tbl-wrap"><table class="list">
+    <thead><tr><th>المقاول</th><th>مستحق إجمالاً</th><th>مصروف إجمالاً</th><th>المتبقي</th></tr></thead>
+    <tbody>{% for b in balances %}<tr><td><a href="{{ url_for('subcontractor_detail', sub_id=b.SubcontractorID) }}">{{ b.SubName }}</a></td><td>{{ '{:,.0f}'.format(b.due) }}</td><td>{{ '{:,.0f}'.format(b.paid) }}</td>
+      <td><b style="color:#8A2A22;">{{ '{:,.0f}'.format(b.remaining) }}</b></td></tr>
+    {% else %}<tr><td colspan="4" style="text-align:center; color:var(--text-secondary); padding:24px;">لا توجد أرصدة.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+<style>.pay-filters { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 12px; margin-bottom: 1rem; max-width: 760px; } .pay-filters .search-box { width: 100%; height: 46px; }</style>
+{% endblock %}

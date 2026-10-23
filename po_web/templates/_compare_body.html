@@ -1,0 +1,32 @@
+{# the decision panel, the offers' summary and the comparison table - shared by the screen and the printed report #}
+{% macro cell(r, q) %}{% set x = r.cells[q.QuoteID] %}
+  {% if not x.present %}<td class="miss">⚠ غير موجود<small>البند غير موجود في عرض المورد</small></td>
+  {% else %}<td class="{{ 'low-cell' if x.lowest else '' }}"><span class="cp-price">{{ '{:,.2f}'.format(x.price) }}</span><span class="cp-total">{{ '{:,.0f}'.format(x.total) }}</span>
+    {% if x.code %}<span class="pct"><i class="dot d-{{ x.code }}"></i>{{ '%+.0f' % x.pct }}%</span>{% if x.code == 'very-low' %}<span class="warn-i">منخفض جدًا: تأكد من المواصفات</span>{% endif %}{% endif %}
+    {% if x.qty_diff %}<span class="warn-i">كمية العرض {{ '%g' % x.qty }}</span>{% endif %}{% if x.unit_diff %}<span class="warn-i">وحدة مختلفة: {{ x.line.Unit }}</span>{% endif %}
+    {% if x.no_price %}<span class="warn-i">بلا سعر</span>{% endif %}{% if x.review and not printing %}<span class="review-i">مطابقة غير مؤكدة</span>{% endif %}</td>{% endif %}
+{% endmacro %}
+{% set p = a.panel %}
+<div class="cp-panel">
+  <div class="cp-card star"><small>أفضل سعر (أكثر البنود الأرخص)</small><div class="v">{{ p.best_price.name }}</div><div class="n">أرخص في {{ p.best_price.lowest_items }} من {{ a.n_items }} بند</div></div>
+  <div class="cp-card"><small>أقل إجمالي (كما قُدِّم، بالكمية المطلوبة وقبل الضريبة)</small><div class="v">{{ p.lowest_total.name }}</div><div class="n">{{ '{:,.0f}'.format(p.lowest_total.normalized) }} ريال{% if p.lowest_total.complete < th.complete %} · <b style="color:#B02A1E;">ناقص ({{ p.lowest_total.complete|round|int }}%)</b>{% endif %}</div></div>
+  <div class="cp-card"><small>أكثر البنود اكتمالًا</small><div class="v">{{ p.most_complete.name }}</div><div class="n">{{ p.most_complete.complete|round|int }}% ({{ p.most_complete.present }} من {{ a.n_items }})</div></div>
+  <div class="cp-card star"><small>أفضل قيمة مقابل السعر</small><div class="v">{{ p.best_value.name }}</div><div class="n">الإجمالي المعدّل {{ '{:,.0f}'.format(p.best_value.adjusted) }} ريال · {{ p.value_note }}</div></div>
+</div>
+<div class="cp-wrap"><table class="cp">
+  <colgroup><col style="width:{{ '17' if printing else '' }}{{ '%' if printing else '' }}"><col style="width:{{ '5%' if printing else '' }}"><col style="width:{{ '6%' if printing else '' }}"><col style="width:{{ '15%' if printing else '' }}">{% for q in a.quotes %}<col style="width:{{ (57 / (a.quotes|length))|round(1) }}%">{% endfor %}</colgroup>
+  <thead><tr><th>البند</th><th>الوحدة</th><th>الكمية المطلوبة</th><th>سجل الأسعار السابق</th>{% for q in a.quotes %}<th>{{ q.PartyName }}<br><small style="font-weight:400; opacity:.85;">{{ q.QuoteNo or '' }}{% if q.VatIncluded == 'yes' %} · شاملة الضريبة{% endif %}</small></th>{% endfor %}</tr></thead>
+  <tbody>{% for r in a.rows %}<tr>
+    <td class="nm">{{ r.name }}{% if r.n_offers > 1 and r.spread > 0 %}<small>فرق الأسعار بين العروض {{ '%.0f' % r.spread }}%</small>{% endif %}</td><td>{{ r.unit or '—' }}</td><td>{{ '%g' % r.required }}{% if r.qty_fixed %}<small style="display:block; color:#64748B;">محدّدة</small>{% endif %}</td>
+    <td class="hist">{% if r.history.po %}آخر سعر: <b>{{ '{:,.2f}'.format(r.history.po.last) }}</b><br>متوسط: {{ '{:,.2f}'.format(r.history.po.avg) }} · أعلى: {{ '{:,.2f}'.format(r.history.po.max) }}<br>أقل: {{ '{:,.2f}'.format(r.history.po.min) }} · {{ r.history.po.count }} مرات{% if r.history.po.unit_note %}<span class="warn-i">{{ r.history.po.unit_note }}</span>{% endif %}
+      {% elif r.history.prior %}<small>من عروض سابقة:</small><br>متوسط {{ '{:,.2f}'.format(r.history.prior.avg) }} · أقل {{ '{:,.2f}'.format(r.history.prior.min) }} ({{ r.history.prior.count }})
+      {% else %}<span style="color:#94A3B8;">لا يوجد تاريخ</span>{% endif %}</td>
+    {% for q in a.quotes %}{{ cell(r, q) }}{% endfor %}</tr>{% endfor %}</tbody>
+  <tfoot>
+    <tr><td colspan="4" style="text-align:right;">الإجمالي بالكمية المطلوبة (قبل الضريبة)</td>{% for s in a.summary %}<td>{{ '{:,.0f}'.format(s.normalized) }}</td>{% endfor %}</tr>
+    <tr><td colspan="4" style="text-align:right; font-weight:400;">إجمالي العرض كما قُدِّم (كمية العرض × سعره، قبل الضريبة)</td>{% for s in a.summary %}<td style="font-weight:400;">{{ '{:,.0f}'.format(s.quoted) }}</td>{% endfor %}</tr>
+    <tr><td colspan="4" style="text-align:right; font-weight:400;">اكتمال العرض</td>{% for s in a.summary %}<td style="font-weight:400; {{ 'color:#B02A1E;' if s.complete < th.complete else '' }}">{{ s.complete|round|int }}%{% if s.missing %}<small style="display:block;">ينقص {{ s.missing|length }}</small>{% endif %}</td>{% endfor %}</tr>
+    <tr><td colspan="4" style="text-align:right; font-weight:400;">+ تكلفة استكمال البنود الناقصة (بمتوسط أسعار العروض الأخرى)</td>{% for s in a.summary %}<td style="font-weight:400;">{{ '{:,.0f}'.format(s.completing) if s.completing else '—' }}</td>{% endfor %}</tr>
+    <tr class="adj"><td colspan="4" style="text-align:right;">الإجمالي المعدّل (للمقارنة العادلة)</td>{% for s in a.summary %}<td {{ 'style="background:#DFF0E5; color:#1A5E3C;"'|safe if s.quote.QuoteID == p.cheapest_adjusted.quote.QuoteID else '' }}>{{ '{:,.0f}'.format(s.adjusted) }}</td>{% endfor %}</tr>
+  </tfoot></table></div>
+<div class="cp-legend"><span><i class="dot d-low"></i>أقل من المتوسط التاريخي بأكثر من {{ -th.green|int }}%</span><span><i class="dot d-near"></i>قريب من المتوسط ({{ th.green|int }}% إلى +{{ th.red|int }}%)</span><span><i class="dot d-high"></i>أعلى من المتوسط بأكثر من {{ th.red|int }}%</span><span><i class="dot d-very-low"></i>منخفض جدًا (أقل من {{ th.very_low|int }}%): غالبًا اختلاف مواصفات</span><span><b style="color:#2E9E5B;">▢</b>&nbsp;أقل سعر في البند</span><span style="color:#B02A1E;">▨ البند غير موجود في عرض المورد</span></div>

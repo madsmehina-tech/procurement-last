@@ -1,0 +1,37 @@
+{% from "_exec_charts.html" import hbars, vcols, donut, grouped %}
+{% macro kpi(label, en, value, note='', cls='', unit='') %}<div class="ex-card ex-c3 ex-kpi {{ cls }}"><div class="ex-kpi-lab">{{ label }}<small>{{ en }}</small></div><div class="ex-kpi-val">{{ value }}{% if unit %}<small>{{ unit }}</small>{% endif %}</div><div class="ex-muted">{{ note }}</div></div>{% endmacro %}
+{% macro card(title, en, cols='ex-c6') %}<div class="ex-card {{ cols }}"><div class="ex-head"><div><h3 class="ex-title">{{ title }}</h3><div class="ex-en">{{ en }}</div></div></div>{{ caller() }}</div>{% endmacro %}
+{% set k = d.kpi %}
+<div class="ex-grid" style="margin-bottom:16px;">
+  {{ kpi('إجمالي قيمة العقود', 'Total Contracts Value', '{:,.0f}'.format(k.contracts_value), 'عقود المقاولين ضمن الفلتر', unit='ريال') }}
+  {{ kpi('إجمالي المستخلصات', 'Total Certificates', '{:,.0f}'.format(k.certs_total), 'صافي المستحق بعد الخصومات', unit='ريال') }}
+  {{ kpi('إجمالي المصروف', 'Total Paid', '{:,.0f}'.format(k.paid), '%s%% من المستحقات (دائن الكشف)' % k.paid_ratio, 'ok', 'ريال') }}
+  {{ kpi('إجمالي المتبقي', 'Total Remaining', '{:,.0f}'.format(k.remaining), 'الرصيد حتى نهاية الفترة (مدين − دائن)', 'warn', 'ريال') }}
+  {{ kpi('إجمالي المستحقات الحالية', 'Current Dues', '{:,.0f}'.format(k.current_dues), 'المتبقي على المستخلصات المفتوحة', 'warn', 'ريال') }}
+  {{ kpi('عدد المقاولين', 'Contractors', k.contractors, 'ضمن الفلتر', 'sm') }}
+  {{ kpi('عدد العقود النشطة', 'Active Contracts', k.active_contracts, 'حالة «ساري»', 'sm') }}
+  {{ kpi('المستخلصات المفتوحة', 'Open Certificates', k.open_certs, 'لم تُصرف بالكامل ولم تُقفل', 'sm') }}
+  {{ kpi('المستخلصات المصروفة', 'Paid Certificates', k.paid_certs, 'مسدَّدة بالكامل', 'sm') }}
+  {{ kpi('المستخلصات المؤجلة', 'Deferred Certificates', k.deferred_certs, 'آخر قرار عليها «تأجيل»', 'sm') }}
+  {{ kpi('داخل دورات الصرف الحالية', 'In Current Cycles', k.in_cycle_certs, 'مستخلصات في دورة مفتوحة', 'sm') }}
+  {{ kpi('المستحقات (مدين)', 'Dues (Debit)', '{:,.0f}'.format(k.dues), 'مستخلصات واستحقاقات الفترة', 'sm', 'ريال') }}
+</div>
+<p class="ex-note">المستخلصات والمصروف والمستحقات تُحسب <b>داخل الفترة</b>، و«المتبقي» رصيد حتى <b>نهاية الفترة</b>. كل الأرقام من نفس حركات كشف حساب المقاول.</p>
+
+<div class="ex-grid">
+  {% call card('أكبر 10 مقاولين من حيث المستحقات', 'Top 10 Contractors by Dues') %}{{ hbars(charts.top_dues, 'var(--p0)') }}{% endcall %}
+  {% call card('أكبر 10 مقاولين من حيث المصروف', 'Top 10 Contractors by Paid') %}{{ hbars(charts.top_paid, 'var(--p2)') }}{% endcall %}
+  {% call card('تطور الصرف شهريًا', 'Monthly Payments Trend', 'ex-c12') %}{{ vcols(charts.month_labels, [{'name': 'المصروف', 'color': 'var(--p2)', 'values': d.monthly.paid}]) }}{% endcall %}
+  {% call card('تطور المستخلصات شهريًا', 'Monthly Certificates Trend', 'ex-c12') %}{{ vcols(charts.cert_labels, [{'name': 'قيمة المستخلصات (العدد بين القوسين)', 'color': 'var(--p0)', 'values': d.monthly.cert_value}]) }}{% endcall %}
+  {% call card('توزيع المستحقات حسب المشاريع', 'Dues by Project') %}{{ donut(charts.proj_dues, charts.proj_dues_center) }}{% endcall %}
+  {% call card('توزيع المستخلصات حسب المشاريع', 'Certificates by Project') %}{{ hbars(charts.proj_certs, 'var(--p3)') }}{% endcall %}
+  {% call card('نسبة المصروف مقابل المتبقي', 'Paid vs Remaining') %}{{ donut(charts.ratio, charts.ratio_center) }}{% endcall %}
+  {% call card('مقارنة المستحقات والمصروف والمتبقي لكل مقاول', 'Dues vs Paid vs Remaining per Contractor', 'ex-c6') %}{{ grouped(charts.compare) }}{% endcall %}
+</div>
+
+<div class="ex-card ex-c12" style="margin-top:16px;"><div class="ex-head"><div><h3 class="ex-title">جدول المقاولين</h3><div class="ex-en">Contractors table</div></div></div>
+  <table class="ex-tbl"><thead><tr><th>المقاول</th><th class="n">المستحقات</th><th class="n">المصروف</th><th class="n">المتبقي</th><th class="n">نسبة المصروف</th></tr></thead>
+    <tbody>{% for r in d.subs %}<tr><td>{{ r.name }}</td><td class="n">{{ '{:,.0f}'.format(r.dues) }}</td><td class="n">{{ '{:,.0f}'.format(r.paid) }}</td><td class="n"><bdi dir="ltr">{{ '{:,.0f}'.format(r.remaining) }}</bdi></td><td class="n">{{ ('%.0f' % (r.paid / r.dues * 100)) ~ '%' if r.dues else '—' }}</td></tr>
+    {% else %}<tr><td colspan="5" style="text-align:center; padding:24px;" class="ex-muted">لا توجد بيانات ضمن هذا الفلتر.</td></tr>{% endfor %}</tbody>
+    {% if d.subs %}<tfoot><tr><td>الإجمالي</td><td class="n">{{ '{:,.0f}'.format(d.subs|sum(attribute='dues')) }}</td><td class="n">{{ '{:,.0f}'.format(d.subs|sum(attribute='paid')) }}</td><td class="n"><bdi dir="ltr">{{ '{:,.0f}'.format(d.subs|sum(attribute='remaining')) }}</bdi></td><td></td></tr></tfoot>{% endif %}
+  </table></div>

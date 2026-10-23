@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>كشف دورة الصرف رقم {{ d.cycle.CycleNo }}</title>
+<style>
+  @page { size: A4 landscape; margin: 8mm 8mm 11mm; @bottom-center { content: "صفحة " counter(page) " من " counter(pages); font: 9px Tahoma, Arial, sans-serif; color: #64748B; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; width: 100%; }
+  body { font-family: "Segoe UI", Tahoma, "Cairo", Arial, sans-serif; color: #1B232E; font-size: 11px; letter-spacing: 0; }
+  .toolbar { text-align: center; padding: 10px; } .toolbar button { font: inherit; padding: 8px 20px; }
+  @media print { .toolbar { display: none; } }
+</style>
+{% include "_cycle_sheet_css.html" %}
+</head>
+<body>
+<div class="toolbar"><button onclick="window.print()">طباعة / حفظ PDF</button></div>
+{% include "_cycle_sheet.html" %}
+</body>
+</html>

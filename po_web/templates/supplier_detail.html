@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "_supplier_files.html" import supplier_files with context %}
+{% set active = "suppliers" %}
+{% block title %}{{ supplier.Name }}{% endblock %}
+{% block subtitle %}ملف المورد وأوراقه · Supplier profile &amp; papers{% endblock %}
+{% block page_actions %}<a class="btn" href="{{ url_for('suppliers_list') }}">&rarr; الموردون</a>
+{% if can('contractgen.create') %}<a class="btn btn-primary" href="{{ url_for('contract_generate', party='sup:%d' % supplier.SupplierID) }}">إنشاء اتفاقية توريد</a>{% endif %}
+<a class="btn" href="{{ url_for('orders_list', supplier=supplier.Name) }}">عرض في تاب المتابعة ←</a>{% endblock %}
+
+{% block content %}
+<div class="kpi-grid">
+  <div class="kpi-card"><p class="kpi-label">أوامر الشراء</p><p class="kpi-value">{{ orders_count }}</p><p class="set-hint" style="margin:0;">{{ projects|length }} مشروع</p></div>
+  <div class="kpi-card"><p class="kpi-label">إجمالي المشتريات من هذا المورد</p><p class="kpi-value">{{ '{:,.0f}'.format(total) }}</p></div>
+  <div class="kpi-card {{ 'warning' if filled < slots_total else '' }}"><p class="kpi-label">الملفات المرفوعة</p><p class="kpi-value">{{ filled }} / {{ slots_total }}</p></div>
+  <div class="kpi-card"><p class="kpi-label">المندوب</p><p class="kpi-value" style="font-size:19px; line-height:1.5;">{{ supplier.RepName or '—' }}</p>
+    {% if supplier.Phone %}<p class="set-hint" style="margin:0;" dir="ltr">{{ supplier.Phone }}</p>{% endif %}</div>
+</div>
+
+<form method="post" action="{{ url_for('supplier_edit', supplier_id=supplier.SupplierID) }}" class="card" style="padding:22px 24px; margin-bottom:1.5rem;">
+  <div class="doc-head"><h3 class="doc-title">بيانات المورد</h3>
+    {% if can('suppliers.edit') %}<button class="btn btn-primary" type="submit">تعديل البيانات</button>{% endif %}</div>
+  {% set ro = 'readonly' if not can('suppliers.edit') else '' %}
+  <label class="set-lab" style="margin-top:0;">اسم المورد</label>
+  <input class="search-box" style="width:100%;" type="text" name="name" value="{{ supplier.Name }}" required {{ ro }}>
+  <div class="form-2">
+    <div><label class="set-lab">السجل التجاري</label><input class="search-box" style="width:100%;" type="text" name="cr" value="{{ supplier.CR or '' }}" {{ ro }}></div>
+    <div><label class="set-lab">الرقم الضريبي</label><input class="search-box" style="width:100%;" type="text" name="tax_number" value="{{ supplier.TaxNumber or '' }}" {{ ro }}></div>
+  </div>
+  <div class="form-3">
+    <div><label class="set-lab">اسم المندوب</label><input class="search-box" style="width:100%;" name="rep_name" value="{{ supplier.RepName or '' }}" {{ ro }}></div>
+    <div><label class="set-lab">جوال المندوب</label><input class="search-box" style="width:100%;" name="phone" value="{{ supplier.Phone or '' }}" dir="ltr" {{ ro }}></div>
+    <div><label class="set-lab">البريد الإلكتروني (اختياري)</label><input class="search-box" style="width:100%;" type="email" name="rep_email" value="{{ supplier.RepEmail or '' }}" dir="ltr" {{ ro }}></div>
+  </div>
+  <label class="set-lab">الحساب البنكي (آيبان)</label><input class="search-box" style="width:100%; direction:ltr; text-align:right;" type="text" name="bank_account" value="{{ supplier.BankAccount or '' }}" {{ ro }}>
+  <h4 style="margin:16px 0 6px;font-size:14px;">بيانات التعاقد (تُقرأ في الاتفاقيات المولَّدة)</h4>
+  <div class="form-3">
+    <div><label class="set-lab" style="margin-top:0;">العنوان</label><input class="search-box" style="width:100%;" name="address" value="{{ supplier.Address or '' }}" {{ ro }}></div>
+    <div><label class="set-lab" style="margin-top:0;">الرقم الوطني الموحد</label><input class="search-box" style="width:100%;" name="unified_no" value="{{ supplier.UnifiedNo or '' }}" {{ ro }}></div>
+    <div><label class="set-lab" style="margin-top:0;">صفة الممثل</label><input class="search-box" style="width:100%;" name="rep_title" value="{{ supplier.RepTitle or '' }}" {{ ro }}></div>
+    <div><label class="set-lab">البنك</label><input class="search-box" style="width:100%;" name="bank_name" value="{{ supplier.BankName or '' }}" {{ ro }}></div>
+    <div><label class="set-lab">اسم صاحب الحساب</label><input class="search-box" style="width:100%;" name="account_holder" value="{{ supplier.AccountHolder or '' }}" {{ ro }}></div>
+  </div>
+  <label class="set-lab">ملاحظات</label>
+  <textarea class="search-box" style="width:100%; height:64px;" name="notes" {{ ro }}>{{ supplier.Notes or '' }}</textarea>
+</form>
+
+{{ supplier_files(supplier, slots, others, folder, network, can('suppliers.edit')) }}
+
+<div class="card" style="margin-top:1.5rem;">
+  <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+    <span>أوامر الشراء الأخيرة</span>
+    <a class="btn" href="{{ url_for('orders_list', supplier=supplier.Name) }}">عرض في تاب المتابعة ←</a>
+  </div>
+  <table class="list">
+    <thead><tr><th>أمر الشراء</th><th>التاريخ</th><th>المشروع</th><th>الموقع</th><th>الإجمالي</th></tr></thead>
+    <tbody>
+    {% for o in orders %}
+      <tr style="cursor:pointer;" onclick="location.href='{{ url_for('order_detail', po_number=o.PONumber) }}'">
+        <td><b style="color:var(--accent);">{{ o.PONumber }}</b></td>
+        <td>{{ o.OrderDate.strftime('%Y-%m-%d') if o.OrderDate else '' }}</td>
+        <td>{{ o.Project }}</td>
+        <td>{{ o.Location or '—' }}</td>
+        <td>{{ '{:,.0f}'.format(o.TotalAmount or 0) }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" style="text-align:center; color:var(--text-secondary); padding:24px;">لا توجد أوامر لهذا المورد بعد.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

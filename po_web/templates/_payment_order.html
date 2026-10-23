@@ -1,0 +1,20 @@
+{# one payment order (PAY-12-02) - used alone and, repeated, for «طباعة أوامر الصرف» #}
+<article class="po-sheet">
+  <div class="bar">
+    <div><h1>أمر صرف</h1><small>شركة الهضب للتجارة والمقاولات · إدارة العقود والمشتريات</small></div>
+    <div style="text-align:center;"><img src="{{ logo_src or company_logo }}" alt="شعار الشركة"></div>
+  </div>
+  <p class="no">رقم: {{ o.order_no }}<br>التاريخ: <bdi dir="ltr">{{ (o.cycle.ApprovedAt or o.cycle.CycleDate or o.cycle.CreatedAt).strftime('%Y-%m-%d') }}</bdi></p>
+  <p class="to">إلى: الإدارة المالية</p>
+  <p class="ask">يُرجى صرف مبلغ وقدره <b><span dir="ltr">{{ '{:,.2f}'.format(o.amount) }}</span> ريال</b> ({{ o.words }})</p>
+  <table class="kv">
+    <tr><td>المستفيد</td><td><b>{{ o.group.name }}</b></td></tr>
+    <tr><td>الآيبان</td><td dir="ltr" style="text-align:right;">{{ o.iban_masked or '—' }}</td></tr>
+    <tr><td>البيان</td><td>{{ o.statement or '—' }}</td></tr>
+    <tr><td>دورة الصرف</td><td>رقم {{ o.cycle.CycleNo }}</td></tr>
+  </table>
+  <div class="sigs">
+    <div class="sig"><b>مدير المشتريات والعقود</b><i></i></div><div class="sig"><b>المدير المالي</b><i></i></div>
+    <div class="sig"><b>المدير العام</b><i></i></div>
+  </div>
+</article>

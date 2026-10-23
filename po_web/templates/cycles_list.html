@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% set active = "cycles" %}
+{% block title %}دورة الصرف{% endblock %}
+{% block subtitle %}إنشاء ← قرار الإدارة ← تنفيذ التحويل · Payment cycle{% endblock %}
+{% block page_actions %}{% if not history_only %}<a class="btn" href="{{ url_for('cycles_history') }}">الدورات السابقة</a>{% else %}<a class="btn" href="{{ url_for('cycles_list') }}">&rarr; دورة الصرف</a>{% endif %}{% endblock %}
+{% block content %}
+{% if not history_only %}
+<section class="cy-card" style="padding:22px 24px;">
+  <h2 style="margin:0 0 6px; font-size:19px;">لا توجد دورة مفتوحة</h2>
+  <p class="set-hint" style="margin:0 0 14px;">عند إنشاء دورة جديدة يجمع النظام تلقائيًا كل المستخلصات المفتوحة من كل المقاولين: التي لم تُصرف بالكامل ولم تُقفل معاملتها في الأرشيف. ثم تمرّ الدورة بثلاث مراحل: الإنشاء، قرار الإدارة، تنفيذ التحويل.</p>
+  <div class="cy-ready">
+    <div><span>مستخلصات مفتوحة</span><b>{{ ready|length }}</b></div>
+        <div><span>إجمالي ما ينتظر الصرف</span><b>{{ '{:,.0f}'.format(ready|sum(attribute='cert.Remaining')) }}</b></div>
+  </div>
+  {% if can('cycles.manage') %}
+  <form method="post" action="{{ url_for('cycle_new') }}" class="form-3" style="margin-top:16px; align-items:end;">
+    <div><label class="set-lab" style="margin-top:0;">عنوان الدورة (اختياري)</label><input class="inp" name="title" maxlength="150" placeholder="مثال: دورة منتصف أكتوبر"></div>
+    <div><label class="set-lab" style="margin-top:0;">تاريخ الدورة</label><input class="inp" type="date" name="cycle_date" value="{{ today_iso }}"></div>
+    <div style="grid-column: 1 / -1;"><button class="btn btn-primary btn-lg" type="submit" {{ 'disabled' if not ready else '' }}>إنشاء دورة صرف</button></div>
+  </form>{% endif %}
+</section>
+{% endif %}
+<div class="card" style="margin-top:1.25rem;"><div class="card-header">{{ 'كل الدورات' if history_only else 'الدورات السابقة' }}</div><div class="tbl-wrap">
+  <table class="list"><thead><tr><th>الدورة</th><th>التاريخ</th><th>الحالة</th><th>المرحلة</th><th>البنود</th><th>مبلغ الصرف</th><th>تم تحويله</th></tr></thead><tbody>
+  {% for c in rows %}<tr style="cursor:pointer;" onclick="location.href='{{ url_for('cycle_detail', cycle_id=c.CycleID) }}'">
+    <td><b style="color:var(--accent);">دورة رقم {{ c.CycleNo }}</b>{% if c.Title %}<br><small style="color:var(--text-secondary);">{{ c.Title }}</small>{% endif %}</td>
+    <td>{{ (c.CycleDate or c.CreatedAt).strftime('%Y-%m-%d') }}</td><td><span class="badge {{ badge[c.Status] }}">{{ c.Status }}</span></td>
+    <td>{{ c.stage_name }}</td><td>{{ c.lines }}</td><td>{{ '{:,.2f}'.format(c.approved) if c.Status in ('معتمدة', 'منفّذة') else '—' }}</td><td>{{ '{:,.2f}'.format(c.transferred) }}</td></tr>
+  {% else %}<tr><td colspan="7" style="text-align:center; color:var(--text-secondary); padding:24px;">لا توجد دورات بعد.</td></tr>{% endfor %}
+  </tbody></table></div></div>
+{% endblock %}

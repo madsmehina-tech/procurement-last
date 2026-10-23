@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% set active = "cycles" %}
+{% block title %}طباعة وتصدير كشف الدورة {{ d.cycle.CycleNo }}{% endblock %}
+{% block subtitle %}{% endblock %}
+{% block content %}
+{% include "_cycle_sheet_css.html" %}
+{% set c = d.cycle %}
+<div class="cy-exp-top"><a class="cy-link" href="{{ url_for('cycle_detail', cycle_id=c.CycleID) }}">رجوع لدورة الصرف ←</a></div>
+<div class="cy-exp">
+  <section class="cy-card cy-exp-prev" id="sheet">{% include "_cycle_sheet.html" %}</section>
+  <aside class="cy-card cy-exp-side">
+    <h2>كشف الدورة {{ c.CycleNo }}</h2>
+    <form method="get" id="optForm">
+      <div class="cy-side-t">خانات القرار والمبلغ والملاحظات</div>
+      <div class="cy-seg"><button type="button" class="{{ 'on' if mode == 'blank' else '' }}" onclick="setMode('blank')">فارغة للكتابة بخط اليد</button><button type="button" class="{{ 'on' if mode == 'values' else '' }}" onclick="setMode('values')">بالقيم المدخلة</button></div>
+      <input type="hidden" name="mode" value="{{ mode }}">
+      <div class="cy-side-t">الأعمدة الظاهرة في الكشف</div>
+      {% for k, h, w in COLS %}<label class="cy-ck"><input type="checkbox" value="{{ k }}" {{ 'checked' if k in chosen else '' }} onchange="pick()"> {{ h }}</label>{% endfor %}
+      <input type="hidden" name="cols" id="colsField" value="{{ chosen|join(',') }}">
+    </form>
+    <div class="cy-side-acts">
+      <a class="btn btn-primary btn-lg" href="{{ url_for('cycle_print', cycle_id=c.CycleID, mode=mode, cols=chosen|join(',')) }}" target="_blank">طباعة الكشف (A4 أفقي)</a>
+      <a class="btn btn-lg" href="{{ url_for('cycle_pdf_download', cycle_id=c.CycleID, mode=mode, cols=chosen|join(',')) }}">تنزيل PDF</a>
+      <a class="btn btn-lg" href="{{ url_for('cycle_xlsx', cycle_id=c.CycleID, mode=mode, cols=chosen|join(',')) }}">تصدير Excel</a>
+      {% if can('cycles.manage') %}<form method="post" action="{{ url_for('cycle_pdf', cycle_id=c.CycleID) }}"><input type="hidden" name="mode" value="{{ mode }}"><input type="hidden" name="cols" value="{{ chosen|join(',') }}"><button class="btn btn-lg" type="submit" style="width:100%;">حفظ PDF في أرشيف الدورة</button></form>{% endif %}
+    </div>
+  </aside>
+</div>
+<script>
+function pick() { const v = [...document.querySelectorAll('.cy-ck input:checked')].map(x => x.value); if (!v.length) return; document.getElementById('colsField').value = v.join(','); document.getElementById('optForm').submit(); }
+function setMode(m) { document.querySelector('#optForm [name=mode]').value = m; document.getElementById('optForm').submit(); }
+</script>
+{% endblock %}

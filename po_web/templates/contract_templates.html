@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% set active = "contract_templates" %}
+{% block title %}قوالب العقود{% endblock %}
+{% block subtitle %}قوالب Word للعقود والاتفاقيات ونُسخها · الشكل والصياغة من ملف Word الذي تعدّله أنت{% endblock %}
+{% block page_actions %}<a class="btn" href="{{ url_for('contract_templates_guide') }}">دليل علامات القوالب</a><a class="btn btn-primary" href="{{ url_for('contract_template_new') }}">+ قالب جديد</a>{% endblock %}
+{% block content %}
+{% if starters_pending %}<div class="warn-box">القالب الأساسي المرفق بالنظام لم يُضف بعد: {{ starters_pending|join('، ') }}.
+  <form method="post" action="{{ url_for('contract_templates_starters') }}" style="display:inline;"><button class="btn btn-primary" type="submit">إضافة القالب الأساسي</button></form>
+  <span class="set-hint">هو للتجربة فقط؛ استبدله بقالب الشركة الرسمي (بورق الشركة) عند جاهزيته.</span></div>{% endif %}
+<div class="card"><div class="tbl-wrap"><table class="list"><thead><tr><th>القالب</th><th>النوع</th><th>للطرف</th><th>بادئة الترقيم</th><th>النسخة الحالية</th><th>النسخ</th><th>الحالة</th></tr></thead>
+  <tbody>{% for t in rows %}<tr style="cursor:pointer;" onclick="location.href='{{ url_for('contract_template_detail', template_id=t.TemplateID) }}'"><td><b>{{ t.Name }}</b><br><small style="color:var(--text-secondary);">{{ t.Code }}</small></td><td>{{ t.ContractType }}</td><td>{{ t.PartyKind }}</td><td>{{ t.NumberPrefix }}</td>
+    <td>{% if t.version %}نسخة {{ t.version.VersionNo }}<br><small style="color:var(--text-secondary);">{{ t.version.FileName }}</small>{% else %}—{% endif %}</td><td>{{ t.n_versions }}</td><td><span class="badge {{ 'success' if t.Active else 'neutral' }}">{{ 'نشط' if t.Active else 'موقوف' }}</span></td></tr>
+  {% else %}<tr><td colspan="7" style="text-align:center;color:var(--text-secondary);padding:28px;">لا توجد قوالب بعد.</td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}

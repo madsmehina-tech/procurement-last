@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% from "_documents.html" import documents_panel %}
+{% set active = "certificates" %}
+{% block title %}مستخلص رقم {{ cert.CertificateNo }} — {{ cert.SubcontractorName }}{% endblock %}
+{% block subtitle %}{{ cert.Project }} · {{ cert.SiteName or '' }}{% if cert.ContractNo %} · عقد {{ cert.ContractNo }}{% endif %} · Certificate{% endblock %}
+{% block page_actions %}{% if cert.ContractID %}<a class="btn" href="{{ url_for('contract_detail', contract_id=cert.ContractID) }}">&rarr; العقد</a>{% endif %}
+<a class="btn" href="{{ url_for('subcontractor_detail', sub_id=cert.SubcontractorID) }}#certificates">&rarr; ملف المقاول</a>
+<a class="btn" href="{{ url_for('certificates_list') }}">المستخلصات</a>{% endblock %}
+{% block content %}
+<div style="margin-bottom:1rem;"><span class="badge {{ badge[cert.Status] }}" style="font-size:14px; padding:6px 14px;">{{ cert.Status }}</span>
+  <span class="flow">مُدخَل ← ضمن دورة صرف ← مصروف</span></div>
+{% if cert.StatusUnknown %}<div class="warn-box"><b>حالة هذا المستخلص في القاعدة غير معروفة:</b> «{{ cert.StatusRaw }}». يُعرض كـ«مُدخَل» ولا يُسمح بصرفه حتى يُصحَّح (الإعدادات ← صحة الأرشيف).</div>{% endif %}
+{% if cert.Status == ST_REJECTED and cert.RejectionReason %}<div class="warn-box" style="background:#FEF2F2; border-color:#FECACA; color:#7F1D1D;"><b>سبب الرفض:</b> {{ cert.RejectionReason }}</div>{% endif %}
+
+<div class="kpi-grid">
+  <div class="kpi-card"><p class="kpi-label">إجمالي الأعمال</p><p class="kpi-value">{{ '{:,.2f}'.format(cert.GrossAmount or 0) }}</p></div>
+  <div class="kpi-card"><p class="kpi-label">الصافي (بعد الخصومات والمحتجز)</p><p class="kpi-value">{{ '{:,.2f}'.format(cert.Net) }}</p></div>
+  <div class="kpi-card"><p class="kpi-label">الصافي شامل الضريبة</p><p class="kpi-value">{{ '{:,.2f}'.format(cert.Total) }}</p></div>
+  <div class="kpi-card {{ 'warning' if cert.Remaining > 0 and cert.Status != ST_REJECTED else '' }}"><p class="kpi-label">المتبقي للصرف</p><p class="kpi-value">{{ '{:,.2f}'.format(cert.Remaining) }}</p></div>
+</div>
+
+<div class="set-grid" style="margin-bottom:1.5rem;">
+  <div class="card set-card">
+    <h3 class="set-title">التفاصيل</h3>
+    <div class="set-ro"><span>التاريخ</span><b>{{ cert.CertificateDate.strftime('%Y-%m-%d') if cert.CertificateDate else '' }}</b></div>
+    <div class="set-ro"><span>مواد موردة</span><b>{{ '{:,.2f}'.format(cert.SuppliedMaterials or 0) }}</b></div>
+    <div class="set-ro"><span>غرامات</span><b>{{ '{:,.2f}'.format(cert.Penalties or 0) }}</b></div>
+    <div class="set-ro"><span>المحتجز ({{ cert.RetentionPercent or 0 }}%)</span><b>{{ '{:,.2f}'.format(cert.Retention) }}</b></div>
+    <div class="set-ro"><span>ضريبة القيمة المضافة</span><b>{{ '{:,.2f}'.format(cert.VAT) }}</b></div>
+    {% if payments %}<h3 class="set-title" style="margin-top:16px;">الدفعات</h3>
+    {% for p in payments %}<div class="set-ro"><span>{{ p.PaidAt.strftime('%Y-%m-%d') if p.PaidAt else '' }}{% if p.BankRef %} · {{ p.BankRef }}{% endif %}</span><b>{{ '{:,.2f}'.format(p.Amount or 0) }}</b></div>{% endfor %}{% endif %}
+  </div>
+
+  <div class="card set-card">
+    <h3 class="set-title">الإجراء</h3>
+    {% if cert.Status in (ST_ENTERED, ST_IN_CYCLE) and not cert.StatusUnknown and can('certificates.pay') %}
+    <form method="post" action="{{ url_for('certificate_pay', cert_id=cert.CertificateID) }}" enctype="multipart/form-data" style="margin-bottom:14px;">
+      <p class="set-hint" style="margin-top:0;">تسجيل التحويل الفعلي ({{ '{:,.2f}'.format(cert.Remaining) }} ريال). سيأتي هذا من «دورة الصرف» في الدفعة التالية، وحتى ذلك الحين يُسجَّل من هنا.</p>
+      <div class="form-2">
+        <div><label class="set-lab">تاريخ التحويل</label><input class="search-box" style="width:100%;" type="date" name="pay_date" value="{{ today_iso }}"></div>
+        <div><label class="set-lab">مرجع التحويل البنكي</label><input class="search-box" style="width:100%;" name="bank_ref" placeholder="رقم الحوالة"></div>
+      </div>
+      <label class="set-lab">سند التحويل (يُحفظ في «الاعتمادات»)</label><input type="file" name="proof_file" accept=".pdf,.jpg,.jpeg,.png">
+      <button class="btn btn-primary" type="submit" style="margin-top:10px;">تسجيل الصرف</button>
+    </form>{% endif %}
+    {% if cert.Status == ST_ENTERED and can('certificates.edit') %}
+    <form method="post" action="{{ url_for('certificate_reject', cert_id=cert.CertificateID) }}" style="display:flex; gap:8px; flex-wrap:wrap;">
+      <input class="search-box" name="reason" placeholder="سبب الرفض / الإرجاع" style="flex:1; min-width:200px;" required>
+      <button class="btn" type="submit" style="color:var(--danger); border-color:var(--danger);">رفض وإرجاع</button></form>{% endif %}
+    {% if cert.Status == ST_REJECTED and can('certificates.edit') %}
+    <form method="post" action="{{ url_for('certificate_reopen', cert_id=cert.CertificateID) }}"><button class="btn btn-primary" type="submit">إعادة إلى «مُدخَل»</button></form>{% endif %}
+    {% if cert.Status == ST_PAID %}
+    <p style="margin:0 0 10px;">صُرف بتاريخ {{ cert.PaymentDate.strftime('%Y-%m-%d') if cert.PaymentDate else '—' }}.</p>
+    {% if can('certificates.pay') %}<form method="post" action="{{ url_for('certificate_unpay', cert_id=cert.CertificateID) }}" onsubmit="return confirm('إلغاء تسجيل الصرف؟ (سند التحويل يبقى في الأرشيف)');">
+      <button class="btn" type="submit">إلغاء تسجيل الصرف (تصحيح خطأ)</button></form>{% endif %}{% endif %}
+    {% if cert.Status == ST_IN_CYCLE %}<p class="set-hint">المستخلص ضمن دورة صرف — القرار للإدارة في الدورة.</p>{% endif %}
+  </div>
+</div>
+
+{% if cert.Status in (ST_ENTERED, ST_REJECTED) and can('certificates.edit') %}
+<details class="card set-card" style="margin-bottom:1.5rem;"><summary class="set-title" style="cursor:pointer; margin:0;">تعديل بيانات المستخلص</summary>
+  <form method="post" action="{{ url_for('certificate_edit', cert_id=cert.CertificateID) }}" style="margin-top:12px;">
+    <div class="form-3">
+      <div><label class="set-lab">رقم المستخلص</label><input class="search-box" style="width:100%;" type="number" min="1" name="cert_no" value="{{ cert.CertificateNo }}"></div>
+      <div><label class="set-lab">التاريخ</label><input class="search-box" style="width:100%;" type="date" name="cert_date" value="{{ cert.CertificateDate.strftime('%Y-%m-%d') if cert.CertificateDate else today_iso }}"></div>
+      <div><label class="set-lab">إجمالي الأعمال</label><input class="search-box" style="width:100%;" type="number" step="any" name="gross_amount" value="{{ cert.GrossAmount }}"></div>
+      <div><label class="set-lab">مواد موردة</label><input class="search-box" style="width:100%;" type="number" step="any" name="supplied_materials" value="{{ cert.SuppliedMaterials or 0 }}"></div>
+      <div><label class="set-lab">غرامات</label><input class="search-box" style="width:100%;" type="number" step="any" name="penalties" value="{{ cert.Penalties or 0 }}"></div>
+      <div><label class="set-lab">المحتجز %</label><input class="search-box" style="width:100%;" type="number" step="any" name="retention" value="{{ cert.RetentionPercent or 0 }}"></div>
+    </div>
+    <button class="btn btn-primary" type="submit" style="margin-top:12px;">حفظ التعديل</button>
+  </form></details>{% endif %}
+
+{{ documents_panel("CERT", cert.CertificateID, docs, folder, folder_exists, network) }}
+{% endblock %}

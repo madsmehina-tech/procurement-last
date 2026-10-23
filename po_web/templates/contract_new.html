@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% set active = "subcontractors" %}
+{% block title %}عقد جديد - {{ sub.Name }}{% endblock %}
+{% block subtitle %}إنشاء عقد جديد لمقاول الباطن · New subcontract agreement{% endblock %}
+
+{% block content %}
+<form method="post" enctype="multipart/form-data" style="max-width:480px;">
+  <div class="card" style="padding:1.25rem;">
+    <div style="margin-bottom:1rem;">
+      <label style="font-size:13px; color:var(--text-secondary); display:block; margin-bottom:4px;">رقم العقد (اختياري)</label>
+      <input class="search-box" style="width:100%;" type="text" name="contract_no" value="{{ form.contract_no or '' }}" placeholder="مثال: SC-2026-006">
+    </div>
+    <div style="margin-bottom:1rem;">
+      <label style="font-size:13px; color:var(--text-secondary); display:block; margin-bottom:4px;">اسم المشروع *</label>
+      <input class="search-box" style="width:100%;" type="text" name="project" list="projectList" value="{{ form.project or '' }}" required>
+      <datalist id="projectList">{% for p in projects %}<option value="{{ p.Project }}">{% endfor %}</datalist>
+    </div>
+    <div style="margin-bottom:1rem;">
+      <label style="font-size:13px; color:var(--text-secondary); display:block; margin-bottom:4px;">اسم الموقع الأول *</label>
+      <input class="search-box" style="width:100%;" type="text" name="site_name" value="{{ form.site_name or '' }}" required>
+      <p style="font-size:11.5px; color:var(--text-secondary); margin:4px 0 0;">يمكن إضافة مواقع أخرى لهذا العقد لاحقًا من صفحته.</p>
+    </div>
+    <div style="display:flex; gap:12px; margin-bottom:1rem;">
+      <div style="flex:1;">
+        <label style="font-size:13px; color:var(--text-secondary); display:block; margin-bottom:4px;">قيمة العقد (مرجعي، اختياري)</label>
+        <input class="search-box" style="width:100%;" type="number" step="any" min="0" name="contract_value" value="{{ form.contract_value or '' }}">
+      </div>
+      <div style="flex:1;">
+        <label style="font-size:13px; color:var(--text-secondary); display:block; margin-bottom:4px;">نسبة المحتجز % (مرجعي)</label>
+        <input class="search-box" style="width:100%;" type="number" step="any" min="0" max="100" name="retention_pct" value="{{ form.retention_pct or '' }}">
+      </div>
+      <div style="flex:1;">
+        <label style="font-size:13px; color:var(--text-secondary); display:block; margin-bottom:4px;">نسبة الدفعة المقدمة % (مرجعي)</label>
+        <input class="search-box" style="width:100%;" type="number" step="any" min="0" max="100" name="advance_pct" value="{{ form.advance_pct or '' }}">
+      </div>
+    </div>
+    <div style="margin-bottom:1rem;">
+      <label style="font-size:13px; color:var(--text-secondary); display:block; margin-bottom:4px;">نسخة العقد الموقّع</label>
+      <input type="file" name="contract_file">
+    </div>
+    <div style="margin-bottom:0;">
+      <label style="font-size:13px; color:var(--text-secondary); display:block; margin-bottom:4px;">ملاحظات</label>
+      <textarea class="search-box" style="width:100%; height:70px;" name="notes">{{ form.notes or '' }}</textarea>
+    </div>
+  </div>
+  <div style="margin-top:1.25rem; display:flex; gap:10px;">
+    <button type="submit" class="btn btn-primary">حفظ العقد</button>
+    <a class="btn" href="{{ url_for('subcontractor_detail', sub_id=sub.SubcontractorID) }}">إلغاء</a>
+  </div>
+</form>
+{% endblock %}

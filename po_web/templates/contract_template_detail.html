@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% set active = "contract_templates" %}
+{% block title %}{{ t.Name }}{% endblock %}
+{% block subtitle %}{{ t.Code }} · {{ t.ContractType }} · {{ t.PartyKind }}{% endblock %}
+{% block page_actions %}<a class="btn" href="{{ url_for('contract_templates') }}">&rarr; القوالب</a>{% if cur %}<a class="btn" href="{{ url_for('contract_template_test', version_id=cur.VersionID) }}">تجربة القالب ببيانات تجريبية</a><a class="btn" href="{{ url_for('contract_template_download', version_id=cur.VersionID) }}">تنزيل الملف الحالي</a>{% endif %}{% endblock %}
+{% block content %}
+<div class="set-grid" style="margin-bottom:1.5rem;">
+<form method="post" action="{{ url_for('contract_template_update', template_id=t.TemplateID) }}" class="card set-card"><h3 class="set-title">بيانات القالب</h3>
+  <label class="set-lab" style="margin-top:0;">الاسم</label><input class="inp" name="name" value="{{ t.Name }}">
+  <div class="form-3"><div><label class="set-lab">النوع</label><input class="inp" name="contract_type" value="{{ t.ContractType }}"></div><div><label class="set-lab">لمن؟</label><select class="inp" name="party_kind"><option {{ 'selected' if t.PartyKind == 'مقاول' else '' }}>مقاول</option><option {{ 'selected' if t.PartyKind == 'مورد' else '' }}>مورد</option></select></div>
+    <div><label class="set-lab">بادئة الترقيم</label><input class="inp" name="prefix" value="{{ t.NumberPrefix }}" dir="ltr" style="text-align:right;"></div></div>
+  <label class="set-lab">وصف</label><input class="inp" name="description" value="{{ t.Description or '' }}">
+  <label style="display:flex;gap:8px;margin-top:10px;"><input type="checkbox" name="active" value="1" {{ 'checked' if t.Active else '' }}> القالب نشط (يظهر في معالج الإنشاء)</label>
+  <div style="margin-top:12px;"><button class="btn btn-primary" type="submit">حفظ</button></div></form>
+<form method="post" action="{{ url_for('contract_template_version', template_id=t.TemplateID) }}" enctype="multipart/form-data" class="card set-card"><h3 class="set-title">رفع نسخة جديدة</h3>
+  <p class="set-hint" style="margin-top:0;">عدّل القالب في Word ثم ارفعه: تصبح نسخة جديدة وهي الحالية، والنسخ القديمة تبقى محفوظة. العقود التي لم تُوقَّع بعد تأخذ أحدث نسخة عند إعادة إنشاء ملفاتها؛ الموقَّعة تبقى على نسختها.</p>
+  <input type="file" name="template_file" accept=".docx" required><label class="set-lab">ملاحظة التغيير</label><input class="inp" name="note" placeholder="مثال: عدّلنا بند غرامة التأخير">
+  <div style="margin-top:12px;"><button class="btn btn-primary" type="submit">رفع النسخة</button></div></form></div>
+{% if cur %}<div class="card" style="margin-bottom:1.5rem;"><div class="card-header">العلامات المكتشفة في النسخة {{ cur.VersionNo }}</div><div class="tbl-wrap"><table class="list"><thead><tr><th>العلامة</th><th>الاسم الظاهر للمستخدم</th><th>المصدر</th><th>الخيارات</th></tr></thead><tbody>
+  {% for f in info.fields %}<tr><td dir="ltr" style="text-align:right;">{{ '{{' }}{{ f.key }}{{ '}}' }}</td><td>{{ f.label }}</td><td>{% if f.standard %}<span class="badge success">من النظام ({{ f.group }})</span>{% else %}<span class="badge neutral">حقل إضافي يسأل عنه المعالج</span>{% endif %}</td><td>{{ f.options|join(' ⟵⟶ ') if f.options else '—' }}</td></tr>{% endfor %}
+  {% for b in info.blocks %}<tr><td dir="ltr" style="text-align:right;">[[{{ b }}]]</td><td colspan="3">جدول يبنيه النظام</td></tr>{% endfor %}
+  {% for b in info.unknown_blocks %}<tr><td dir="ltr" style="text-align:right;color:#B02A1E;">[[{{ b }}]]</td><td colspan="3" style="color:#B02A1E;">جدول غير معروف: لن يُستبدل. الجداول المعروفة: {{ 'جدول_الأسعار، جدول_الدفعات، جدول_المواصفات' }}</td></tr>{% endfor %}</tbody></table></div></div>{% endif %}
+<div class="card"><div class="card-header">النسخ</div><div class="tbl-wrap"><table class="list"><thead><tr><th>النسخة</th><th>الملف</th><th>التاريخ</th><th>بواسطة</th><th>ملاحظة</th><th>عقود بُنيت عليها</th><th></th></tr></thead><tbody>
+  {% for v in versions %}<tr><td>{{ v.VersionNo }} {% if v.IsCurrent %}<span class="badge success">الحالية</span>{% endif %}</td><td>{{ v.FileName }}</td><td>{{ v.CreatedAt.strftime('%Y-%m-%d %H:%M') if v.CreatedAt else '' }}</td><td>{{ v.CreatedBy }}</td><td>{{ v.ChangeNote or '' }}</td><td>{{ counts.get(v.VersionID, 0) }}</td>
+    <td><a class="btn" href="{{ url_for('contract_template_download', version_id=v.VersionID) }}">تنزيل</a></td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}

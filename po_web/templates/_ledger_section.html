@@ -1,0 +1,73 @@
+{# «الدفعات» on the contractor's page: the movements typed by hand (direct payments, materials charged to him, refunds ...) #}
+<section class="card" id="ledger" style="margin-top:1.5rem;">
+  <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+    <span>الدفعات والحركات المالية ({{ ledger|length }}) <small class="set-hint" style="margin:0;">الرصيد الحالي في كشف الحساب: <b style="color:{{ '#8A2A22' if balance < 0 else '#1A5E3C' }};"><bdi dir="ltr">{{ '{:,.0f}'.format(balance) }}</bdi></b></small></span>
+    <span style="display:flex; gap:8px;"><a class="btn" href="{{ url_for('payments_archive', sub=sub.SubcontractorID) }}">أرشيف الدفعات ←</a><a class="btn" href="{{ url_for('statement_view', sub_id=sub.SubcontractorID) }}">كشف الحساب ←</a>
+      {% if can('payments.edit') %}<button class="btn btn-primary" type="button" data-open="dlg-ledger-new">+ إضافة حركة</button>{% endif %}</span></div>
+  <p class="set-hint" style="margin:0 18px 8px;">دائن: دفعة مباشرة، مواد اشتُريت للمقاول ونُزِّلت عليه · مدين: رد خصم، رد ضريبة، أي استحقاق آخر. المستخلصات ودفعات دورات الصرف تدخل كشف الحساب تلقائيًا. لا تظهر الدفعة في الكشف إلا بعد «تم التحويل».</p>
+  <div class="tbl-wrap"><table class="list">
+    <thead><tr><th>التاريخ</th><th>النوع</th><th>التصنيف</th><th>الوصف</th><th>المشروع / الموقع</th><th>المبلغ</th><th>الحالة</th><th>الملفات</th><th style="width:300px;">إجراءات</th></tr></thead>
+    <tbody>{% for e in ledger %}
+      <tr><td>{{ e.EntryDate.strftime('%Y-%m-%d') if e.EntryDate else '' }}</td>
+        <td><span class="badge {{ 'success' if e.Kind == 'دائن' else 'warning' }}">{{ e.Kind }}</span></td><td>{{ e.Category }}</td><td style="word-break:normal; overflow-wrap:break-word;">{{ e.Description }}</td>
+        <td>{{ e.ProjectName or '—' }}{% if e.SiteName %}<br><small style="color:var(--text-secondary);">{{ e.SiteName }}</small>{% endif %}</td>
+        <td><b>{{ '{:,.2f}'.format(e.Amount) }}</b></td>
+        <td>{% if e.Status == 'منفّذة' %}<span class="badge success">منفّذة</span>{% else %}<span class="badge neutral">مسجّلة — لم تُنفَّذ</span>{% endif %}{% if e.CycleID %}<br><small style="color:var(--text-secondary);">ضمن دورة صرف</small>{% endif %}</td>
+        <td>{% set fl = ledger_files.get(e.EntryID, []) %}{% for d in fl %}<a href="{{ url_for('document_view', doc_id=d.DocID) }}" target="_blank" style="display:block; font-size:12.5px;">{{ d.DocType }} · {{ d.OriginalName }}</a>{% else %}<span style="color:var(--text-secondary);">—</span>{% endfor %}
+          {% if can('payments.edit') %}<details><summary style="cursor:pointer; font-size:12.5px; color:var(--accent);">+ رفع ملف</summary>
+            <form method="post" action="{{ url_for('ledger_files', entry_id=e.EntryID) }}" enctype="multipart/form-data" style="display:grid; gap:6px; margin-top:6px;">
+              <select class="search-box" name="file_type" style="height:36px;"><option>سند / إيصال</option><option>فاتورة</option><option>مرفق إضافي</option></select>
+              <input type="file" name="files" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx" required><button class="btn btn-primary" type="submit">رفع</button></form></details>{% endif %}</td>
+        <td>{% if can('payments.edit') %}<div class="row-form" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+          {% if e.Status != 'منفّذة' and not e.CycleID %}<form method="post" action="{{ url_for('ledger_execute', entry_id=e.EntryID) }}" style="display:flex; gap:6px; align-items:center;">
+            <input class="search-box" type="date" name="pay_date" value="{{ today_iso }}" style="width:140px; height:38px;"><input class="search-box" type="text" name="bank_ref" placeholder="مرجع التحويل" style="width:120px; height:38px;" maxlength="80">
+            <button class="btn btn-primary" type="submit">تم التحويل</button></form>{% endif %}
+          {% if not e.CycleID %}<form method="post" action="{{ url_for('ledger_delete', entry_id=e.EntryID) }}" onsubmit="return confirm('حذف هذه الحركة؟');"><button class="btn" type="submit" style="color:var(--danger);">حذف</button></form>{% endif %}</div>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="9" style="text-align:center; color:var(--text-secondary); padding:24px;">لا توجد حركات يدوية بعد.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% if can('payments.edit') %}
+<dialog id="dlg-ledger-new" class="dlg">
+  <form method="post" enctype="multipart/form-data" class="dlg-form" action="{{ url_for('ledger_add', sub_id=sub.SubcontractorID) }}" id="ledgerForm">
+    <div class="dlg-head"><h3>حركة مالية جديدة — {{ sub.Name }}</h3><button type="button" class="dlg-x" data-close aria-label="إغلاق">×</button></div>
+    <div class="dlg-body">
+      <div class="form-2">
+        <div><label class="set-lab" style="margin-top:0;">النوع</label><select class="inp" name="kind" id="ledKind"><option value="دائن">دائن (دفعة أو خصم على المقاول)</option><option value="مدين">مدين (استحقاق للمقاول)</option></select></div>
+        <div><label class="set-lab" style="margin-top:0;">التصنيف</label><select class="inp" name="category" id="ledCat"></select></div>
+      </div>
+      <label class="set-lab">الوصف (يدويًا)</label><input class="inp" name="description" required maxlength="250" placeholder="مثال: دفعة على الحساب / مواد حديد تسليح / رد ضريبة مستخلص 12">
+      <div class="form-2">
+        <div><label class="set-lab">المبلغ</label><input class="inp num" type="number" step="any" min="0" name="amount" dir="ltr" required></div>
+        <div><label class="set-lab">التاريخ</label><input class="inp" type="date" name="entry_date" value="{{ today_iso }}"></div>
+      </div>
+      <div class="form-2">
+        <div><label class="set-lab">المشروع (اختياري)</label><input class="inp" name="project" list="dl-led-projects" autocomplete="off" placeholder="اختر أو اكتب"><datalist id="dl-led-projects">{% for p in projects_list %}<option value="{{ p }}">{% endfor %}</datalist></div>
+        <div><label class="set-lab">الموقع (اختياري)</label><input class="inp" name="site" list="dl-led-sites" autocomplete="off" placeholder="اختر أو اكتب"><datalist id="dl-led-sites"></datalist></div>
+      </div>
+      <h4 class="dlg-sec">الملفات (اختياري)</h4>
+      <div class="form-2">
+        <div><label class="set-lab" style="margin-top:0;">نوع الملف</label><select class="inp" name="file_type"><option>سند / إيصال</option><option>فاتورة</option><option>مرفق إضافي</option></select></div>
+        <div><label class="set-lab" style="margin-top:0;">رفع ملف أو أكثر</label><input type="file" name="files" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"></div>
+      </div>
+      <p class="set-hint">تُحفظ في: <bdi>{{ sub.Name }}\الدفعات والحركات المالية\السنة\…</bdi></p>
+      <div id="ledPay" style="margin-top:10px;">
+        <label class="set-lab">حالة الدفعة</label>
+        <label style="display:block; padding:4px 0;"><input type="radio" name="status" value="executed" checked> تم تحويلها فعلاً (تظهر في كشف الحساب الآن)</label>
+        <label style="display:block; padding:4px 0;"><input type="radio" name="status" value="pending"> سُجّلت ولم تُنفَّذ بعد (تدخل دورة صرف لاحقًا ولا تظهر في الكشف قبل التنفيذ)</label>
+        <label class="set-lab">مرجع التحويل (اختياري)</label><input class="inp" name="bank_ref" maxlength="80">
+      </div>
+    </div>
+    <div class="dlg-foot"><button class="btn btn-primary btn-lg" type="submit">حفظ الحركة</button><button class="btn btn-lg" type="button" data-close>إلغاء</button></div>
+  </form>
+</dialog>
+<script>
+(function () {
+  const CATS = {{ ledger_categories|tojson }}, kind = document.getElementById('ledKind'), cat = document.getElementById('ledCat'), pay = document.getElementById('ledPay');
+  const fill = () => { cat.replaceChildren(...CATS[kind.value].map(n => Object.assign(document.createElement('option'), {value: n, textContent: n}))); show(); };
+  const show = () => { pay.style.display = (kind.value === 'دائن' && cat.value === 'دفعة مباشرة') ? '' : 'none'; };
+  kind.addEventListener('change', fill); cat.addEventListener('change', show); fill();
+  const pj = document.querySelector('#ledgerForm [name=project]'), dl = document.getElementById('dl-led-sites');
+  pj.addEventListener('input', () => dl.replaceChildren(...((SITES[pj.value.trim()] || []).map(n => Object.assign(document.createElement('option'), {value: n})))));
+})();
+</script>
+{% endif %}

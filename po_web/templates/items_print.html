@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>تقرير الأصناف</title>
+<style>
+  @page { size: A4 landscape; margin: 8mm 8mm 11mm; @bottom-center { content: "صفحة " counter(page) " من " counter(pages); font: 9px Tahoma, Arial, sans-serif; color: #64748B; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; width: 100%; }
+  body { font-family: "Segoe UI", Tahoma, "Cairo", Arial, sans-serif; color: #1B232E; font-size: 11px; line-height: 1.55; letter-spacing: 0; }
+  .toolbar { text-align: center; padding: 10px; } .toolbar button { font: inherit; padding: 8px 20px; }
+  .top { display: flex; align-items: center; gap: 14px; padding-bottom: 8px; border-bottom: 2px solid #1B232E; }
+  .top img { height: 54px; width: auto; object-fit: contain; flex: none; }
+  .mid { flex: 1; text-align: center; } .co { font-size: 12px; color: #475569; font-weight: 600; } .ttl { font-size: 19px; font-weight: 700; } .sub { color: #475569; }
+  .meta { color: #334155; line-height: 1.7; white-space: nowrap; font-size: 11px; }
+  table { width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 10px; }
+  th { background: #EEEBE5; border: 1px solid #1B232E; padding: 5px 4px; font-weight: 700; text-align: center; font-size: 10.5px; }
+  td { border: 1px solid #9AA3AF; padding: 4px 6px; vertical-align: middle; font-size: 10.5px; word-break: normal; overflow-wrap: break-word; }
+  td.n { text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; } td.c { text-align: center; }
+  thead { display: table-header-group; } tr { page-break-inside: avoid; }
+  tfoot td { font-weight: 700; background: #FBFAF7; border-top: 1.6px solid #1B232E; text-align: center; }
+  @media print { .toolbar { display: none; } }
+</style>
+</head>
+<body>
+<div class="toolbar"><button onclick="window.print()">طباعة / حفظ PDF</button></div>
+<div class="top">
+  <img src="{{ company_logo }}" alt="شعار الشركة">
+  <div class="mid"><div class="co">شركة الهضب للتجارة والمقاولات</div><div class="ttl">تقرير الأصناف المشتراة</div><div class="sub">{{ f.label }}</div></div>
+  <div class="meta">عدد الأصناف: {{ n_items }}<br>صدر في: <bdi dir="ltr">{{ now }}</bdi></div>
+</div>
+<table>
+  <colgroup><col style="width:4%"><col style="width:25%"><col style="width:7%"><col style="width:18%"><col style="width:15%"><col style="width:9%"><col style="width:10%"><col style="width:7%"><col style="width:5%"></colgroup>
+  <thead><tr><th>#</th><th>اسم الصنف</th><th>الوحدة</th><th>المشروع</th><th>الموقع</th><th>إجمالي الكمية</th><th>إجمالي القيمة</th><th>متوسط السعر</th><th>أوامر</th></tr></thead>
+  <tbody>
+  {% for r in rows %}<tr><td class="n">{{ loop.index }}</td><td>{{ r.item }}</td><td class="c">{{ r.unit or '—' }}</td><td>{{ r.project }}</td><td>{{ r.site }}</td>
+    <td class="n">{{ '{:,.2f}'.format(r.qty).rstrip('0').rstrip('.') }}</td><td class="n">{{ '{:,.2f}'.format(r.value) }}</td><td class="n">{{ '{:,.2f}'.format(r.avg) }}</td><td class="n">{{ r.orders }}</td></tr>
+  {% else %}<tr><td colspan="9" style="text-align:center; padding:18px;">لا توجد مشتريات مطابقة.</td></tr>{% endfor %}
+  </tbody>
+  <tfoot><tr><td colspan="5">الإجمالي</td><td>{{ '{:,.2f}'.format(total_qty).rstrip('0').rstrip('.') }}</td><td>{{ '{:,.2f}'.format(total_value) }}</td><td colspan="2"></td></tr></tfoot>
+</table>
+</body>
+</html>

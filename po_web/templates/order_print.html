@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>أمر شراء {{ order.PONumber }}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Tahoma, Arial, sans-serif; color: #1f1f1d; margin: 0; padding: 24px; font-size: 12.5px; }
+  .toolbar { margin-bottom: 16px; }
+  .toolbar button {
+    background: #1F3A5C; color: #fff; border: none; padding: 8px 16px;
+    border-radius: 6px; font-size: 14px; cursor: pointer;
+  }
+  .doc { max-width: 760px; margin: 0 auto; }
+  .head-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+  .head-row .company { text-align: right; }
+  .head-row .company .name { font-size: 15px; font-weight: 700; color: #1F3A5C; }
+  .head-row .company .dept { font-size: 12.5px; color: #333; margin-top: 2px; }
+  .head-row .title { text-align: center; padding-top: 14px; font-size: 20px; font-weight: 700; color: #1F3A5C; }
+  .head-row .logo img { width: 70px; height: 70px; border-radius: 50%; object-fit: cover; }
+  .divider { border-bottom: 2px solid #1F3A5C; margin-bottom: 12px; }
+  .info-rows div { display: flex; justify-content: space-between; padding: 2px 0; }
+  .info-rows .k { color: #444; }
+  .to-row { margin: 10px 0 6px; display: flex; justify-content: space-between; }
+  .ref-line { margin-bottom: 12px; text-align: right; }
+  table.items { width: 100%; border-collapse: collapse; margin-bottom: 0; }
+  table.items th { padding: 6px; border: 0.5px solid #b9c4cf; background: #E8EDF2; color: #1F3A5C; }
+  table.items td { padding: 6px; border: 0.5px solid #ddd; text-align: center; }
+  table.items td.name { text-align: right; }
+  .totals { border-left: 0.5px solid #ddd; border-right: 0.5px solid #ddd; }
+  .totals div { display: flex; justify-content: space-between; padding: 5px 8px; border-bottom: 0.5px solid #ddd; }
+  .grand-row {
+    border: 1.5px solid #1F3A5C; border-top: none; display: flex; justify-content: space-between;
+    padding: 8px; font-size: 14px; font-weight: 700; color: #1F3A5C;
+  }
+  .words-row {
+    background: #EEF2F6; color: #1F3A5C; text-align: center; padding: 6px 8px;
+    font-size: 11.5px; margin-bottom: 14px; border: 0.5px solid #ddd; border-top: none;
+  }
+  .extra-notes { font-size: 12px; margin-bottom: 10px; }
+  .extra-notes div { padding: 4px 2px; border-bottom: 0.5px dashed #ddd; }
+  .contact-box { border: 0.5px solid #ccc; margin-bottom: 12px; }
+  .contact-box .row { padding: 6px 10px; border-bottom: 0.5px solid #ccc; }
+  .contact-box .row:last-child { border-bottom: none; display: flex; justify-content: space-between; align-items: center; }
+  table.sigs { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 11.5px; text-align: center; }
+  table.sigs th { width: 25%; padding: 6px 4px; border: 0.5px solid #cfe0e6; background: #F0F6F8; color: #1F3A5C; word-wrap: break-word; }
+  table.sigs td { width: 25%; border: 0.5px solid #ddd; height: 50px; }
+  .wm { position: fixed; top: 38%; right: 0; left: 0; text-align: center; font-size: 46px; font-weight: 700; color: rgba(180, 60, 60, .16); transform: rotate(-18deg); pointer-events: none; z-index: 9; white-space: nowrap; }
+  @page { size: A4; margin: 9mm; }
+  @media print {
+    .toolbar { display: none; }
+    body { padding: 0; }
+  }
+</style>
+</head>
+<body>
+{% if watermark %}<div class="wm">{{ watermark }}</div>{% endif %}
+  <div class="toolbar"><button onclick="window.print()">طباعة</button></div>
+
+  <div class="doc">
+    <div class="head-row">
+      <div class="company">
+        <div class="name">شركة الهضب للتجارة والمقاولات</div>
+        <div class="dept">إدارة التعاقدات والمشتريات</div>
+      </div>
+      <div class="title">أمر الشراء</div>
+      <div class="logo"><img src="{{ logo_src or company_logo }}" alt=""></div>
+    </div>
+    <div class="divider"></div>
+
+    <div class="info-rows">
+      <div><span class="k">رقم أمر الشراء :</span><span>{{ order.PONumber }}</span></div>
+      <div><span class="k">التاريخ :</span><span>{{ order.OrderDate.strftime('%d/%m/%Y') if order.OrderDate else '' }}</span></div>
+      {% if order.HijriDate %}<div><span class="k">الموافق :</span><span>{{ order.HijriDate }}</span></div>{% endif %}
+      {% if order.Location %}<div><span class="k">الموقع :</span><span>{{ order.Location }}</span></div>{% endif %}
+    </div>
+
+    <div class="to-row">
+      <span>إلى السادة : <b>{{ order.SupplierName }}</b></span>
+      <span>تحية طيبة وبعد ,,</span>
+    </div>
+
+    <div class="ref-line">
+      إشارة إلى عرضكم المقدم إلينا برقم <b>{{ order.QuoteNo or '-' }}</b> نعمدكم في توريد الاصناف التالية إلى مشروع <b>{{ order.Project }}</b>
+    </div>
+
+    <table class="items">
+      <thead><tr><th style="width:28px;">م</th><th>الصنف</th><th style="width:55px;">الوحدة</th><th style="width:55px;">الكمية</th><th style="width:55px;">السعر</th><th style="width:70px;">الإجمالي</th></tr></thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td>{{ it.LineNo }}</td>
+          <td class="name">{{ it.ItemName }}</td>
+          <td>{{ it.Unit }}</td>
+          <td>{{ it.Qty }}</td>
+          <td>{{ "%.2f"|format(it.UnitPrice) }}</td>
+          <td>{{ "%.2f"|format(it.Qty * it.UnitPrice) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="totals">
+      <div><span>الإجمالي</span><b>{{ "%.2f"|format(subtotal) }}</b></div>
+      <div><span>الضريبة (15%)</span><b>{{ "%.2f"|format(vat) }}</b></div>
+      <div><span>الإجمالي شامل الضريبة</span><b>{{ "%.2f"|format(total_with_vat) }}</b></div>
+      <div><span>الخصم</span><b>{{ "%.2f"|format(discount) }}</b></div>
+    </div>
+    <div class="grand-row"><span>الإجمالي المطلوب سداده بعد الخصم</span><span>{{ "%.2f"|format(grand) }}</span></div>
+    <div class="words-row">{{ amount_words }}</div>
+
+    {% if extra_notes %}
+    <div class="extra-notes">
+      {% for line in extra_notes %}<div>{{ line }}</div>{% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="contact-box">
+      {% if order.Receiver %}
+      <div class="row">
+        للاستفسارات والاستلام التواصل مع المهندس المختص م.<b>{{ order.Receiver }}</b>{% if order.ReceiverPhone %} جوال رقم <b>{{ order.ReceiverPhone }}</b>{% endif %}.
+      </div>
+      {% endif %}
+      {% if not order.HideWarehouseNote %}
+      <div class="row">
+        <span>للتوريد والتوصيل التواصل مع إدارة المستودعات أ / إيهاب مطاوع جوال رقم 0590067502</span>
+      </div>
+      {% endif %}
+    </div>
+
+    <table class="sigs">
+      <thead>
+        <tr>
+          <th>مهندس العقود والمشتريات</th>
+          <th>مدير إدارة العقود والمشتريات</th>
+          <th>مدير عام المشاريع</th>
+          <th>المدير العام</th>
+        </tr>
+      </thead>
+      <tbody><tr><td></td><td></td><td></td><td></td></tr></tbody>
+    </table>
+  </div>
+</body>
+</html>

@@ -1,0 +1,22 @@
+{# the paper statement (كشف دورة الصرف): the preview on the export screen AND the printed / PDF sheet #}
+{% set lg = logo_src or company_logo %}
+<div class="cs-paper">
+  <div class="cs-top">
+    {% if lg %}<img class="cs-logo" src="{{ lg }}" alt="شعار الشركة">{% endif %}
+    <div class="cs-mid"><div class="cs-co">شركة الهضب للتجارة والمقاولات</div><div class="cs-title">كشف دورة الصرف رقم {{ d.cycle.CycleNo }}</div><div class="cs-sub">{{ sub_title }}</div></div>
+    <div class="cs-meta">التاريخ: <bdi dir="ltr">{{ (d.cycle.CycleDate or d.cycle.CreatedAt).strftime('%Y-%m-%d') }}</bdi><br>عدد البنود: {{ d.totals.n_all }}</div>
+  </div>
+  <table class="cs-table">
+    <colgroup>{% for k, h, w in cols %}<col style="width: {{ w }}%">{% endfor %}</colgroup>
+    <thead><tr>{% for k, h, w in cols %}<th class="c-{{ k }}">{{ h }}</th>{% endfor %}</tr></thead>
+    {% for r in rows %}{% if r.first %}{% if not loop.first %}</tbody>{% endif %}<tbody class="cs-grp">{% endif %}
+    <tr class="{{ 'cs-first' if r.first else '' }} {{ 'cs-dim' if r.stop else '' }} {{ 'cs-tall' if blank else '' }}">{% for c in r.cells %}<td class="c-{{ c.k }} {{ c.cls }}"{% if c.span > 1 %} rowspan="{{ c.span }}"{% endif %}>{{ c.v }}</td>{% endfor %}</tr>
+    {% if loop.last %}</tbody>{% endif %}{% endfor %}
+  </table>
+  <div class="cs-tot"><span>إجمالي المتبقي: {{ total_all }} ريال</span>
+    <span>إجمالي مبلغ الصرف: {{ '..................' if blank else (total_approved ~ ' ريال') }}</span></div>
+  <div class="cs-sigs">
+    <div><b>مدير العقود والمشتريات</b><i></i></div>
+    <div><b>مدير عام المشاريع</b><i></i></div><div><b>المدير العام</b><i></i></div>
+  </div>
+</div>

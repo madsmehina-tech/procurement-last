@@ -1,0 +1,457 @@
+{% extends "base.html" %}
+{% set active = "orders_analytics" %}
+{% block title %}لوحة مؤشرات أوامر الشراء{% endblock %}
+{% block subtitle %}مؤشرات الأداء والإنفاق · Purchase Orders Analytics Dashboard — آخر 6 أشهر: {{ months[0].label }} {{ months[0].sub }} إلى {{ months[-1].label }} {{ months[-1].sub }}{% endblock %}
+{% block page_actions %}
+<button type="button" class="btn" id="themeBtn" title="الوضع الداكن / الفاتح">الوضع الداكن / الفاتح</button>
+<button type="button" class="btn" onclick="window.print()">طباعة / PDF</button>
+<a class="btn btn-primary" href="{{ url_for('orders_analytics_export', project=f_project, supplier=f_supplier, site=f_site, date_from=f_date_from, date_to=f_date_to) }}">تصدير Excel</a>
+{% endblock %}
+
+{% block content %}
+<style>
+/* ---- tokens measured from the reference screenshots ---------------------------------
+   dark teal #29595e | sage #a4bfc1 | gold #c08d34 | track #edebe6 | text #1d232d | muted #5b626f */
+.exec{--c-teal:#29595e;--c-sage:#a4bfc1;--c-gold:#c08d34;--c-rust:#b9695c;--c-track:#E9EEF3;--c-card:#fff;
+  --c-line:#E5EAF0;--c-text:#0F172A;--c-muted:#64748B;--c-up:#15803D;--c-up-bg:#DCFCE7;--c-down:#B91C1C;
+  --c-down-bg:#FEE2E2;--c-warn-bg:#FFFBEB;--c-soft:rgba(41,89,94,.10);
+  --c-shadow:var(--shadow);
+  --p0:#29595e;--p1:#a4bfc1;--p2:#c08d34;--p3:#6f9ea3;--p4:#e0b866;--p5:#8a8f98;
+  color:var(--c-text);border-radius:var(--radius-lg);transition:background .25s,color .25s}
+.exec[data-theme=dark]{--c-teal:#5fb3b3;--c-sage:#6f8f93;--c-gold:#e0b866;--c-rust:#d98a7c;--c-track:#334155;
+  --c-card:#1E293B;--c-line:#334155;--c-text:#E2E8F0;--c-muted:#94A3B8;--c-up:#6fd3a6;--c-up-bg:#16382d;
+  --c-down:#f0958a;--c-down-bg:#472a27;--c-warn-bg:#352f1b;--c-soft:rgba(95,179,179,.14);
+  --c-shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -8px rgba(0,0,0,.45);
+  --p0:#5fb3b3;--p1:#6f8f93;--p2:#e0b866;--p3:#8fc0c4;--p4:#c9a35a;--p5:#9aa0aa;
+  background:#0F172A;padding:18px}
+.exec[data-theme=dark] .search-box{background:#0F172A;color:var(--c-text);border-color:var(--c-line)}
+.exec[data-theme=dark] .btn{background:#1E293B;color:var(--c-text);border-color:var(--c-line)}
+.exec[data-theme=dark] .btn-primary{background:var(--c-teal);color:#0F172A;border-color:var(--c-teal)}
+.exec *{box-sizing:border-box}
+
+
+.ex-filters{background:var(--c-card);border:1px solid var(--c-line);border-radius:var(--radius-lg);padding:14px 18px;
+  box-shadow:var(--c-shadow);display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:16px}
+.ex-filters label{font-size:12.5px;color:var(--c-muted);display:flex;align-items:center;gap:4px}
+
+.ex-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
+.ex-c3{grid-column:span 3}.ex-c5{grid-column:span 5}.ex-c7{grid-column:span 7}.ex-c12{grid-column:span 12}
+@media(max-width:1180px){.ex-c3{grid-column:span 6}.ex-c5,.ex-c7{grid-column:span 12}}
+@media(max-width:640px){.ex-c3{grid-column:span 12}}
+
+.ex-card{background:var(--c-card);border:1px solid var(--c-line);border-radius:var(--radius-lg);padding:22px 24px;
+  box-shadow:var(--c-shadow);transition:transform .22s ease,box-shadow .22s ease;min-width:0}
+.ex-card:hover{transform:translateY(-2px);box-shadow:0 2px 4px rgba(20,50,58,.08),0 16px 34px -12px rgba(20,50,58,.22)}
+.ex-card.warn{background:var(--c-warn-bg)}
+.ex-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px}
+.ex-title{font-size:16px;font-weight:700;margin:0}
+.ex-en{font-size:11.5px;color:var(--c-muted);margin-top:2px;letter-spacing:.25px}
+.ex-muted{color:var(--c-muted);font-size:12px}
+.ex-empty{color:var(--c-muted);font-size:13.5px;padding:34px 0;text-align:center}
+
+/* KPI cards */
+.ex-kpi{display:flex;flex-direction:column;gap:12px}
+.ex-kpi-top{display:flex;gap:10px;align-items:center}
+.ex-ico{width:38px;height:38px;border-radius:11px;background:var(--c-soft);color:var(--c-teal);display:flex;
+  align-items:center;justify-content:center;flex:none}
+.ex-ico svg{width:20px;height:20px}
+.ex-kpi-lab{font-size:13px;color:var(--c-muted);line-height:1.35}
+.ex-kpi-lab small{display:block;font-size:11px;opacity:.85}
+.ex-kpi-val{font-size:32px;font-weight:700;letter-spacing:-.5px;line-height:1.1}
+.ex-kpi-foot{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ex-foot-l{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ex-badge{display:inline-flex;align-items:center;gap:3px;font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px}
+.ex-badge.good{background:var(--c-up-bg);color:var(--c-up)}
+.ex-badge.bad{background:var(--c-down-bg);color:var(--c-down)}
+.ex-badge.flat{background:var(--c-track);color:var(--c-muted)}
+.ex-spark{width:96px;height:34px;flex:none;overflow:visible}
+
+/* growth bars  (reference image 3: zero-based columns, newest dark, others sage) */
+.ex-bars{display:flex;justify-content:space-between;gap:10px}
+.ex-bcol{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;cursor:default}
+.ex-breg{height:190px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;width:100%}
+.ex-bval{font-weight:700;font-size:16px;margin-bottom:8px}
+.ex-bfill{width:44px;max-width:100%;border-radius:8px 8px 0 0;background:var(--c-sage);transform-origin:bottom;
+  transform:scaleY(0);transition:transform .85s cubic-bezier(.2,.8,.2,1) calc(var(--i)*70ms),filter .15s}
+.ex-bcol.latest .ex-bfill{background:var(--c-teal)}
+.go .ex-bfill{transform:scaleY(1)}
+.ex-bcol:hover .ex-bfill{filter:brightness(.9)}
+.ex-blab{margin-top:12px;font-weight:700;font-size:14px;text-align:center}
+.ex-bsub{font-size:12.5px;color:var(--c-muted);text-align:center;margin-top:3px}
+.ex-hstat{display:flex;align-items:center;gap:10px}
+.ex-hstat b{font-size:26px;line-height:1}
+
+/* supplier ranking (reference image 1: pill tracks, fill = value / max) */
+.ex-row{display:flex;align-items:center;gap:10px;height:46px;border-radius:10px;padding:0 6px;transition:background .15s}
+.ex-row:hover{background:var(--c-soft)}
+.ex-av{width:28px;height:28px;border-radius:50%;background:var(--c-soft);color:var(--c-teal);font-weight:700;
+  font-size:13px;display:flex;align-items:center;justify-content:center;flex:none}
+.ex-rname{width:172px;flex:none;font-size:14px;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.ex-track{flex:1;min-width:60px;height:14px;border-radius:999px;background:var(--c-track);overflow:hidden}
+.ex-fill{height:100%;border-radius:999px;background:var(--c-teal);transform-origin:right;transform:scaleX(0);
+  transition:transform .9s cubic-bezier(.2,.8,.2,1) calc(var(--i)*80ms)}
+.go .ex-fill{transform:scaleX(1)}
+.ex-share{width:38px;flex:none;font-size:12px;color:var(--c-muted);text-align:center}
+.ex-rval{width:80px;flex:none;font-weight:700;font-size:15px;text-align:left}
+
+/* project distribution (reference image 2: segmented bar + legend list) */
+.ex-seg{display:flex;gap:3px;height:28px;margin-bottom:14px}
+.ex-seg i{display:block;border-radius:3px;min-width:6px;transform:scaleX(0);transform-origin:right;
+  transition:transform .85s cubic-bezier(.2,.8,.2,1) calc(var(--i)*90ms),filter .15s}
+.ex-seg i:first-child{border-start-start-radius:9px;border-end-start-radius:9px}
+.ex-seg i:last-child{border-start-end-radius:9px;border-end-end-radius:9px}
+.go .ex-seg i{transform:scaleX(1)}
+.ex-seg i:hover{filter:brightness(.9)}
+.ex-leg a{display:flex;align-items:center;gap:10px;padding:13px 6px;border-bottom:1px solid var(--c-line);
+  color:inherit;text-decoration:none;transition:background .15s;border-radius:6px}
+.ex-leg a:last-child{border-bottom:none}
+.ex-leg a:hover{background:var(--c-soft)}
+.ex-leg a.sel{background:var(--c-soft);font-weight:700}
+.ex-sw{width:14px;height:14px;border-radius:4px;flex:none;display:inline-block}
+.ex-lname{flex:1;font-size:15px}
+.ex-lpct{width:44px;text-align:center;font-size:13px;color:var(--c-muted)}
+.ex-lval{min-width:92px;text-align:left;font-weight:700;font-size:15.5px}
+.ex-total{margin-top:12px;font-size:13px;color:var(--c-muted)}
+
+/* stacked by project */
+.ex-leg2{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--c-muted)}
+.ex-leg2 span{display:inline-flex;align-items:center;gap:6px}
+.ex-stk{flex:1;display:flex;gap:2px;height:22px;border-radius:999px;overflow:hidden;background:var(--c-track)}
+.ex-stk i{display:block;height:100%;transform-origin:right;transform:scaleX(0);
+  transition:transform .85s cubic-bezier(.2,.8,.2,1) calc(var(--i)*60ms),filter .15s}
+.go .ex-stk i{transform:scaleX(1)}
+.ex-stk i:hover{filter:brightness(.9)}
+.ex-tot{width:34px;flex:none;font-weight:700;text-align:left;font-size:14.5px}
+
+/* area chart */
+.ex-area{width:100%}
+.ex-area svg{width:100%;height:auto;display:block}
+.ex-leg3{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--c-muted);margin-top:10px}
+.ex-leg3 span{display:inline-flex;align-items:center;gap:6px}
+
+.ex-tt{position:fixed;z-index:50;pointer-events:none;opacity:0;background:#14323a;color:#fff;border-radius:10px;
+  padding:8px 12px;font-size:12.5px;line-height:1.7;box-shadow:0 8px 24px rgba(0,0,0,.25);
+  transition:opacity .12s;max-width:260px}
+
+@media print{
+  .no-print{display:none!important}.sidebar{display:none!important}.main{padding:0!important}
+  .ex-card{box-shadow:none;break-inside:avoid;transform:none!important}
+  .ex-bfill,.ex-fill,.ex-seg i,.ex-stk i{transform:none!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+
+{% macro pill(k) %}{% if k.growth is none %}<span class="ex-badge flat">—</span>{% else %}{% set up = k.growth >= 0 %}<span class="ex-badge {{ 'flat' if k.growth == 0 else ('good' if up == k.good_up else 'bad') }}">{{ '▲' if up else '▼' }} {{ '%.1f'|format(k.growth|abs) }}%</span>{% endif %}{% endmacro %}
+
+{% set icons = {
+ 'count': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h8l4 4v14a1 1 0 01-1 1H6a1 1 0 01-1-1V3a1 1 0 011-1z"/><path d="M14 2v4h4M8 12h8M8 16h6"/></svg>'|safe,
+ 'value': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h12v3"/><path d="M3 7v11a2 2 0 002 2h14a1 1 0 001-1V9a1 1 0 00-1-1H5a2 2 0 01-2-2z"/><circle cx="16.5" cy="14" r="1.2"/></svg>'|safe,
+ 'paid': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/></svg>'|safe,
+ 'open': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>'|safe } %}
+{% set status_color = {'مكتمل': 'var(--c-teal)', 'بانتظار السداد': 'var(--c-gold)', 'بانتظار الفاتورة': 'var(--c-sage)', 'بانتظار الاستلام': 'var(--c-rust)'} %}
+
+<div class="exec" id="exec">
+
+  <form method="get" class="ex-filters no-print">
+    <select class="search-box" style="width:170px;" name="project">
+      <option value="">كل المشاريع</option>
+      {% for p in all_projects %}
+      <option value="{{ p.Project }}" {{ 'selected' if f_project == p.Project else '' }}>{{ p.Project }}</option>
+      {% endfor %}
+    </select>
+    <select class="search-box" style="width:170px;" name="supplier">
+      <option value="">كل الموردين</option>
+      {% for s in all_suppliers %}
+      <option value="{{ s.SupplierName }}" {{ 'selected' if f_supplier == s.SupplierName else '' }}>{{ s.SupplierName }}</option>
+      {% endfor %}
+    </select>
+  <select class="search-box" style="width:150px;" name="site">
+    <option value="">كل المواقع</option>
+    {% for st in all_sites %}<option value="{{ st }}" {{ 'selected' if f_site == st else '' }}>{{ st }}</option>{% endfor %}
+  </select>
+    <label>من <input class="search-box" style="width:140px;padding:8px;" type="date" name="date_from" value="{{ f_date_from }}"></label>
+    <label>إلى <input class="search-box" style="width:140px;padding:8px;" type="date" name="date_to" value="{{ f_date_to }}"></label>
+    <button class="btn btn-primary" type="submit">تطبيق</button>
+    {% if f_project or f_supplier or f_site or f_date_from or f_date_to %}
+    <a class="btn" href="{{ url_for('orders_analytics') }}">مسح الفلاتر</a>
+    {% endif %}
+  </form>
+
+  <div class="ex-grid">
+
+    {# ---------------- KPI cards ---------------- #}
+    {% for k in kpis %}
+    <div class="ex-card ex-c3 {{ 'warn' if k.key == 'open' else '' }}"
+         data-tt="{{ k.ar }}&#10;{{ '{:,.0f}'.format(k.value) }}">
+      <div class="ex-kpi">
+        <div class="ex-kpi-top">
+          <span class="ex-ico">{{ icons[k.key] }}</span>
+          <div class="ex-kpi-lab">{{ k.ar }}<small>{{ k.en }}</small></div>
+        </div>
+        <div class="ex-kpi-val">{{ '{:,.0f}'.format(k.value) }}</div>
+        <div class="ex-kpi-foot">
+          <div class="ex-foot-l">{{ pill(k) }}<span class="ex-muted">عن الشهر السابق</span></div>
+          <svg class="ex-spark" data-v="{{ k.spark|tojson|forceescape }}" data-c="{{ 'var(--c-gold)' if k.key == 'open' else 'var(--c-teal)' }}"></svg>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+
+    {# ---------------- growth trend (image 3) ---------------- #}
+    <div class="ex-card ex-c5">
+      <div class="ex-head">
+        <div>
+          <h3 class="ex-title">تطور عدد أوامر الشراء</h3>
+          <div class="ex-en">Purchase Orders Growth Trend</div>
+        </div>
+        <div class="ex-hstat">
+          <div class="ex-muted" style="text-align:left">إجمالي الأوامر<br>Total Orders</div>
+          <b>{{ total_count }}</b>
+          {{ pill({'growth': orders_growth, 'good_up': True}) }}
+        </div>
+      </div>
+      <div class="ex-bars">
+        {% for b in bars %}
+        {% set prev = bars[loop.index0 - 1].count if loop.index0 > 0 else none %}
+        <div class="ex-bcol {{ 'latest' if b.latest else '' }}"
+             data-tt="{{ b.label }} {{ b.sub }}&#10;عدد الأوامر: {{ b.count }}{% if prev %}&#10;{{ '%+.0f'|format((b.count - prev) / prev * 100) }}% عن الشهر السابق{% endif %}">
+          <div class="ex-breg">
+            <div class="ex-bval">{{ b.count }}</div>
+            <div class="ex-bfill" style="--i:{{ loop.revindex0 }};height:{{ [ (b.pct * 1.5)|round|int, 4 ]|max }}px"></div>
+          </div>
+          <div class="ex-blab">{{ b.label }}</div>
+          <div class="ex-bsub">{{ b.sub }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# ---------------- top suppliers (image 1) ---------------- #}
+    <div class="ex-card ex-c7">
+      <div class="ex-head">
+        <div>
+          <h3 class="ex-title">أكبر الموردين من حيث قيمة الصرف</h3>
+          <div class="ex-en">Top Suppliers by Expenditure</div>
+        </div>
+      </div>
+      {% if suppliers %}
+      {% for s in suppliers %}
+      <div class="ex-row" data-tt="{{ s.name }}&#10;المصروف: {{ '{:,.0f}'.format(s.value) }} ريال&#10;نسبة المساهمة: {{ s.share }}%">
+        <span class="ex-av">{{ s.initial }}</span>
+        <span class="ex-rname">{{ s.name }}</span>
+        <div class="ex-track"><div class="ex-fill" style="--i:{{ loop.index0 }};width:{{ s.pct }}%"></div></div>
+        <span class="ex-share">{{ s.share }}%</span>
+        <span class="ex-rval">{{ '{:,.0f}'.format(s.value) }}</span>
+      </div>
+      {% endfor %}
+      {% else %}<div class="ex-empty">لا توجد أوامر مصروفة بعد ضمن هذا الفلتر.</div>{% endif %}
+    </div>
+
+    {# ---------------- project distribution (image 2) ---------------- #}
+    <div class="ex-card ex-c5">
+      <div class="ex-head">
+        <div>
+          <h3 class="ex-title">توزيع المصروفات حسب المشروع</h3>
+          <div class="ex-en">Project Spending Distribution</div>
+        </div>
+        <span class="ex-muted no-print">اضغط على مشروع للفلترة</span>
+      </div>
+      {% if projects %}
+      <div class="ex-seg">
+        {% for p in projects %}
+        <i style="--i:{{ loop.index0 }};flex:{{ p.value }} 1 0;background:var(--p{{ p.color }})"
+           data-tt="{{ p.name }}&#10;{{ '{:,.0f}'.format(p.value) }} ريال ({{ p.share }}%)"></i>
+        {% endfor %}
+      </div>
+      <div class="ex-leg">
+        {% for p in projects %}
+        {% if p.filterable %}
+        <a href="{{ url_for('orders_analytics', project=p.name, supplier=f_supplier, site=f_site, date_from=f_date_from, date_to=f_date_to) }}" class="{{ 'sel' if f_project == p.name else '' }}">
+        {% else %}<a href="#" onclick="return false" style="cursor:default">{% endif %}
+          <span class="ex-sw" style="background:var(--p{{ p.color }})"></span>
+          <span class="ex-lname">{{ p.name }}</span>
+          <span class="ex-lpct">{{ p.share }}٪</span>
+          <span class="ex-lval">{{ '{:,.0f}'.format(p.value) }}</span>
+        </a>
+        {% endfor %}
+      </div>
+      <div class="ex-total">الإجمالي {{ '{:,.0f}'.format(paid_value) }} ريال</div>
+      {% else %}<div class="ex-empty">لا توجد مصروفات مسجّلة بعد ضمن هذا الفلتر.</div>{% endif %}
+    </div>
+
+    {# ---------------- supplier payment trends (multi-series area) ---------------- #}
+    <div class="ex-card ex-c7">
+      <div class="ex-head">
+        <div>
+          <h3 class="ex-title">تحليل الإنفاق الشهري للموردين</h3>
+          <div class="ex-en">Supplier Payment Trends</div>
+        </div>
+      </div>
+      {% if trend %}
+      <div class="ex-area" id="trend"></div>
+      <div class="ex-leg3">
+        {% for t in trend %}<span><i class="ex-sw" style="background:var(--p{{ [0,2,3,5][loop.index0] }})"></i>{{ t.name }}</span>{% endfor %}
+      </div>
+      {% else %}<div class="ex-empty">لا توجد مدفوعات لعرض اتجاهها بعد.</div>{% endif %}
+    </div>
+
+    {# ---------------- orders by project, stacked by status ---------------- #}
+    <div class="ex-card ex-c12">
+      <div class="ex-head">
+        <div>
+          <h3 class="ex-title">توزيع أوامر الشراء حسب المشروع</h3>
+          <div class="ex-en">Purchase Orders by Project</div>
+        </div>
+        <div class="ex-leg2">
+          {% for s in status_order %}<span><i class="ex-sw" style="background:{{ status_color[s] }}"></i>{{ s }}</span>{% endfor %}
+        </div>
+      </div>
+      {% if pstack %}
+      {% for row in pstack %}
+      <div class="ex-row" style="height:40px">
+        <span class="ex-rname" style="width:190px">{{ row.name }}</span>
+        <div class="ex-stk">
+          {% for part in row.parts if part.n %}
+          <i style="--i:{{ loop.index0 }};width:{{ part.w }}%;background:{{ status_color[part.status] }}"
+             data-tt="{{ row.name }}&#10;{{ part.status }}: {{ part.n }} من {{ row.total }}"></i>
+          {% endfor %}
+        </div>
+        <span class="ex-tot">{{ row.total }}</span>
+      </div>
+      {% endfor %}
+      {% else %}<div class="ex-empty">لا توجد أوامر شراء ضمن هذا الفلتر.</div>{% endif %}
+    </div>
+
+  </div>
+</div>
+
+<div class="ex-tt" id="ex-tt"></div>
+
+<script>
+(function () {
+  const root = document.getElementById('exec');
+  const months = {{ months|tojson }};
+  const trend = {{ trend|tojson }};
+  const NS = 'http://www.w3.org/2000/svg';
+  const nf = n => Math.round(n).toLocaleString('en-US');
+  const short = n => n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : n >= 1e3 ? (n / 1e3).toFixed(n >= 1e4 ? 0 : 1).replace(/\.0$/, '') + 'k' : String(Math.round(n));
+  const el = (n, a) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); return e; };
+  const dark = () => root.dataset.theme === 'dark';
+
+  /* ---------- tooltip (text only - never HTML) ---------- */
+  const tt = document.getElementById('ex-tt');
+  function showTT(lines, e) {
+    tt.textContent = '';
+    lines.forEach((l, i) => { if (i) tt.appendChild(document.createElement('br')); tt.appendChild(document.createTextNode(l)); });
+    tt.style.opacity = 1; moveTT(e);
+  }
+  function moveTT(e) {
+    const pad = 14, r = tt.getBoundingClientRect();
+    let x = e.clientX + pad, y = e.clientY + pad;
+    if (x + r.width > innerWidth - 8) x = e.clientX - r.width - pad;
+    if (y + r.height > innerHeight - 8) y = e.clientY - r.height - pad;
+    tt.style.left = x + 'px'; tt.style.top = y + 'px';
+  }
+  const hideTT = () => { tt.style.opacity = 0; };
+  document.querySelectorAll('[data-tt]').forEach(n => {
+    n.addEventListener('mouseenter', e => showTT(n.getAttribute('data-tt').split('\n'), e));
+    n.addEventListener('mousemove', moveTT);
+    n.addEventListener('mouseleave', hideTT);
+  });
+
+  /* ---------- smooth path through points (RTL: oldest on the right) ---------- */
+  function smooth(pts) {
+    let d = 'M' + pts[0][0] + ',' + pts[0][1];
+    for (let i = 1; i < pts.length; i++) {
+      const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], mx = (x0 + x1) / 2;
+      d += ' C' + mx + ',' + y0 + ' ' + mx + ',' + y1 + ' ' + x1 + ',' + y1;
+    }
+    return d;
+  }
+
+  /* ---------- KPI sparklines ---------- */
+  document.querySelectorAll('.ex-spark').forEach((svg, idx) => {
+    const v = JSON.parse(svg.dataset.v), W = 96, H = 34, p = 3, n = v.length;
+    const max = Math.max(...v, 1), min = Math.min(...v, 0), rng = (max - min) || 1;
+    const pts = v.map((x, i) => [W - p - i * (W - 2 * p) / (n - 1), H - p - ((x - min) / rng) * (H - 2 * p)]);
+    const col = svg.dataset.c, gid = 'sg' + idx;
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    const defs = el('defs', {}), g = el('linearGradient', {id: gid, x1: 0, y1: 0, x2: 0, y2: 1});
+    g.appendChild(el('stop', {offset: '0%', 'stop-color': col, 'stop-opacity': .28}));
+    g.appendChild(el('stop', {offset: '100%', 'stop-color': col, 'stop-opacity': 0}));
+    defs.appendChild(g); svg.appendChild(defs);
+    const line = smooth(pts);
+    svg.appendChild(el('path', {d: line + ' L' + pts[n - 1][0] + ',' + H + ' L' + pts[0][0] + ',' + H + ' Z', fill: 'url(#' + gid + ')'}));
+    svg.appendChild(el('path', {d: line, fill: 'none', stroke: col, 'stroke-width': 2, 'stroke-linecap': 'round'}));
+    svg.appendChild(el('circle', {cx: pts[n - 1][0], cy: pts[n - 1][1], r: 2.8, fill: col}));
+  });
+
+  /* ---------- multi-series area chart ---------- */
+  function drawTrend() {
+    const host = document.getElementById('trend');
+    if (!host) return;
+    host.textContent = '';
+    const PAL = dark() ? ['#5fb3b3', '#e0b866', '#8fc0c4', '#9aa0aa'] : ['#29595e', '#c08d34', '#6f9ea3', '#8a8f98'];
+    const W = 760, H = 270, T = 14, B = 34, L = 34, R = W - 56, n = months.length;
+    const all = [].concat(...trend.map(s => s.values)), maxv = Math.max(...all, 1);
+    const mag = Math.pow(10, Math.floor(Math.log10(maxv))), top = [1, 1.2, 1.6, 2, 2.4, 3, 4, 5, 6, 8, 10].map(m => m * mag).find(v => v >= maxv);
+    const X = i => R - i * (R - L) / (n - 1), Y = v => H - B - (v / top) * (H - B - T);
+    const svg = el('svg', {viewBox: '0 0 ' + W + ' ' + H, role: 'img'});
+    for (let g = 0; g <= 4; g++) {
+      const y = Y(top * g / 4);
+      svg.appendChild(el('line', {x1: L, x2: R, y1: y, y2: y, style: 'stroke:var(--c-line);stroke-width:1' + (g ? ';stroke-dasharray:3 4' : '')}));
+      const t = el('text', {x: R + 10, y: y + 4, 'font-size': 11, style: 'fill:var(--c-muted)'}); t.textContent = short(top * g / 4); svg.appendChild(t);
+    }
+    months.forEach((m, i) => {
+      const t = el('text', {x: X(i), y: H - 10, 'text-anchor': 'middle', 'font-size': 12, style: 'fill:var(--c-muted)'});
+      t.textContent = m.label; svg.appendChild(t);
+    });
+    const defs = el('defs', {}); svg.appendChild(defs);
+    trend.forEach((s, k) => {
+      const col = PAL[k % PAL.length], gid = 'ag' + k;
+      const g = el('linearGradient', {id: gid, x1: 0, y1: 0, x2: 0, y2: 1});
+      g.appendChild(el('stop', {offset: '0%', 'stop-color': col, 'stop-opacity': .32}));
+      g.appendChild(el('stop', {offset: '100%', 'stop-color': col, 'stop-opacity': .02}));
+      defs.appendChild(g);
+      const pts = s.values.map((v, i) => [X(i), Y(v)]), line = smooth(pts);
+      const area = el('path', {d: line + ' L' + pts[n - 1][0] + ',' + Y(0) + ' L' + pts[0][0] + ',' + Y(0) + ' Z', fill: 'url(#' + gid + ')', style: 'opacity:0;transition:opacity 1s ease .3s'});
+      const ln = el('path', {d: line, fill: 'none', stroke: col, 'stroke-width': 2.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round'});
+      svg.appendChild(area); svg.appendChild(ln);
+      requestAnimationFrame(() => {
+        const len = ln.getTotalLength ? ln.getTotalLength() : 1000;
+        ln.style.strokeDasharray = len; ln.style.strokeDashoffset = len;
+        ln.getBoundingClientRect();
+        ln.style.transition = 'stroke-dashoffset 1.3s cubic-bezier(.2,.8,.2,1) ' + (k * 0.12) + 's';
+        ln.style.strokeDashoffset = 0; area.style.opacity = 1;
+      });
+    });
+    const guide = el('line', {y1: T, y2: H - B, style: 'stroke:var(--c-muted);stroke-width:1;stroke-dasharray:4 4;opacity:0'});
+    svg.appendChild(guide);
+    const dots = trend.map((s, k) => { const c = el('circle', {r: 5, fill: PAL[k % PAL.length], stroke: '#fff', 'stroke-width': 2, style: 'opacity:0'}); svg.appendChild(c); return c; });
+    const hit = el('rect', {x: L - 6, y: T, width: R - L + 12, height: H - B - T, fill: 'transparent'});
+    hit.addEventListener('mousemove', e => {
+      const b = svg.getBoundingClientRect(), sx = (e.clientX - b.left) * (W / b.width);
+      let best = 0, bd = 1e9;
+      for (let i = 0; i < n; i++) { const d = Math.abs(X(i) - sx); if (d < bd) { bd = d; best = i; } }
+      guide.setAttribute('x1', X(best)); guide.setAttribute('x2', X(best)); guide.style.opacity = 1;
+      trend.forEach((s, k) => { dots[k].setAttribute('cx', X(best)); dots[k].setAttribute('cy', Y(s.values[best])); dots[k].style.opacity = 1; });
+      showTT([months[best].label + ' ' + months[best].sub].concat(trend.map(s => s.name + ': ' + nf(s.values[best]) + ' ريال')), e);
+    });
+    hit.addEventListener('mouseleave', () => { guide.style.opacity = 0; dots.forEach(d => d.style.opacity = 0); hideTT(); });
+    svg.appendChild(hit);
+    host.appendChild(svg);
+  }
+
+  /* ---------- theme ---------- */
+  const saved = localStorage.getItem('exec-theme');
+  if (saved) root.dataset.theme = saved;
+  document.getElementById('themeBtn').addEventListener('click', () => {
+    root.dataset.theme = dark() ? 'light' : 'dark';
+    localStorage.setItem('exec-theme', root.dataset.theme);
+    drawTrend();
+  });
+
+  drawTrend();
+  requestAnimationFrame(() => requestAnimationFrame(() => root.classList.add('go')));
+})();
+</script>
+{% endblock %}

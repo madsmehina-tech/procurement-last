@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% set active = "archive" %}
+{% block title %}الأرشيف{% endblock %}
+{% block subtitle %}المعاملة تُصنَّف تلقائياً: مقاول ← مشروع ← عقد ← مستخلص، وتُقفل فقط عند اكتمال الأوراق الخمس{% endblock %}
+{% block page_actions %}<a class="btn" href="{{ url_for('payments_archive') }}">أرشيف الدفعات والحركات المالية ←</a><a class="btn" href="{{ url_for('archive_export', q=q, tab=tab) }}">تصدير Excel</a>{% endblock %}
+{% block content %}
+<form method="get" class="ar-bar" id="arF">
+  <input class="search-box" type="text" name="q" value="{{ q }}" placeholder="ابحث بالمقاول، المشروع، أو رقم المستخلص" onchange="this.form.submit()">
+  <input type="hidden" name="tab" value="{{ tab }}">
+  <span class="cy-chips">
+    {% for id, label in (('all', 'الكل'), ('open', 'مفتوحة'), ('closed', 'مغلقة')) %}<a class="cy-chip {{ 'on' if tab == id else '' }}" href="{{ url_for('archive_list', tab=id, q=q) }}" style="display:inline-flex; align-items:center; text-decoration:none;">{{ label }} ({{ counts[id] }})</a>{% endfor %}
+  </span>
+</form>
+<div class="ar-two">
+  <section class="cy-card ar-list" aria-label="قائمة المعاملات">
+    {% for r in rows %}
+    <a class="ar-item {{ 'on' if sel and sel.CertificateID == r.CertificateID else '' }}" href="{{ url_for('archive_list', cert=r.CertificateID, tab=tab, q=q) }}">
+      <div><div class="ar-t">{{ r.SubcontractorName }} — مستخلص {{ r.CertificateNo }}</div><div class="ar-s">{{ r.Project }}{% if r.SiteName %} / {{ r.SiteName }}{% endif %} · {{ r.ContractNo or '—' }}</div>
+        <div class="ar-m"><span class="ar-pill {{ r.state }}">{{ {'closed': 'مغلقة', 'ready': 'جاهزة للإقفال', 'open': 'مفتوحة'}[r.state] }}</span><span>{{ r.count }} / {{ n_papers }}</span></div></div></a>
+    {% else %}<div class="cy-empty">لا معاملات مطابقة.</div>{% endfor %}
+  </section>
+  <section class="cy-card ar-detail" aria-label="حقيبة المرفقات">
+    {% if sel %}
+    <div class="ar-dh"><div><div class="ar-t" style="font-size:19px;">{{ sel.SubcontractorName }} — مستخلص {{ sel.CertificateNo }}</div><div class="ar-s">{{ sel.Project }}{% if sel.SiteName %} / {{ sel.SiteName }}{% endif %} · {{ sel.ContractNo or '—' }}</div></div>
+      <span class="ar-pill {{ sel.state }}">{{ {'closed': 'مغلقة', 'ready': 'جاهزة للإقفال', 'open': 'مفتوحة'}[sel.state] }}</span></div>
+    <div class="ar-docs">
+      {% for p in sel.papers %}
+      <div class="ar-doc {{ 'ok' if p.have else '' }}"><span class="ar-n">{{ loop.index }}</span>
+        <div class="ar-dt"><b>{{ p.title }}</b><small>{{ p.hint }}{% if p.source %} · {{ p.source }}{% endif %}</small></div>
+        {% if p.have %}<span class="ar-ok">✓ مرفق</span>
+          {% if p.doc.DocID %}<a class="btn" href="{{ url_for('document_view', doc_id=p.doc.DocID) }}" target="_blank">فتح</a>{% else %}<a class="btn" href="{{ url_for('contract_file_view', contract_id=p.doc.contract) }}" target="_blank">فتح العقد</a>{% endif %}{% endif %}
+        {% if not sel.closed and can('certificates.edit') and not (p.have and not p.doc.DocID) %}
+        <form method="post" action="{{ url_for('document_upload') }}" enctype="multipart/form-data"><input type="hidden" name="entity_type" value="CERT"><input type="hidden" name="entity_key" value="{{ sel.CertificateID }}"><input type="hidden" name="doc_type" value="{{ p.key }}">
+          <label class="btn {{ '' if p.have else 'btn-primary' }}">{{ 'استبدال' if p.have else 'رفع الملف' }}<input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx" style="display:none;" onchange="this.form.submit()"></label></form>{% endif %}
+      </div>{% endfor %}
+    </div>
+    <div class="ar-note">
+      {% if sel.closed %}المعاملة مغلقة نهائياً — لا يمكن تعديل مرفقاتها. للتعديل يلزم فتحها من صلاحية أعلى.
+      {% elif sel.complete %}اكتملت الأوراق الخمس — يمكن إقفال المعاملة{% if sel.Remaining > 0.005 %} (بقي من المبلغ {{ '{:,.2f}'.format(sel.Remaining) }}؛ والإقفال يُخرجها من دورات الصرف){% endif %}.
+      {% else %}ينقص {{ n_papers - sel.count }} من الأوراق الخمس — لا تُقفل المعاملة قبل اكتمالها.{% endif %}</div>
+    <div style="display:flex; gap:10px; margin-top:12px; flex-wrap:wrap;">
+      {% if sel.can_close and can('archive.close') %}<form method="post" action="{{ url_for('archive_close', cert_id=sel.CertificateID) }}" onsubmit="return confirm('إقفال المعاملة نهائياً؟');"><button class="btn btn-primary btn-lg" type="submit">إقفال المعاملة نهائياً</button></form>{% endif %}
+      {% if sel.closed and can('archive.reopen') %}<form method="post" action="{{ url_for('archive_reopen', cert_id=sel.CertificateID) }}" onsubmit="return confirm('إعادة فتح المعاملة للتعديل؟');"><button class="btn btn-lg" type="submit">إعادة فتح (صلاحية أعلى)</button></form>{% endif %}
+      <a class="btn" href="{{ url_for('subcontractor_detail', sub_id=sel.SubcontractorID, cert=sel.CertificateID) }}">فتح المستخلص</a></div>
+    <p class="doc-path" style="margin-top:14px;">مجلد المعاملة: <bdi>{{ folder }}</bdi></p>
+    {% if network %}<input class="search-box doc-net" readonly value="{{ network }}" onclick="this.select()" style="width:100%;">{% endif %}
+    {% else %}<div class="cy-empty">اختر معاملة من القائمة.</div>{% endif %}
+  </section>
+</div>
+<style>
+.ar-bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; } .ar-bar .search-box { flex: 1; min-width: 260px; height: 46px; }
+.ar-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 16px; align-items: start; } @media (max-width: 1000px) { .ar-two { grid-template-columns: 1fr; } }
+.ar-list { padding: 8px; } .ar-item { display: block; padding: 12px 14px; border-radius: 12px; text-decoration: none; color: inherit; } .ar-item:hover { background: #F7F5EF; } .ar-item.on { background: #E6EEEE; }
+.ar-t { font-weight: 700; } .ar-s { font-size: 12.5px; color: var(--text-secondary); margin-top: 2px; } .ar-m { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 12.5px; color: var(--text-secondary); }
+.ar-pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; } .ar-pill.closed { background: #DFF0E5; color: #1A5E3C; } .ar-pill.ready { background: #FBEBC8; color: #6E4700; } .ar-pill.open { background: #EEEBE5; color: #5A6270; }
+.ar-dh { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.ar-doc { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; background: #F7F5EF; margin-bottom: 8px; flex-wrap: wrap; } .ar-doc.ok { background: #EEF6F0; }
+.ar-n { width: 30px; height: 30px; border-radius: 50%; background: #B8B2A6; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; flex: none; } .ar-doc.ok .ar-n { background: #1F6B45; }
+.ar-dt { flex: 1; min-width: 160px; } .ar-dt b { display: block; } .ar-dt small { color: var(--text-secondary); } .ar-ok { color: #1A5E3C; font-weight: 700; font-size: 13px; }
+.ar-note { margin-top: 10px; padding: 12px 14px; border-radius: 12px; background: #F3F1EC; font-size: 13.5px; }
+</style>
+{% endblock %}

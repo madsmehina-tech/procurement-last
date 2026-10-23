@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% set active = "settings_sites" %}
+{% block title %}المواقع{% endblock %}
+{% block subtitle %}كل موقع باسم واحد رسمي تحت مشروعه · Sites{% endblock %}
+{% block content %}
+{% include "_settings_nav.html" %}
+<div class="set-grid" style="margin-bottom:1.5rem;">
+  <div class="card set-card">
+    <h3 class="set-title">دمج موقعين في المشروع نفسه</h3>
+    <form method="post" action="{{ url_for('site_merge') }}" onsubmit="return confirm('دمج المصدر في الهدف؟ لا يمكن التراجع.');">
+      <div class="form-2">
+        <div><label class="set-lab" style="margin-top:0;">الموقع المصدر (سيختفي)</label><select class="search-box" name="source" style="width:100%;">{% for s in all_sites %}<option value="{{ s.SiteID }}">{{ s.Project }} — {{ s.SiteName }}</option>{% endfor %}</select></div>
+        <div><label class="set-lab" style="margin-top:0;">الموقع الهدف (يبقى)</label><select class="search-box" name="target" style="width:100%;">{% for s in all_sites %}<option value="{{ s.SiteID }}">{{ s.Project }} — {{ s.SiteName }}</option>{% endfor %}</select></div>
+      </div>
+      <button class="btn btn-primary" type="submit">دمج</button>
+    </form>
+    <p class="set-hint">تنتقل أوامر الشراء والعقود والمستخلصات إلى الهدف. ملفات الأرشيف تبقى في مجلداتها دون نقل (موقع كل أمر محفوظ في سجله).</p>
+  </div>
+  <div class="card set-card">
+    <h3 class="set-title">تصفية بالمشروع</h3>
+    <form method="get"><select class="search-box" name="project" style="width:100%; margin-bottom:10px;" onchange="this.form.submit()"><option value="">كل المشاريع</option>{% for p in projects %}<option value="{{ p.ProjectID }}" {{ 'selected' if f_project == p.ProjectID else '' }}>{{ p.ProjectName }}</option>{% endfor %}</select></form>
+    <p class="set-hint">يُنشأ الموقع تلقائيًا عند كتابته في أمر شراء أو عقد، وأي كتابة مقاربة (مسافة، همزة، تاء مربوطة) تُنسب لنفس الموقع.</p>
+  </div>
+</div>
+<div class="card">
+  <div class="card-header">المواقع ({{ rows|length }})</div>
+  <div class="tbl-wrap"><table class="list">
+    <thead><tr><th>المشروع</th><th>الموقع</th><th>أوامر الشراء</th><th>قيمتها</th><th>العقود</th><th>المستخلصات</th><th>الحالة</th><th></th></tr></thead>
+    <tbody>
+    {% for s in rows %}
+      <tr><td>{{ s.Project }}</td>
+        <td><form method="post" action="{{ url_for('site_rename', site_id=s.SiteID) }}" class="row-form"><input class="search-box" type="text" name="name" value="{{ s.SiteName }}" style="width:220px;"><button class="btn" type="submit">إعادة تسمية</button></form></td>
+        <td>{{ s.orders }}</td><td>{{ '{:,.0f}'.format(s.amount) }}</td><td>{{ s.contracts }}</td><td>{{ s.certs }}</td>
+        <td>{% if s.IsActive %}<span class="badge success">فعّال</span>{% else %}<span class="badge neutral">متوقف</span>{% endif %}</td>
+        <td><form method="post" action="{{ url_for('site_toggle', site_id=s.SiteID) }}" class="row-form"><button class="btn" type="submit">{{ 'إيقاف' if s.IsActive else 'تفعيل' }}</button></form></td></tr>
+    {% else %}<tr><td colspan="8" style="text-align:center; color:var(--text-secondary); padding:28px;">لا توجد مواقع بعد. نفّذ <code>python migrate.py</code> لبنائها من أوامرك الحالية.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

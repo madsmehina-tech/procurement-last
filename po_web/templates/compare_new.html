@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% set active = "compare" %}
+{% block title %}مقارنة جديدة{% endblock %}
+{% block subtitle %}الخطوة 1: بيانات المقارنة{% endblock %}
+{% block page_actions %}<a class="btn" href="{{ url_for('compare_list') }}">&rarr; المقارنات</a>{% endblock %}
+{% block content %}
+{% include "_compare_css.html" %}
+<form method="post" class="card" style="padding:22px; max-width:760px;">
+  <label class="set-lab" style="margin-top:0;">اسم المقارنة</label><input class="inp" name="title" required maxlength="150" value="{{ form.get('title', '') }}" placeholder="مثال: مقارنة توريد مواد كهربائية لمشروع الفيلا">
+  <div class="form-2"><div><label class="set-lab">المشروع</label><input class="inp" name="project" id="cmpProject" list="dl-cmp-projects" autocomplete="off" value="{{ form.get('project', '') }}" placeholder="اختر أو اكتب"><datalist id="dl-cmp-projects">{% for p in projects %}<option value="{{ p }}">{% endfor %}</datalist></div>
+    <div><label class="set-lab">الموقع</label><input class="inp" name="site" id="cmpSite" list="dl-cmp-sites" autocomplete="off" value="{{ form.get('site', '') }}" placeholder="اختر أو اكتب"><datalist id="dl-cmp-sites"></datalist></div></div>
+  <label class="set-lab">النوع</label><select class="inp" name="kind">{% for k in kinds %}<option {{ 'selected' if form.get('kind') == k else '' }}>{{ k }}</option>{% endfor %}</select>
+  <label class="set-lab">وصف مختصر (اختياري)</label><input class="inp" name="description" maxlength="255" value="{{ form.get('description', '') }}">
+  <p class="set-hint">تعمل المقارنة مع <b>المواد</b> و<b>المقاولين</b> و<b>الخدمات</b>. المشروع أو الموقع الجديد يُحفظ تلقائيًا في القائمة الموحّدة.</p>
+  <div style="margin-top:16px;"><button class="btn btn-primary btn-lg" type="submit">إنشاء المقارنة ← رفع العروض</button></div>
+</form>
+<script>
+(function () { const S = {{ sites_by_project|tojson }}, p = document.getElementById('cmpProject'), dl = document.getElementById('dl-cmp-sites');
+  const fill = () => dl.replaceChildren(...((S[p.value.trim()] || []).map(n => Object.assign(document.createElement('option'), {value: n})))); p.addEventListener('input', fill); fill(); })();
+</script>
+{% endblock %}

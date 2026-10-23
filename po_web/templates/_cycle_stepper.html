@@ -1,0 +1,13 @@
+{# «مراحل الدورة»: الإنشاء ← قرار الإدارة ← تنفيذ التحويل. done = green bar, current = gold bar, next = grey #}
+{% set stage = d.stage %}
+<section class="cy-card" aria-label="مراحل الدورة">
+  <div class="cy-stage-title">مراحل دورة الصرف</div>
+  <ol class="cy-steps three">
+    {% for label, hint in STAGES %}{% set i = loop.index %}
+    {% set state = 'done' if (stage == 4 or i < stage) else ('cur' if i == stage else '') %}
+    <li class="cy-step {{ state }}"><div class="cy-bar"></div>
+      <div class="cy-step-l">{{ i }}. {{ label }}{% if state == 'cur' %} · الحالية{% endif %}</div>
+      <div class="cy-step-h">{% if i == 3 and (state == 'cur' or stage == 4) and d.totals.n_payable %}{{ d.totals.executed + d.totals.not_executed }} من {{ d.totals.n_payable }} لها حالة تنفيذ{% elif i == 2 and state == 'cur' %}{{ d.totals.decided }} من {{ d.totals.n_all }} عليها قرار{% else %}{{ hint }}{% endif %}</div></li>
+    {% endfor %}
+  </ol>
+</section>

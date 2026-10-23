@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% set active = "subcontractors" %}
+{% block title %}مقاولو الباطن{% endblock %}
+{% block subtitle %}سجل واحد ثابت لكل مقاول، بغض النظر عن عدد عقوده أو مشاريعه · Subcontractors{% endblock %}
+{% block page_actions %}
+<a class="btn" href="{{ url_for('subcontractors_export_xlsx', q=q) }}">تصدير Excel</a>
+<a class="btn" href="{{ url_for('subcontractors_export_pdf', q=q) }}" target="_blank">تصدير PDF</a>
+<a class="btn" href="{{ url_for('subcontractors_print', q=q) }}" target="_blank">طباعة</a>
+{% if can('subcontractors.edit') %}<a class="btn btn-primary" href="{{ url_for('subcontractor_new') }}">+ إضافة مقاول جديد</a>{% endif %}
+{% endblock %}
+{% block content %}
+<div class="kpi-grid">
+  <div class="kpi-card"><p class="kpi-label">عدد المقاولين</p><p class="kpi-value">{{ kpi.count }}</p></div>
+  <div class="kpi-card"><p class="kpi-label">إجمالي المستحق</p><p class="kpi-value">{{ '{:,.0f}'.format(kpi.due) }}</p></div>
+  <div class="kpi-card"><p class="kpi-label">إجمالي المصروف</p><p class="kpi-value">{{ '{:,.0f}'.format(kpi.paid) }}</p></div>
+  <div class="kpi-card {{ 'warning' if kpi.remaining > 0 else '' }}"><p class="kpi-label">إجمالي المتبقي</p><p class="kpi-value">{{ '{:,.0f}'.format(kpi.remaining) }}</p></div>
+</div>
+<form method="get" style="display:flex; gap:8px; margin-bottom:1rem;">
+  <input class="search-box sb-search" type="text" name="q" value="{{ q }}" placeholder="الاسم أو السجل أو الرقم الضريبي" style="width:300px;">
+  <button class="btn btn-primary" type="submit">بحث</button>{% if q %}<a class="btn" href="{{ url_for('subcontractors_list') }}">مسح</a>{% endif %}
+</form>
+<div class="card"><div class="tbl-wrap">
+  <table class="list">
+    <thead><tr><th style="width:70px;">مسلسل</th><th>المقاول</th><th>العقود</th><th>المستخلصات</th><th>المستحق</th><th>المصروف</th><th>المتبقي</th><th>الأوراق</th><th>جوال المسؤول</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr style="cursor:pointer;" onclick="location.href='{{ url_for('subcontractor_detail', sub_id=r.SubcontractorID) }}'">
+        <td style="color:var(--text-secondary); font-weight:600;">{{ r.serial }}</td>
+        <td><b>{{ r.Name }}</b>{% if r.CR %}<br><small style="color:var(--text-secondary);">س.ت {{ r.CR }}</small>{% endif %}</td>
+        <td>{{ r.contracts }}</td><td>{{ r.certs }}</td><td>{{ '{:,.0f}'.format(r.due) }}</td><td>{{ '{:,.0f}'.format(r.paid) }}</td><td><b>{{ '{:,.0f}'.format(r.remaining) }}</b></td>
+        <td><span class="badge {{ 'success' if r.files >= slots_total else 'neutral' }}">{{ r.files }} / {{ slots_total }}</span>
+          {% if r.worst %}<span class="badge {{ 'danger' if r.worst[0] == 'expired' else 'warning' }}">{{ 'منتهية' if r.worst[0] == 'expired' else 'تنتهي قريبًا' }}</span>{% endif %}</td>
+        <td dir="ltr" style="text-align:right;">{{ r.Phone or '-' }}</td>
+      </tr>
+    {% else %}<tr><td colspan="9" style="text-align:center; color:var(--text-secondary); padding:28px;">لا يوجد مقاولون مطابقون.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endblock %}

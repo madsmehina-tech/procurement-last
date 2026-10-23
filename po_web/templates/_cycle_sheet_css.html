@@ -1,0 +1,21 @@
+{# The ONE stylesheet of the printed statement: the preview on the export screen, the print page and the PDF.
+   FIXED table layout with percentage columns: the table is always exactly as wide as the page, so nothing is cut off on A4 landscape. #}
+<style>
+  .cs-paper { background: #fff; color: #1B232E; font-family: "Segoe UI", Tahoma, "Cairo", Arial, sans-serif; font-size: 11px; line-height: 1.55; letter-spacing: 0; direction: rtl; padding: 2px; }
+  .cs-top { display: flex; align-items: center; gap: 14px; padding-bottom: 8px; border-bottom: 2px solid #1B232E; }
+  .cs-logo { height: 54px; width: auto; object-fit: contain; flex: none; }
+  .cs-mid { flex: 1; text-align: center; } .cs-co { font-size: 12px; color: #475569; font-weight: 600; } .cs-title { font-size: 19px; font-weight: 700; } .cs-sub { color: #475569; }
+  .cs-meta { color: #334155; line-height: 1.7; white-space: nowrap; }
+  .cs-table { width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 8px; }
+  .cs-table th { background: #EEEBE5; border: 1px solid #1B232E; padding: 5px 3px; font-weight: 700; font-size: 10.5px; line-height: 1.35; text-align: center; vertical-align: middle; white-space: normal; }
+  .cs-table td { border: 1px solid #9AA3AF; padding: 4px 5px; font-size: 10.5px; vertical-align: middle; text-align: right; word-break: normal; overflow-wrap: break-word; hyphens: manual; }
+  .cs-table td.c-seq, .cs-table td.c-ref, .cs-table td.c-value, .cs-table td.c-paid_before, .cs-table td.c-remaining, .cs-table td.c-total, .cs-table td.c-sub_approved,
+  .cs-table td.c-approved { text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .cs-table td.c-decision, .cs-table td.c-status { text-align: center; }
+  .cs-table td.b { font-weight: 700; } .cs-table td.grp { font-weight: 700; background: #FBFAF7; }
+  .cs-table tr.cs-first td { border-top: 1.6px solid #1B232E; } .cs-table tr.cs-dim td { color: #64748B; } .cs-table tr.cs-tall td { height: 38px; }
+  .cs-table thead { display: table-header-group; } .cs-table tbody.cs-grp { break-inside: avoid; page-break-inside: avoid; }
+  .cs-tot { display: flex; justify-content: space-between; margin: 12px 0; font-weight: 700; font-size: 12px; }
+  .cs-sigs { display: flex; gap: 14px; margin-top: 16px; page-break-inside: avoid; } .cs-sigs > div { flex: 1; text-align: center; } .cs-sigs b { display: block; } .cs-sigs i { display: block; height: 50px; border-bottom: 1px solid #1B232E; }
+  @media screen { .cs-paper { overflow-x: auto; } .cs-table { min-width: 980px; } }
+</style>

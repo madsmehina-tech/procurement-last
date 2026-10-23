@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% set active = "subcontractors" %}
+{% block title %}مقاول باطن جديد{% endblock %}
+{% block subtitle %}تسجيل مقاول جديد · New subcontractor{% endblock %}
+{% block content %}
+<form method="post" style="max-width:640px;">
+  <div class="card" style="padding:24px;">
+    {% set f = sub or {} %}
+    <label class="set-lab" style="margin-top:0;">اسم المقاول *</label>
+    <input class="search-box" style="width:100%;" type="text" name="name" value="{{ f.get('name', '') }}" required>
+    <div class="form-2">
+      <div><label class="set-lab">السجل التجاري</label><input class="search-box" style="width:100%;" name="cr" value="{{ f.get('cr', '') }}"></div>
+      <div><label class="set-lab">الرقم الضريبي</label><input class="search-box" style="width:100%;" name="tax_number" value="{{ f.get('tax_number', '') }}"></div>
+      <div><label class="set-lab">الحساب البنكي (آيبان)</label><input class="search-box" style="width:100%; direction:ltr; text-align:right;" name="bank_account" value="{{ f.get('bank_account', '') }}"></div>
+      <div><label class="set-lab">جوال المسؤول</label><input class="search-box" style="width:100%;" name="phone" value="{{ f.get('phone', '') }}"></div>
+    </div>
+    <label class="set-lab">ملاحظات</label><textarea class="search-box" style="width:100%; height:70px;" name="notes">{{ f.get('notes', '') }}</textarea>
+    <p class="set-hint">بعد الحفظ تُرفع أوراق المقاول (السجل التجاري، الشهادات، العقود...) من صفحته، وتُحفظ في «إدارة مقاولي الباطن ← المقاول ← أوراق المقاول».</p>
+  </div>
+  <div style="margin-top:1.25rem; display:flex; gap:10px;"><button type="submit" class="btn btn-primary">حفظ المقاول</button><a class="btn" href="{{ url_for('subcontractors_list') }}">إلغاء</a></div>
+</form>
+{% endblock %}

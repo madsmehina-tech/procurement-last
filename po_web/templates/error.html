@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>{{ title }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card" style="text-align:center;">
+      <p style="font-size:44px; font-weight:700; margin:0; color:var(--text-secondary);">{{ code }}</p>
+      <h1 style="margin-top:.25rem;">{{ title }}</h1>
+      <p class="login-sub">{{ text }}</p>
+      {% if detail %}<div class="err-detail"><b>تفاصيل تقنية (تظهر للمدير فقط):</b><br>{{ detail }}</div>{% endif %}
+      <a class="btn btn-primary" href="{{ url_for('dashboard') }}" style="margin-top:16px; width:auto; display:inline-flex;">الرجوع للرئيسية</a>
+    </div>
+  </div>
+</body>
+</html>

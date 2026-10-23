@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% set zwsp = "​" %}
+{% set active = "archive" %}
+{% block title %}أرشيف الدفعات والحركات المالية{% endblock %}
+{% block subtitle %}كل دفعة وحركة منفّذة بفولدرها وملفاتها · إدارة مقاولي الباطن ← المقاول ← الدفعات والحركات المالية ← السنة{% endblock %}
+{% block page_actions %}<a class="btn" href="{{ url_for('archive_list') }}">&rarr; أرشيف معاملات المستخلصات</a>{% endblock %}
+{% block content %}
+<form method="get" class="card" style="padding:14px 16px; margin-bottom:1rem; display:grid; grid-template-columns: 2fr 1fr auto; gap:10px; align-items:end;">
+  <div><label class="set-lab" style="margin-top:0;">المقاول</label><select class="search-box" name="sub" style="width:100%;"><option value="">كل المقاولين</option>{% for s in subs %}<option value="{{ s.SubcontractorID }}" {{ 'selected' if f.sub == s.SubcontractorID else '' }}>{{ s.Name }}</option>{% endfor %}</select></div>
+  <div><label class="set-lab" style="margin-top:0;">السنة</label><select class="search-box" name="year" style="width:100%;"><option value="">كل السنوات</option>{% for y in years %}<option {{ 'selected' if f.year == y else '' }}>{{ y }}</option>{% endfor %}</select></div>
+  <div style="display:flex; gap:8px;"><button class="btn btn-primary" type="submit">تطبيق</button><a class="btn" href="{{ url_for('payments_archive') }}">مسح</a></div>
+</form>
+<div class="card"><div class="tbl-wrap"><table class="list">
+  <thead><tr><th>التاريخ</th><th>المقاول</th><th>النوع</th><th>رقم الدفعة</th><th>البيان / الوصف</th><th>المبلغ</th><th>الملفات والفولدر</th></tr></thead>
+  <tbody>
+  {% for r in rows %}<tr><td style="white-space:nowrap;"><bdi dir="ltr">{{ r.date.strftime('%Y-%m-%d') if r.date else '' }}</bdi></td>
+    <td><a href="{{ url_for('subcontractor_detail', sub_id=r.sub_id) }}#ledger">{{ r.sub_name }}</a></td><td>{{ r.kind }}</td><td>{{ r.pay_no or '—' }}</td>
+    <td style="word-break:normal; overflow-wrap:break-word;">{{ r.desc }}{% if r.certs %}<br><small style="color:var(--text-secondary);">مستخلصات: {{ r.certs|join('، ') }}</small>{% endif %}</td>
+    <td><b>{{ '{:,.2f}'.format(r.amount) }}</b></td>
+    <td style="min-width:260px;">{% for d in r.docs %}<a href="{{ url_for('document_view', doc_id=d.DocID) }}" target="_blank" style="display:block; font-size:12.5px;">{{ d.DocType }} · {{ d.OriginalName }}</a>{% else %}<span class="badge neutral">بلا ملف</span>{% endfor %}
+      {% if r.folder %}<small style="display:block; margin-top:4px; color:var(--text-secondary); word-break:normal; overflow-wrap:break-word;">{{ r.folder|replace('/', '/' ~ zwsp) }}</small>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="7" style="text-align:center; color:var(--text-secondary); padding:28px;">لا توجد دفعات أو حركات منفّذة.</td></tr>{% endfor %}
+  </tbody></table></div></div>
+{% endblock %}

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% set active = "compare" %}
+{% set step_now = 3 %}
+{% set quotes = [q] %}
+{% block title %}مراجعة عرض {{ q.PartyName }}{% endblock %}
+{% block subtitle %}الخطوة 3: تأكد من البنود المقروءة قبل المطابقة · {{ c.Title }}{% endblock %}
+{% block page_actions %}<a class="btn" href="{{ url_for('compare_view', compare_id=c.CompareID) }}">&rarr; المقارنة</a>{% endblock %}
+{% block content %}
+{% include "_compare_css.html" %}{% include "_compare_steps.html" %}
+{% if unnamed %}<div class="warn-box"><b>اسم المورد غير محدد.</b> لم يُعرف من الملف: اكتب اسم المورد أو المقاول في خانة «الطرف» بالأسفل قبل المطابقة والترسية.</div>{% endif %}
+{% if q.Engine == 'ocr' %}<div class="warn-box">قُرئ هذا العرض بالتعرف الضوئي (OCR): راجع كل اسم ورقم مع الملف الأصلي بجانبه.</div>{% endif %}
+{% if not lines %}<div class="warn-box">لم تُقرأ بنود من هذا العرض. أضف الأسطر يدويًا بالأسفل أو الصق جدولًا من Excel (البند، الوحدة، الكمية، السعر).</div>{% endif %}
+<div style="display:grid; grid-template-columns:{{ 'minmax(0,1.35fr) minmax(0,1fr)' if docs else '1fr' }}; gap:16px; align-items:start;">
+<form method="post" action="{{ url_for('compare_quote_save', compare_id=c.CompareID, quote_id=q.QuoteID) }}" class="cp-box" id="qform">
+  <h3 style="margin:0 0 10px;">{{ q.PartyName }}</h3>
+  <div class="form-2" style="{{ 'background:#FFF8E5; padding:10px; border-radius:10px; margin-bottom:10px;' if unnamed else '' }}">
+    <div><label class="set-lab" style="margin-top:0;">نوع الطرف</label><select class="inp" name="party_kind" id="pk" {{ '' if editable else 'disabled' }}><option value="supplier" {{ 'selected' if q.PartyKind != 'contractor' else '' }}>مورد</option><option value="contractor" {{ 'selected' if q.PartyKind == 'contractor' else '' }}>مقاول</option></select></div>
+    <div><label class="set-lab" style="margin-top:0;">اسم المورد / المقاول</label><input class="inp" name="party" id="party" list="dl-party" autocomplete="off" required value="{{ '' if unnamed else q.PartyName }}" placeholder="{{ q.PartyName if unnamed else '' }}" {{ '' if editable else 'disabled' }}><datalist id="dl-party"></datalist></div></div>
+  <script>(function () { const S = {{ suppliers|tojson }}, C = {{ contractors|tojson }}, k = document.getElementById('pk'), dl = document.getElementById('dl-party');
+    const fill = () => dl.replaceChildren(...((k.value === 'contractor' ? C : S).map(n => Object.assign(document.createElement('option'), {value: n})))); k.addEventListener('change', fill); fill(); })();</script>
+  <div class="form-3"><div><label class="set-lab" style="margin-top:0;">رقم العرض</label><input class="inp" name="quote_no" value="{{ q.QuoteNo or '' }}" maxlength="60" {{ '' if editable else 'disabled' }}></div>
+    <div><label class="set-lab" style="margin-top:0;">تاريخ العرض</label><input class="inp" type="date" name="quote_date" value="{{ q.QuoteDate.strftime('%Y-%m-%d') if q.QuoteDate else '' }}" {{ '' if editable else 'disabled' }}></div>
+    <div><label class="set-lab" style="margin-top:0;">الأسعار شاملة الضريبة؟</label><select class="inp" name="vat" {{ '' if editable else 'disabled' }}><option value="">— حدّد —</option><option value="no" {{ 'selected' if q.VatIncluded == 'no' else '' }}>غير شاملة</option><option value="yes" {{ 'selected' if q.VatIncluded == 'yes' else '' }}>شاملة (15%)</option></select></div></div>
+  <div class="form-3"><div><label class="set-lab">شروط الدفع</label><input class="inp" name="payment_terms" value="{{ q.PaymentTerms or '' }}" maxlength="150" {{ '' if editable else 'disabled' }}></div>
+    <div><label class="set-lab">مدة التوريد (يوم)</label><input class="inp" type="number" name="delivery_days" value="{{ q.DeliveryDays if q.DeliveryDays is not none else '' }}" {{ '' if editable else 'disabled' }}></div>
+    <div><label class="set-lab">صلاحية العرض</label><input class="inp" type="date" name="valid_until" value="{{ q.ValidUntil.strftime('%Y-%m-%d') if q.ValidUntil else '' }}" {{ '' if editable else 'disabled' }}></div></div>
+  <label class="set-lab">إجمالي العرض كما كُتب (للتحقق من القراءة)</label><input class="inp num" type="number" step="any" name="declared_total" id="declared" dir="ltr" value="{{ q.DeclaredTotal if q.DeclaredTotal is not none else '' }}" {{ '' if editable else 'disabled' }} placeholder="اختياري">
+  <h4 style="margin:16px 0 8px;">البنود المقروءة ({{ lines|length }})</h4>
+  <div class="cp-ln h"><span>#</span><span>البند كما كُتب</span><span>الوحدة</span><span>الكمية</span><span>سعر الوحدة</span><span>الإجمالي</span><span></span></div>
+  <div id="rows">{% for l in lines %}<div class="cp-ln"><span style="color:var(--text-secondary);">{{ loop.index }}</span><input class="inp" name="name" value="{{ l.RawName }}" {{ '' if editable else 'disabled' }}><input class="inp" name="unit" value="{{ l.Unit or '' }}" {{ '' if editable else 'disabled' }}>
+    <input class="inp num r-qty" type="number" step="any" name="qty" value="{{ l.Qty }}" dir="ltr" {{ '' if editable else 'disabled' }}><input class="inp num r-price" type="number" step="any" name="price" value="{{ l.UnitPrice }}" dir="ltr" {{ '' if editable else 'disabled' }}>
+    <b class="r-tot" dir="ltr" style="text-align:center;">0</b>{% if editable %}<button type="button" class="btn" onclick="this.parentNode.remove(); calc();" title="حذف السطر">×</button>{% else %}<span></span>{% endif %}</div>{% endfor %}</div>
+  {% if editable %}<button type="button" class="btn" id="addRow" style="margin-top:6px;">+ إضافة سطر</button>
+  <label class="set-lab">أو ألصق أسطرًا إضافية من Excel</label><textarea class="inp" name="paste" rows="2" placeholder="البند ⇥ الوحدة ⇥ الكمية ⇥ السعر"></textarea>{% endif %}
+  <div class="totals" style="margin-top:12px; width:100%;"><div class="t-row"><span>مجموع الأسطر (كمية × سعر)</span><b id="sum" dir="ltr">0.00</b></div><div class="t-row"><span>الفرق عن إجمالي العرض المكتوب</span><b id="diff" dir="ltr">—</b></div></div>
+  <label class="set-lab">ملاحظات</label><input class="inp" name="notes" value="{{ q.Notes or '' }}" maxlength="255" {{ '' if editable else 'disabled' }}>
+  {% if editable and can('compare.edit') %}<div style="display:flex; gap:10px; margin-top:16px;"><button class="btn btn-primary btn-lg" type="submit" name="next" value="match">حفظ ← مطابقة البنود</button><button class="btn btn-lg" type="submit">حفظ</button></div>{% endif %}
+</form>
+{% if docs %}<div class="cp-box" style="position:sticky; top:10px;"><h4 style="margin:0 0 8px;">الملف الأصلي</h4>
+  {% set d = docs[0] %}{% set ext = d.OriginalName.rsplit('.', 1)[-1].lower() %}
+  {% if ext in ('pdf', 'png', 'jpg', 'jpeg', 'webp', 'bmp') %}<iframe src="{{ url_for('document_view', doc_id=d.DocID) }}" style="width:100%; height:640px; border:1px solid #E5EAF0; border-radius:8px;"></iframe>
+  {% else %}<p class="set-hint">هذا النوع لا يُعرض داخل الصفحة.</p>{% endif %}
+  {% for x in docs %}<a href="{{ url_for('document_view', doc_id=x.DocID) }}" target="_blank" style="display:block; margin-top:6px;">{{ x.OriginalName }}</a>{% endfor %}</div>{% endif %}
+</div>
+<script>
+const rows = document.getElementById('rows'), fmt = n => (Number(n) || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+function calc() { let s = 0; rows.querySelectorAll('.cp-ln').forEach(r => { const t = (+r.querySelector('.r-qty').value || 0) * (+r.querySelector('.r-price').value || 0); r.querySelector('.r-tot').textContent = fmt(t); s += t; });
+  document.getElementById('sum').textContent = fmt(s); const d = +document.getElementById('declared').value; const el = document.getElementById('diff');
+  if (d) { const gap = d - s; el.textContent = fmt(gap); el.style.color = (Math.abs(gap) < 1 || Math.abs(d - s * 1.15) < 1) ? '#1A5E3C' : '#8A2A22'; } else { el.textContent = '—'; el.style.color = ''; } }
+rows.addEventListener('input', calc); document.getElementById('declared').addEventListener('input', calc);
+const add = document.getElementById('addRow'); if (add) add.addEventListener('click', () => { const d = document.createElement('div'); d.className = 'cp-ln';
+  d.innerHTML = '<span></span><input class="inp" name="name"><input class="inp" name="unit"><input class="inp num r-qty" type="number" step="any" name="qty" dir="ltr"><input class="inp num r-price" type="number" step="any" name="price" dir="ltr"><b class="r-tot" dir="ltr" style="text-align:center;">0</b><button type="button" class="btn" onclick="this.parentNode.remove(); calc();">×</button>'; rows.appendChild(d); calc(); });
+calc();
+</script>
+{% endblock %}

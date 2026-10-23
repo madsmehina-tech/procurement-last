@@ -1,0 +1,39 @@
+; =============================================================================
+;  PO Web - settings file.   Copy this file to  config.ini  and edit the values.
+;  Lines starting with ; are comments. Paths may contain Arabic letters / spaces.
+; =============================================================================
+
+[database]
+; Full path of the shared Access database (a LOCAL path on the server PC is best)
+path = D:\PO System\PurchaseSystem.accdb
+
+[storage]
+; The archive root = a LOCAL folder on THIS (main) PC that you also share on the network.
+; The system creates  الموردين\...  and  المقاولين\...  inside it automatically.
+archive_root = D:\PO_Archive
+; Old uploads folder from before the archive existed (read-only fallback). Optional.
+legacy_uploads = D:\po_web\uploads
+; How the OTHER PCs reach that same folder (shown in the app so the team can open it in Explorer)
+share_path = \\SERVER\PO_Archive
+max_upload_mb = 50
+; Dated copies of the database made before every update of its structure (keep this on ANOTHER disk if you can)
+backup_dir = E:\PO_Backup\db
+backup_keep = 20
+
+[server]
+host = 0.0.0.0
+port = 5000
+threads = 8
+log_dir = D:\po_web\logs
+session_hours = 12
+
+[ocr]
+; Reading photos/scans of quotes. Install Tesseract (with Arabic) and, if it is not found automatically, write its full path:
+; tesseract_path = C:\Program Files\Tesseract-OCR\tesseract.exe
+language = ara+eng
+mode = auto
+
+[pdf]
+; PDF of every purchase order is made with Microsoft Edge / Google Chrome (found automatically). Only if not found:
+; browser_path = C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe
+mode = auto

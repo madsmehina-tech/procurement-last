@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% set active = "settings_archive" %}
+{% block title %}صحة الأرشيف{% endblock %}
+{% block subtitle %}فحص للقراءة فقط: هل كل ملف تعرفه القاعدة موجود، وهل كل ملف على القرص معروف · Archive integrity{% endblock %}
+{% block content %}
+{% include "_settings_nav.html" %}
+<div class="kpi-grid">
+  <div class="kpi-card"><p class="kpi-label">سجلات المستندات</p><p class="kpi-value">{{ r.records }}</p></div>
+  <div class="kpi-card"><p class="kpi-label">ملفات على القرص</p><p class="kpi-value">{{ r.files_on_disk }}</p></div>
+  <div class="kpi-card {{ 'danger' if r.missing else '' }}"><p class="kpi-label">سجلات بلا ملف على القرص</p><p class="kpi-value">{{ r.missing|length }}</p></div>
+  <div class="kpi-card {{ 'warning' if r.orphans else '' }}"><p class="kpi-label">ملفات لا تعرفها القاعدة</p><p class="kpi-value">{{ r.orphans|length }}</p></div>
+</div>
+<p class="set-hint" style="margin-bottom:1rem;">مجلد الأرشيف: <bdi>{{ root }}</bdi> · هذه الصفحة لا تغيّر ولا تحذف شيئًا.</p>
+
+<div class="card" style="margin-bottom:1.5rem;">
+  <div class="card-header">سجلات تشير إلى ملف غير موجود ({{ r.missing|length }})</div>
+  {% if r.missing %}<table class="list"><thead><tr><th>السجل</th><th>المكان</th><th>المسار المسجّل</th></tr></thead><tbody>
+    {% for m in r.missing[:100] %}<tr><td>{{ m.what }}</td><td>{{ m.where }}</td><td dir="ltr" style="text-align:right;">{{ m.path }}</td></tr>{% endfor %}</tbody></table>
+  {% else %}<p style="padding:20px 24px; margin:0; color:var(--success);">✓ كل سجل له ملفه.</p>{% endif %}
+</div>
+
+<div class="card" style="margin-bottom:1.5rem;">
+  <div class="card-header">أوامر الشراء</div>
+  <table class="list"><tbody>
+    <tr><td>أوامر بلا مجلد أرشيف</td><td>{{ r.orders.no_folder|length }}</td><td>{{ r.orders.no_folder[:8]|join('، ') }}</td></tr>
+    <tr><td>أوامر بلا ملف PDF محفوظ</td><td>{{ r.orders.no_pdf|length }}</td><td>{{ r.orders.no_pdf[:8]|join('، ') }}{% if r.orders.no_pdf %}<br><small class="set-hint">لإنشائها دفعة واحدة: <code>python tools\make_po_pdfs.py</code> أو زر «إنشاء PDF» في صفحة كل أمر.</small>{% endif %}</td></tr>
+    <tr><td>أوامر بلا نسخة بيانات</td><td>{{ r.orders.no_data|length }}</td><td>{{ r.orders.no_data[:8]|join('، ') }}</td></tr>
+  </tbody></table>
+</div>
+
+{% if r.odd_status %}<div class="card" style="margin-bottom:1.5rem;">
+  <div class="card-header">مستخلصات بحالة غير معروفة ({{ r.odd_status|length }})</div>
+  <table class="list"><tbody>{% for g in r.odd_status %}<tr><td><a href="{{ url_for('certificate_detail', cert_id=g.id) }}">مستخلص #{{ g.id }}</a></td><td>«{{ g.status }}»</td></tr>{% endfor %}</tbody></table>
+  <p class="set-hint" style="padding:12px 24px;">تظهر كـ«مُدخَل» ولا تُصرف حتى تُصحَّح. أرسل القائمة لمسؤول النظام لتحديد حالتها الصحيحة.</p>
+</div>{% endif %}
+
+<div class="card">
+  <div class="card-header">ملفات على القرص لا تعرفها القاعدة ({{ r.orphans|length }}{{ '+' if r.orphans|length >= 500 else '' }})</div>
+  {% if r.orphans %}<table class="list"><tbody>{% for p in r.orphans[:100] %}<tr><td dir="ltr" style="text-align:right;">{{ p }}</td></tr>{% endfor %}</tbody></table>
+  <p class="set-hint" style="padding:12px 24px;">قد تكون ملفات نُسخت يدويًا إلى المجلد. لن تظهر في النظام حتى تُرفع من صفحتها.</p>
+  {% else %}<p style="padding:20px 24px; margin:0; color:var(--success);">✓ لا توجد ملفات يتيمة.</p>{% endif %}
+</div>
+{% endblock %}

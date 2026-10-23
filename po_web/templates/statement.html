@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% set active = "subcontractors" %}
+{% block title %}كشف حساب — {{ sub.Name }}{% endblock %}
+{% block subtitle %}مدين: ما يستحقه المقاول · دائن: ما صُرف له أو نُزِّل عليه · الرصيد = دائن − مدين{% endblock %}
+{% block page_actions %}
+<a class="btn" href="{{ url_for('subcontractor_detail', sub_id=sub.SubcontractorID) }}#ledger">&rarr; ملف المقاول</a>
+<a class="btn" href="{{ url_for('statement_print', sub_id=sub.SubcontractorID, **request.args) }}" target="_blank">طباعة</a>
+<a class="btn" href="{{ url_for('statement_xlsx', sub_id=sub.SubcontractorID, **request.args) }}">تصدير Excel</a>
+<a class="btn" href="{{ url_for('statement_pdf', sub_id=sub.SubcontractorID, **request.args) }}">تصدير PDF</a>
+{% endblock %}
+{% block content %}
+<form method="get" class="card" style="padding:16px 18px; margin-bottom:1rem; display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; gap:12px; align-items:end;">
+  <div><label class="set-lab" style="margin-top:0;">من تاريخ</label><input class="search-box" type="date" name="date_from" value="{{ f.date_from }}" style="width:100%;"></div>
+  <div><label class="set-lab" style="margin-top:0;">إلى تاريخ</label><input class="search-box" type="date" name="date_to" value="{{ f.date_to }}" style="width:100%;"></div>
+  <div><label class="set-lab" style="margin-top:0;">المشروع</label><select class="search-box" name="project" style="width:100%;"><option value="">كل المشاريع</option>{% for p in d.projects %}<option {{ 'selected' if f.project == p else '' }}>{{ p }}</option>{% endfor %}</select></div>
+  <div><label class="set-lab" style="margin-top:0;">الموقع</label><select class="search-box" name="site" style="width:100%;"><option value="">كل المواقع</option>{% for s in d.sites %}<option {{ 'selected' if f.site == s else '' }}>{{ s }}</option>{% endfor %}</select></div>
+  <div style="display:flex; gap:8px;"><button class="btn btn-primary" type="submit">تطبيق</button><a class="btn" href="{{ url_for('statement_view', sub_id=sub.SubcontractorID) }}">مسح</a></div>
+</form>
+
+<section class="cy-kpis" style="grid-template-columns: repeat(4, minmax(0, 1fr));">
+  <div class="cy-card"><div class="cy-l">إجمالي المدين (المستحق)</div><div class="cy-v">{{ '{:,.0f}'.format(d.debit) }}</div><div class="cy-h">مستخلصات واستحقاقات</div></div>
+  <div class="cy-card"><div class="cy-l">إجمالي الدائن (المصروف)</div><div class="cy-v ok">{{ '{:,.0f}'.format(d.credit) }}</div><div class="cy-h">دفعات منفّذة وخصومات</div></div>
+  <div class="cy-card"><div class="cy-l">الرصيد</div><div class="cy-v" style="color:{{ '#8A2A22' if d.balance < 0 else '#1A5E3C' }};"><bdi dir="ltr">{{ '{:,.0f}'.format(d.balance) }}</bdi></div><div class="cy-h">{{ d.note }}</div></div>
+  <div class="cy-card"><div class="cy-l">الحركات المعروضة</div><div class="cy-v">{{ d.lines|length }}</div><div class="cy-h">{{ f.label }}</div></div>
+</section>
+
+<div class="card" style="padding:0;"><div class="tbl-wrap">
+  <table class="list" style="table-layout:fixed; min-width:760px;">
+    <colgroup><col style="width:6%"><col style="width:12%"><col style="width:44%"><col style="width:13%"><col style="width:13%"><col style="width:12%"></colgroup>
+    <thead><tr><th>مسلسل</th><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead>
+    <tbody>
+    {% if f.date_from %}<tr style="background:#FBFAF7;"><td></td><td></td><td><b>رصيد سابق</b></td><td></td><td></td><td><b><bdi dir="ltr">{{ '{:,.2f}'.format(d.opening) }}</bdi></b></td></tr>{% endif %}
+    {% for l in d.lines %}
+      <tr><td style="color:var(--text-secondary);">{{ l.seq }}</td><td>{{ l.date.strftime('%Y-%m-%d') if l.date.year > 1 else '' }}</td><td style="word-break:normal; overflow-wrap:break-word;">{{ l.desc }}</td>
+        <td>{{ '{:,.2f}'.format(l.debit) if l.debit else '' }}</td><td style="color:#1A5E3C;">{{ '{:,.2f}'.format(l.credit) if l.credit else '' }}</td>
+        <td><b style="color:{{ '#8A2A22' if l.balance < 0 else '#1A5E3C' if l.balance > 0 else 'inherit' }};"><bdi dir="ltr">{{ '{:,.2f}'.format(l.balance) }}</bdi></b></td></tr>
+    {% else %}<tr><td colspan="6" style="text-align:center; color:var(--text-secondary); padding:28px;">لا توجد حركات منفّذة مطابقة.</td></tr>{% endfor %}
+    </tbody>
+    <tfoot><tr style="background:#F7F5EF; font-weight:700;"><td colspan="3">الإجمالي</td><td>{{ '{:,.2f}'.format(d.debit) }}</td><td>{{ '{:,.2f}'.format(d.credit) }}</td><td><bdi dir="ltr">{{ '{:,.2f}'.format(d.balance) }}</bdi></td></tr></tfoot>
+  </table>
+</div></div>
+<p class="set-hint">الرصيد بالسالب: للمقاول مستحقات علينا · بالموجب: صُرف له أكثر من المستحق · صفر: لا فروقات. لا تظهر في الكشف إلا الدفعات التي حُدِّد لها «تم التحويل».</p>
+{% endblock %}
