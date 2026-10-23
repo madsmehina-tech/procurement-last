@@ -217,3 +217,50 @@ def test_loading_many_certificates_is_not_quadratic(world):
     certs = {g["CertificateID"]: g for g in cs.load()[2]}
     assert certs[ids[0]]["Paid"] == 500.0 and certs[ids[0]]["Remaining"] == 500.0
     assert certs[ids[-1]]["Paid"] == 0.0 and certs[ids[-1]]["Remaining"] == 1000.0
+
+
+# ------------------------------------------------------------------ closing with a balance = settled, visibly (the owner's choice «ب»)
+def _figures(sub):
+    import contracts_service as cs
+    import ledger_service as ledger
+    subs, contracts, certs, _p = cs.load()
+    return cs.sub_figures(sub, contracts, certs), ledger.balance_of(sub)
+
+
+def test_closing_with_a_balance_settles_it_visibly_and_all_figures_agree(client, world):
+    import ledger_service as ledger
+    a = _ready_to_close(world)
+    h.add_cert(world, 30000, no=2)                                              # another, open certificate of the same contractor
+    before_fig, before_bal = _figures(world)
+    assert before_fig["remaining"] == 130000.0
+    client.post("/archive/%d/close" % a, data={"unpaid_ok": "1"})
+    entries = fake_db.query("SELECT * FROM [LedgerEntries] WHERE [SettledCertID] = ?", (a,))
+    assert len(entries) == 1 and entries[0]["Amount"] == 100000.0 and entries[0]["Kind"] == ledger.K_CREDIT and entries[0]["Status"] == ledger.S_DONE
+    fig, bal = _figures(world)
+    assert fig["remaining"] == 30000.0                                           # only the other certificate is still owed
+    assert abs(abs(bal) - fig["remaining"]) < 0.01                               # the account statement says the same (balance = credit - debit, negative = owed)
+    client.post("/archive/%d/close" % a, data={"unpaid_ok": "1"})                # closing twice must not settle twice
+    assert fake_db.scalar("SELECT COUNT(*) FROM [LedgerEntries] WHERE [SettledCertID] = ?", (a,)) == 1
+
+
+def test_reopening_takes_the_settlement_back(client, world):
+    a = _ready_to_close(world)
+    client.post("/archive/%d/close" % a, data={"unpaid_ok": "1"})
+    client.post("/archive/%d/reopen" % a)
+    assert fake_db.scalar("SELECT COUNT(*) FROM [LedgerEntries] WHERE [SettledCertID] = ?", (a,)) == 0
+    assert _figures(world)[0]["remaining"] == 100000.0
+
+
+def test_a_settlement_line_cannot_be_deleted_by_hand(client, world):
+    a = _ready_to_close(world)
+    client.post("/archive/%d/close" % a, data={"unpaid_ok": "1"})
+    eid = fake_db.scalar("SELECT [EntryID] FROM [LedgerEntries] WHERE [SettledCertID] = ?", (a,))
+    client.post("/ledger/%d/delete" % eid)
+    assert fake_db.scalar("SELECT COUNT(*) FROM [LedgerEntries] WHERE [SettledCertID] = ?", (a,)) == 1
+
+
+def test_a_fully_paid_transaction_creates_no_settlement(client, world):
+    a = _ready_to_close(world)
+    _pay_form(client, a)
+    client.post("/archive/%d/close" % a)
+    assert fake_db.scalar("SELECT COUNT(*) FROM [LedgerEntries]", default=0) == 0

@@ -163,6 +163,29 @@ def _store_contract_files(contract_id, files, doc_type):
     return n
 
 
+def _generated_contract_rule(c, contract_no, status):
+    """A contract made by the system keeps its number and value (they come from the wizard and are printed in the contract); once signed it cannot
+    go back to a draft; and it becomes «ساري» only when its signed copy has been uploaded. Returns the message, or None when the change is allowed."""
+    if c.get("Origin") != "مولَّد":
+        return None
+    if norm_key(contract_no or "") != norm_key(c.get("ContractNo") or ""):
+        return "رقم العقد المولَّد من النظام لا يُغيَّر (هو مطبوع في العقد)."
+    try:
+        value = _float("contract_value", "قيمة العقد")
+    except mg.MoneyError as e:
+        return str(e)
+    if value is not None and abs(value - float(c.get("ContractValue") or 0)) > 0.005:
+        return "قيمة العقد المولَّد من النظام لا تُغيَّر من هنا (هي مطبوعة في العقد). عدّلها من «تعديل بيانات العقد» وهو مسودة، أو أنشئ ملحقاً."
+    old = c.get("Status")
+    if old in ("ساري", "موقوف", "منتهي", "مفسوخ") and status in ("مسودة", "صادر"):
+        return "عقد وُقّع لا يعود مسودة أو صادراً."
+    if status == "ساري" and old != "ساري":
+        signed = [d for d in db.query("SELECT [DocType], [IsCurrent] FROM [Documents] WHERE [EntityType] = ? AND [EntityKey] = ?", ("CONTRACT", str(c["ContractID"]))) if d["IsCurrent"] and d["DocType"] == "العقد الموقّع"]
+        if not signed:
+            return "لا يصير العقد «ساري» قبل رفع نسخته الموقّعة."
+    return None
+
+
 @route("/contracts/<int:contract_id>/edit", methods=["POST"])
 @auth.login_required
 def contract_edit(contract_id):
@@ -173,6 +196,10 @@ def contract_edit(contract_id):
     sub_id = rows[0]["SubcontractorID"]
     contract_no = clean_spaces(request.form.get("contract_no", ""))
     status = request.form.get("status", "ساري")
+    blocked = _generated_contract_rule(rows[0], contract_no, status)
+    if blocked:
+        flash(blocked)
+        return _back(sub_id)
     try:
         value, retention, advance = _float("contract_value", "قيمة العقد"), _float("retention_pct", "نسبة الاستقطاع", 100), _float("advance_pct", "نسبة الدفعة المقدمة", 100)
     except ValueError:
@@ -209,10 +236,14 @@ def contract_delete(contract_id):
     if certs:
         flash("لا يُحذف عقد له %d مستخلص. احذف مستخلصاته أولًا إن كانت غير مصروفة، أو غيّر حالته إلى «منتهي»." % len(certs))
         return _back(c["SubcontractorID"])
+    if c.get("Origin") == "مولَّد" and c.get("Status") != "مسودة":
+        flash("لا يُحذف عقد مولَّد بعد إصداره أو توقيعه (هو وثيقة). غيّر حالته إلى «مفسوخ» أو «منتهي» إن لزم.")
+        return _back(c["SubcontractorID"])
     folder = c.get("ArchiveFolder")
     with db.transaction() as tx:
-        tx.execute("DELETE FROM [ContractSites] WHERE [ContractID] = ?", (contract_id,))
-        tx.execute("DELETE FROM [Contracts] WHERE [ContractID] = ?", (contract_id,))
+        for child in ("ContractSites", "ContractLines", "ContractTranches", "ContractData", "ContractHistory"):      # nothing is left behind pointing at a deleted contract
+            tx.execute("DELETE FROM [%s] WHERE [ContractID] = ?" % child, (contract_id,))
+        tx.execute("DELETE FROM [Contracts] WHERE [ContractID] = ?" , (contract_id,))
     trashed = archive.trash_folder(folder) if folder else None
     archive.forget_documents("CONTRACT", contract_id)
     flash("حُذف العقد%s." % (" ونُقلت ملفاته إلى سلة المحذوفات في الأرشيف" if trashed else ""))

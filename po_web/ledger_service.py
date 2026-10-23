@@ -89,6 +89,31 @@ def add_entry(sub_id, kind, category, description, amount, when, project, site, 
              datetime.now() if status == S_DONE else None, (bank_ref or "")[:80], pay_no, user, datetime.now()))
 
 
+SETTLEMENT_CATEGORY = "تسوية أخرى"
+
+
+def settle_on_close(tx, cert, amount, user):
+    """The transaction of a certificate is closed while `amount` is still unpaid: ONE visible credit line in the contractor's statement settles it
+    (it is not a bank payment and has no payment number). Reopening the transaction removes exactly this line (see remove_settlement)."""
+    amount = _r2(amount)
+    if amount <= 0:
+        return None
+    text = "تسوية عند إقفال المعاملة: المتبقي من %s لم يُصرف وأُقفلت المعاملة" % _cert_text(cert)
+    return tx.execute_insert(
+        "INSERT INTO [LedgerEntries] ([SubcontractorID], [Kind], [Category], [Description], [Amount], [EntryDate], [ProjectID], [SiteID], [ProjectName], [SiteName], "
+        "[Status], [ExecAt], [SettledCertID], [CreatedBy], [CreatedAt]) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (cert["SubcontractorID"], K_CREDIT, SETTLEMENT_CATEGORY, text[:250], amount, datetime.now(), cert.get("ProjectID"), cert.get("SiteID"),
+         cert.get("Project") or None, cert.get("SiteName") or None, S_DONE, datetime.now(), cert["CertificateID"], user, datetime.now()))
+
+
+def remove_settlement(tx, cert_id):
+    """Reopening a closed transaction takes back the settlement line it created. Returns the amount that was settled (0 when there was none)."""
+    rows = tx.query("SELECT [EntryID], [Amount] FROM [LedgerEntries] WHERE [SettledCertID] = ?", (cert_id,))
+    for r in rows:
+        tx.execute("DELETE FROM [LedgerEntries] WHERE [EntryID] = ?", (r["EntryID"],))
+    return _r2(sum(r["Amount"] or 0 for r in rows))
+
+
 def execute_entry(entry_id, when, bank_ref, user):
     """«تم التحويل» for a direct payment that was only recorded: from now on it is in the statement."""
     rows = db.query("SELECT * FROM [LedgerEntries] WHERE [EntryID] = ?", (entry_id,))
@@ -111,6 +136,8 @@ def delete_entry(entry_id):
     e = rows[0]
     if e.get("CycleID"):
         raise LedgerError("هذه الحركة مرتبطة بدورة صرف فلا تُحذف.")
+    if e.get("SettledCertID"):
+        raise LedgerError("هذه «تسوية عند إقفال المعاملة»؛ تُلغى بإعادة فتح المعاملة من الأرشيف (بصلاحية أعلى).")
     db.execute("DELETE FROM [LedgerEntries] WHERE [EntryID] = ?", (entry_id,))
     return e["SubcontractorID"]
 
