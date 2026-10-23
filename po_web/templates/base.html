@@ -12,8 +12,10 @@
   <div class="layout">
     <button class="nav-toggle no-print" type="button" aria-controls="sidebar" aria-expanded="false">☰ القائمة</button>
     <aside class="sidebar" id="sidebar" aria-label="القائمة الرئيسية">
-      <div class="brand">إدارة العقود والمشتريات</div>
+      <a class="brand" href="{{ url_for('dashboard') }}" style="display:block;">إدارة العقود والمشتريات</a>
       <div class="brand-sub">شركة الهضب للتجارة والمقاولات</div>
+
+      <a class="nav-item {{ 'active' if active == 'dashboard' else '' }}" {{ 'aria-current="page"'|safe if active == 'dashboard' else '' }} href="{{ url_for('dashboard') }}">الرئيسية · لوحة التحكم</a>
 
       <div class="nav-section">المشتريات</div>
       {% if can('orders.create') %}<a class="nav-item {{ 'active' if active == 'order_new' else '' }}" {{ 'aria-current=\"page\"'|safe if active == 'order_new' else '' }} href="{{ url_for('order_new') }}">إنشاء أمر شراء</a>{% endif %}

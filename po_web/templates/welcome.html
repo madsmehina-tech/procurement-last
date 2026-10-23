@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set active = "dashboard" %}
 {% block title %}مرحبًا {{ current_user.FullName }}{% endblock %}
 {% block subtitle %}اختر ما تريد من القائمة الجانبية · Choose a section from the side menu{% endblock %}
 {% from "_attention.html" import attention_panel %}
