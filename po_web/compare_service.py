@@ -70,6 +70,15 @@ def _specs(s):
     return {n.rstrip(".") for n in re.findall(r"\d+(?:\.\d+)?", norm_text(s))}
 
 
+def _number_tuple(s):
+    """The sizes of an item name IN ORDER, with fractions: «بلوك 20×20×40» -> (20, 20, 40); «ماسورة 1 1/2» -> (1.5,); «ماسورة 1/2» -> (0.5,).
+    Two names with different tuples are different products (a 15×20×40 block is not a 20×20×40 block; a 1/2" pipe is not a 1" pipe)."""
+    t = unicodedata.normalize("NFKC", s or "").translate(_DIG)
+    t = re.sub(r"(\d+)\s+(\d+)\s*/\s*(\d+)", lambda m: str(int(m[1]) + int(m[2]) / (int(m[3]) or 1)), t)      # 1 1/2
+    t = re.sub(r"(\d+)\s*/\s*(\d+)", lambda m: str(int(m[1]) / (int(m[2]) or 1)), t)                              # 1/2
+    return tuple(float(n) for n in re.findall(r"\d+(?:\.\d+)?", t))
+
+
 def _tokens(s):
     return {t for t in norm_text(s).split() if t not in _STOP and not re.fullmatch(r"[\d.]+", t) and len(t) > 1}
 
@@ -86,19 +95,24 @@ def similarity(a, b):
     ga, gb = _trigrams(a), _trigrams(b)
     dice = 2 * len(ga & gb) / (len(ga) + len(gb)) if (ga and gb) else 0.0
     score = 0.55 * jac + 0.35 * dice
-    sa, sb = _specs(a), _specs(b)
-    if sa and sb:
-        if not (sa & sb):
+    na, nb = _number_tuple(a), _number_tuple(b)
+    differ = False
+    if na and nb:
+        if na == nb:
+            score = min(1.0, score + 0.10)                  # the same sizes, in the same order
+        elif not (set(na) & set(nb)):
             score *= 0.35                                    # 4×16 against 6×25: another cable
-        elif sa <= sb or sb <= sa:
-            score = min(1.0, score + 0.10)                  # 16 against 4×16: compatible
+            differ = True
         else:
-            score *= 0.7
-    elif sa or sb:
+            score *= 0.7                                     # 20×20×40 against 15×20×40, ½ against 1: another product
+            differ = True
+    elif na or nb:
         score *= 0.85
     la, lb = norm_text(a).split(), norm_text(b).split()
     if la and lb and la[0] == lb[0] and len(la[0]) > 2 and score >= 0.3:
         score = min(1.0, score + 0.04)                       # the same head word (كابل ... كابل ...)
+    if differ:
+        score = min(score, 0.75)                             # never above the «review» line: different sizes are NEVER matched automatically
     if norm_text(a) == norm_text(b) and norm_text(a):
         score = 1.0
     return round(min(score, 1.0), 3)
@@ -474,18 +488,19 @@ def analyze(compare_id):
             cells[q["QuoteID"]] = {"present": True, "line": l, "raw_price": l["UnitPrice"] or 0, "price": ex, "qty": l["Qty"] or 0, "total": round(ex * required, 2), "quoted_total": round((l["Qty"] or 0) * (l["UnitPrice"] or 0), 2),
                                    "qty_diff": bool(required and l["Qty"] and abs(l["Qty"] - required) > EPS), "unit_diff": bool(unit and l.get("Unit") and canonical_unit(l["Unit"]) != canonical_unit(unit)),
                                    "code": code, "pct": pct, "review": (l.get("Confidence") or 0) < AUTO_SCORE and not l.get("Locked"), "lowest": False, "no_price": ex <= 0}
-            if ex > 0:
+            if ex > 0 and not cells[q["QuoteID"]]["unit_diff"]:      # a price per ton cannot be compared with a price per kilo
                 prices.append(ex)
         low = min(prices) if prices else None
         for cell in cells.values():
-            cell["lowest"] = bool(cell.get("present") and low is not None and cell["price"] > 0 and abs(cell["price"] - low) < 1e-9 and len(prices) > 1)
+            cell["lowest"] = bool(cell.get("present") and low is not None and cell["price"] > 0 and not cell["unit_diff"] and abs(cell["price"] - low) < 1e-9 and len(prices) > 1)
         others_avg = round(sum(prices) / len(prices), 4) if prices else 0.0
         rows.append({"item": it, "name": it["Name"], "unit": unit, "required": required, "qty_fixed": bool(it.get("QtyFixed")), "cells": cells, "history": hist, "hist_avg": avg, "hist_source": hist_source,
                      "avg_offer": others_avg, "n_offers": len(prices), "spread": round((max(prices) / min(prices) - 1) * 100, 1) if len(prices) > 1 and min(prices) > 0 else 0.0})
     summary = []
     for q in quotes:
-        present = [r for r in rows if r["cells"][q["QuoteID"]].get("present") and not r["cells"][q["QuoteID"]].get("no_price")]
-        missing = [r for r in rows if not r["cells"][q["QuoteID"]].get("present")]
+        usable = lambda r: r["cells"][q["QuoteID"]].get("present") and not r["cells"][q["QuoteID"]].get("no_price") and not r["cells"][q["QuoteID"]].get("unit_diff")
+        present = [r for r in rows if usable(r)]
+        missing = [r for r in rows if not usable(r)]            # no cell, no price (price 0 / unreadable) or another unit: all count as MISSING and are completed at the others' average
         normalized = round(sum(r["cells"][q["QuoteID"]]["total"] for r in present), 2)
         completing = 0.0
         for r in missing:                                 # the missing items completed at the AVERAGE price of the offers that DO have them
@@ -505,14 +520,18 @@ def analyze(compare_id):
             flags.append("العرض منتهي الصلاحية")
         no_price = [r for r in rows if r["cells"][q["QuoteID"]].get("present") and r["cells"][q["QuoteID"]].get("no_price")]
         if no_price:
-            flags.append("%d بنود بلا سعر" % len(no_price))
+            flags.append("%d بنود بلا سعر (عُدّت ناقصة)" % len(no_price))
+        unit_diff = [r for r in rows if r["cells"][q["QuoteID"]].get("present") and r["cells"][q["QuoteID"]].get("unit_diff")]
+        if unit_diff:
+            flags.append("%d بنود بوحدة مختلفة عن المطلوبة فلا تُقارن (عُدّت ناقصة)" % len(unit_diff))
         reds = sum(1 for r in rows if r["cells"][q["QuoteID"]].get("code") == "high")
         very_low = sum(1 for r in rows if r["cells"][q["QuoteID"]].get("code") == "very-low")
         if very_low:
             flags.append("%d أسعار منخفضة جدًا عن المعتاد (تأكد من المواصفات)" % very_low)
         summary.append({"quote": q, "name": q["PartyName"], "normalized": normalized, "adjusted": round(normalized + completing, 2), "quoted": quoted, "completing": round(completing, 2),
                         "present": len(rows) - len(missing), "missing": [r["name"] for r in missing], "complete": round((len(rows) - len(missing)) / len(rows) * 100, 1) if rows else 0.0,
-                        "lowest_items": sum(1 for r in rows if r["cells"][q["QuoteID"]].get("lowest")), "red": reds, "very_low": very_low, "flags": flags})
+                        "lowest_items": sum(1 for r in rows if r["cells"][q["QuoteID"]].get("lowest")), "red": reds, "very_low": very_low, "flags": flags,
+                        "no_price": len(no_price), "unit_diff": len(unit_diff), "expired": bool(q.get("ValidUntil") and q["ValidUntil"] < datetime.now()), "vat_unknown": q.get("VatIncluded") not in ("yes", "no")})
     panel = _panel(summary)
     return {"compare": c, "quotes": quotes, "rows": rows, "summary": summary, "panel": panel, "review": sum(1 for r in rows for cell in r["cells"].values() if cell.get("review")),
             "confirmed": bool(c.get("Confirmed")), "n_items": len(rows)}
@@ -561,6 +580,14 @@ def award(compare_id, quote_id, reason, user=""):
         why.append("يغطي %d%% فقط من البنود" % win["complete"])
     if win["very_low"]:
         why.append("فيه أسعار منخفضة جدًا عن المعتاد")
+    if win["no_price"]:
+        why.append("فيه %d بنود بلا سعر" % win["no_price"])
+    if win["unit_diff"]:
+        why.append("فيه %d بنود بوحدة مختلفة" % win["unit_diff"])
+    if win["expired"]:
+        why.append("منتهي الصلاحية")
+    if win["vat_unknown"]:
+        why.append("الضريبة فيه غير محددة")
     if why and len(reason) < 5:
         raise CompareError("اكتب سبب الترسية: العرض الفائز " + " و".join(why) + ".")
     others = [s["adjusted"] for s in a["summary"] if s is not win]
