@@ -24,6 +24,7 @@ from datetime import datetime
 import contracts_service as cs
 import db
 import ledger_service as ledger
+import money_guards as mg
 from finance import ST_ENTERED, ST_IN_CYCLE, ST_PAID, row_amounts
 
 ST_DRAFT, ST_WAITING, ST_APPROVED, ST_DONE, ST_CANCELLED = "مسودة", "بانتظار قرار الإدارة", "معتمدة", "منفّذة", "ملغاة"
@@ -78,7 +79,9 @@ def history(cycle_id):
     """The full log of one cycle, newest first."""
     try:
         rows = db.query("SELECT * FROM [CycleLog] WHERE [CycleID] = ?", (cycle_id,))
-    except Exception:                                    # noqa - before the migration the table does not exist
+    except Exception as e:
+        if not mg.is_missing_table(e):
+            raise
         return []
     return sorted(rows, key=lambda r: r["LogID"], reverse=True)
 
@@ -111,7 +114,9 @@ def pending_entries():
     """Direct payments recorded («مسجّلة») and not executed, not inside another cycle: they can enter a new cycle."""
     try:
         rows = db.query("SELECT * FROM [LedgerEntries]")
-    except Exception:                                    # noqa - before the migration the table does not exist
+    except Exception as e:
+        if not mg.is_missing_table(e):
+            raise
         return []
     return [e for e in rows if e["Kind"] == ledger.K_CREDIT and e["Category"] == ledger.CAT_PAYMENT and e["Status"] == ledger.S_PENDING and not e.get("CycleID")]
 
@@ -128,8 +133,9 @@ def list_cycles():
     pays = db.query("SELECT [CycleID], [Amount] FROM [Payments]")
     try:
         pays = pays + [{"CycleID": e["CycleID"], "Amount": e["Amount"]} for e in db.query("SELECT * FROM [LedgerEntries]") if e.get("CycleID") and e["Status"] == ledger.S_DONE]
-    except Exception:                                    # noqa
-        pass
+    except Exception as e:
+        if not mg.is_missing_table(e):
+            raise
     out = []
     for c in cycles:
         mine = [d for d in decs if d["CycleID"] == c["CycleID"]]
@@ -179,7 +185,9 @@ def payment_statement(lines):
 def _entry_rows():
     try:
         return {e["EntryID"]: e for e in db.query("SELECT * FROM [LedgerEntries]")}
-    except Exception:                                    # noqa - before the migration the table does not exist
+    except Exception as e:
+        if not mg.is_missing_table(e):
+            raise
         return {}
 
 
@@ -372,7 +380,9 @@ def to_execution_stage(cycle_id, user=""):
 def _executed_entries(tx, cycle_id):
     try:
         return tx.query("SELECT [EntryID] FROM [LedgerEntries] WHERE [CycleID] = ? AND [Status] = ?", (cycle_id, ledger.S_DONE))
-    except Exception:                                    # noqa
+    except Exception as e:
+        if not mg.is_missing_table(e):
+            raise
         return []
 
 
@@ -407,6 +417,8 @@ def delete_cycle(cycle_id, user=""):
     """Allowed only while no transfer has been recorded in the cycle. Its certificates and recorded payments return to the open lists; the log stays."""
     with db.transaction() as tx:
         c = _cycle(tx, cycle_id)
+        if c["Status"] == ST_DONE and any((x["CycleNo"] or 0) > (c["CycleNo"] or 0) for x in tx.query("SELECT [CycleNo], [Status] FROM [PaymentCycles]") if x["Status"] != ST_CANCELLED):
+            raise CycleError("هذه ليست آخر دورة؛ توجد دورة لاحقة بُنيت على نتيجتها فلا تُحذف.")
         if tx.query("SELECT [PaymentID] FROM [Payments] WHERE [CycleID] = ?", (cycle_id,)) or _executed_entries(tx, cycle_id):
             raise CycleError("سُجّلت تحويلات في هذه الدورة فلا تُحذف. غيّر حالة تنفيذها إلى «لم يتم التنفيذ» أولاً إن أردت حذفها.")
         lines = tx.query("SELECT * FROM [CycleDecisions] WHERE [CycleID] = ?", (cycle_id,))
@@ -426,7 +438,7 @@ def delete_cycle(cycle_id, user=""):
 def _release(tx, d):
     """The line leaves the cycle: the certificate becomes «مُدخَل» again / the recorded payment waits for the next cycle."""
     if d.get("EntryID"):
-        tx.execute("UPDATE [LedgerEntries] SET [CycleID] = NULL WHERE [EntryID] = ? AND [Status] = ?", (d["EntryID"], ledger.S_PENDING))
+        tx.execute("UPDATE [LedgerEntries] SET [CycleID] = NULL WHERE [EntryID] = ? AND [Status] = ? AND [CycleID] = ?", (d["EntryID"], ledger.S_PENDING, d["CycleID"]))
     else:
         tx.execute("UPDATE [Certificates] SET [Status] = ?, [CycleID] = NULL WHERE [CertificateID] = ?", (ST_ENTERED, d["CertificateID"]))
 
@@ -560,6 +572,17 @@ def _sync_cycle_status(tx, cycle_id):
         tx.execute("UPDATE [PaymentCycles] SET [Status] = ?, [ClosedAt] = ? WHERE [CycleID] = ?", (ST_DONE, datetime.now(), cycle_id))
 
 
+def _back_into_cycle(tx, cycle_id, cert_id):
+    """Puts a certificate back inside the cycle (an execution was cleared). Refused when its transaction was closed meanwhile or other payments already cover it."""
+    c = tx.query("SELECT * FROM [Certificates] WHERE [CertificateID] = ?", (cert_id,))[0]
+    if c.get("ClosedAt"):
+        raise CycleError("المستخلص #%s أُقفلت معاملته في الأرشيف؛ لا يعود للدورة." % cert_id)
+    others = _r2(sum(p["Amount"] or 0 for p in tx.query("SELECT [Amount] FROM [Payments] WHERE [CertificateID] = ? AND ([CycleID] IS NULL OR [CycleID] <> ?)", (cert_id, cycle_id))))
+    if others >= row_amounts(c)[3] - EPS and others > 0:
+        raise CycleError("المستخلص #%s سُدِّد بالكامل بدفعة أخرى؛ لا يعود للدورة." % cert_id)
+    tx.execute("UPDATE [Certificates] SET [Status] = ?, [CycleID] = ?, [PaymentDate] = NULL WHERE [CertificateID] = ?", (ST_IN_CYCLE, cycle_id, cert_id))
+
+
 def _certificate_after(tx, cycle_id, cert_id, paid_at=None):
     """Status of the certificate after its transfer in this cycle was added, removed or cancelled."""
     g = tx.query("SELECT * FROM [Certificates] WHERE [CertificateID] = ?", (cert_id,))[0]
@@ -583,6 +606,10 @@ def _apply_exec(tx, cycle_id, d, state, paid_at, bank_ref, note, user, doc_id, w
         cert_id, approved = d["CertificateID"], _r2(d.get("ApprovedAmount"))
         tx.execute("DELETE FROM [Payments] WHERE [CycleID] = ? AND [CertificateID] = ?", (cycle_id, cert_id))
         if state == EX_DONE:
+            try:                                         # what was paid by OTHER means (a direct payment, another cycle) + this transfer must not exceed the certificate
+                mg.check_new_payment(tx, cert_id, approved)
+            except mg.MoneyError as e:
+                raise CycleError("المستخلص #%s: %s" % (cert_id, e))
             crow = tx.query("SELECT [ContractID], [SubcontractorID] FROM [Certificates] WHERE [CertificateID] = ?", (cert_id,))
             sub_id = (crow[0].get("SubcontractorID") if crow else None) or ((tx.query("SELECT [SubcontractorID] FROM [Contracts] WHERE [ContractID] = ?", (crow[0]["ContractID"],)) or [{}])[0].get("SubcontractorID") if crow and crow[0].get("ContractID") else None)
             tx.execute("INSERT INTO [Payments] ([CertificateID], [SubcontractorID], [PaidAt], [Amount], [BankRef], [CycleID], [DocID], [Note], [Statement], [PayNo], [CreatedBy], [CreatedAt]) "
@@ -639,7 +666,7 @@ def clear_group_execution(cycle_id, sub_id, user=""):
                 tx.execute("UPDATE [LedgerEntries] SET [Status] = ?, [CycleID] = ?, [ExecAt] = NULL, [PayNo] = NULL, [ArchiveFolder] = NULL WHERE [EntryID] = ?", (ledger.S_PENDING, cycle_id, l["EntryID"]))
             else:
                 tx.execute("DELETE FROM [Payments] WHERE [CycleID] = ? AND [CertificateID] = ?", (cycle_id, l["CertificateID"]))
-                tx.execute("UPDATE [Certificates] SET [Status] = ?, [CycleID] = ?, [PaymentDate] = NULL WHERE [CertificateID] = ?", (ST_IN_CYCLE, cycle_id, l["CertificateID"]))
+                _back_into_cycle(tx, cycle_id, l["CertificateID"])
             tx.execute("UPDATE [CycleDecisions] SET [ExecStatus] = NULL, [ExecAt] = NULL, [ExecBy] = NULL WHERE [DecisionID] = ?", (l["DecisionID"],))
         _log(tx, c, None, "إلغاء حالة تنفيذ المقاول", "%s · كانت «%s»" % (gp["name"], mine[0]["Exec"]), user)
         _sync_cycle_status(tx, cycle_id)
@@ -677,7 +704,7 @@ def clear_execution(cycle_id, cert_id, user=""):
         if not line or not line.get("ExecStatus"):
             raise CycleError("لا حالة تنفيذ مسجّلة لهذا المستخلص.")
         tx.execute("DELETE FROM [Payments] WHERE [CycleID] = ? AND [CertificateID] = ?", (cycle_id, cert_id))
-        tx.execute("UPDATE [Certificates] SET [Status] = ?, [CycleID] = ?, [PaymentDate] = NULL WHERE [CertificateID] = ?", (ST_IN_CYCLE, cycle_id, cert_id))
+        _back_into_cycle(tx, cycle_id, cert_id)
         tx.execute("UPDATE [CycleDecisions] SET [ExecStatus] = NULL, [ExecAt] = NULL, [ExecBy] = NULL WHERE [DecisionID] = ?", (line["DecisionID"],))
         _sync_cycle_status(tx, cycle_id)
         _log(tx, c, cert_id, "إلغاء حالة التنفيذ", "كانت «%s»" % line["ExecStatus"], user)
