@@ -60,6 +60,7 @@ def _dash_charts(d):
             "proj_certs": [{"label": r["name"], "value": r["certs"]} for r in sorted(d["projects"], key=lambda r: -r["certs"])[:10] if r["certs"] > 0],
             "ratio": [{"label": "المصروف", "value": ratio_paid, "color": "var(--p2)"}, {"label": "المتبقي", "value": ratio_rem, "color": "var(--c-rust)"}],
             "ratio_center": ("%.0f%%" % (ratio_paid / (ratio_paid + ratio_rem) * 100)) if (ratio_paid + ratio_rem) > 0 else "",
+            "top_remaining": [{"label": r["name"], "value": r["remaining"]} for r in sorted(subs, key=lambda r: -r["remaining"])[:5] if r["remaining"] > 0],
             "compare": sorted(subs, key=lambda r: -r["dues"])[:12]}
 
 
