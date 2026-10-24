@@ -79,9 +79,24 @@ def target_folder(r):
     return None
 
 
-def main():
-    apply = "--apply" in sys.argv
-    extra = [sys.argv[i + 1] for i, a in enumerate(sys.argv[:-1]) if a == "--search"]
+SUPPORTED = ("Contracts", "Certificates", "Subcontractors", "Suppliers", "PurchaseOrders")
+
+
+def find_matches(base, roots):
+    """EVERY file with this name (or its storable form) under the search roots: [absolute path]. A name found twice is not a safe guess."""
+    out = []
+    for root in roots:
+        for dirpath, _dirs, files in os.walk(root):
+            for f in files:
+                if f == base or same_name(base, f):
+                    out.append(os.path.join(dirpath, f))
+    return out
+
+
+def main(argv=None):
+    argv = sys.argv if argv is None else argv
+    apply = "--apply" in argv
+    extra = [argv[i + 1] for i, a in enumerate(argv[:-1]) if a == "--search"]
     roots = [config.ARCHIVE_ROOT, config.LEGACY_UPLOADS] + extra
     all_refs = refs()
     missing = [r for r in all_refs if not archive.abs_path_exists(r["path"])]
@@ -116,25 +131,24 @@ def main():
             continue
         # 2. an old file of the first versions: look for it by name
         base = os.path.basename(rel)
-        found = None
-        for root in roots:
-            for dirpath, _dirs, files in os.walk(root):
-                for f in files:
-                    if f == base or same_name(base, f):
-                        found = os.path.join(dirpath, f)
-                        break
-                if found:
-                    break
-            if found:
-                break
-        dest_folder = target_folder(r) if found else None
-        if found and dest_folder:
+        matches = find_matches(base, roots)
+        if len({os.path.getsize(m) for m in matches}) > 1:                       # two different files with this name: never pick one for the user
+            print("  [؟] %s\n         وُجد أكثر من ملف مختلف بهذا الاسم، لن أختار عنك:\n%s" % (r["label"], "\n".join("           " + m for m in matches[:5])))
+            lost.append(r)
+            continue
+        found = matches[0] if matches else None
+        if found and r.get("table") in SUPPORTED:
+            if not apply:                                                         # the preview touches NOTHING (no folders, no records)
+                print("  [قديم] %s\n         وُجد في: %s\n         سيُنسخ إلى أرشيف السجل عند التنفيذ" % (r["label"], found))
+                fixed += 1
+                done.add(rel)
+                continue
+            dest_folder = target_folder(r)
             print("  [قديم] %s\n         وُجد في: %s\n         يُنسخ إلى: %s" % (r["label"], found, dest_folder))
-            if apply:
-                archive.ensure_folder(dest_folder)
-                dst = archive._unique(os.path.join(archive.abs_path(dest_folder), archive.storable_filename(os.path.basename(found))))
-                shutil.copy2(found, dst)
-                print("         ✔ نُسخ وحُدّث %d سجل" % update_path(rel, dest_folder + "/" + os.path.basename(dst), all_refs))
+            archive.ensure_folder(dest_folder)
+            dst = archive._unique(os.path.join(archive.abs_path(dest_folder), archive.storable_filename(os.path.basename(found))))
+            shutil.copy2(found, dst)
+            print("         ✔ نُسخ وحُدّث %d سجل" % update_path(rel, dest_folder + "/" + os.path.basename(dst), all_refs))
             fixed += 1
             done.add(rel)
             continue

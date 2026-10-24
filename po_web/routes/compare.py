@@ -230,8 +230,8 @@ def compare_quote_add(compare_id):
             except Exception as e:                       # noqa - the AI step below may still read it
                 log.exception("quote read failed")
                 warnings.append("تعذّرت القراءة المباشرة للملف (%s)" % " ".join(str(e).split())[:110])
-            if not lines and quote2po.has_api_key():
-                try:                                     # the optional second reader: only when a key is configured and the direct reading found nothing
+            if not lines and quote2po.has_api_key() and f.get("use_ai") == "1":
+                try:                                     # the optional second reader: only when a key is configured, the direct reading found nothing AND the person ticked the box for THIS file
                     with write_lock.released():           # up to 2 minutes on the network
                         res = quote2po.ai_extract(tmp, md)
                     engine = "ai"
@@ -240,6 +240,8 @@ def compare_quote_add(compare_id):
                 except Exception as e:                   # noqa
                     log.exception("quote AI read failed")
                     warnings.append("تعذّرت قراءة الذكاء الاصطناعي (%s)" % " ".join(str(e).split())[:110])
+            if not lines and quote2po.has_api_key() and f.get("use_ai") != "1":
+                warnings.append("لم يُرسَل الملف لأي جهة خارجية. إن أردت أن يقرأه الذكاء الاصطناعي، أعد الرفع مع تفعيل خيار الإرسال.")
             if not lines:
                 warnings.append("أدخل البنود يدويًا أو الصق جدولًا من Excel")
         finally:

@@ -618,6 +618,31 @@ def _md_table(rows):
     return out
 
 
+# ----------------------------------------------------------------------------- limits for files that arrive from OUTSIDE the company
+class UnsafeFile(ValueError):
+    """A file that would use an abnormal amount of memory or time (a «zip bomb»); it is refused before anything is unpacked."""
+
+
+MAX_UNPACKED_MB, MAX_MEMBERS, MAX_RATIO = 100, 2000, 1000
+MAX_SHEET_ROWS, MAX_SHEET_COLS, MAX_SHEETS = 20000, 200, 30
+
+
+def check_zip_safe(path):
+    """Looks only at the file's table of contents (nothing is unpacked): total unpacked size, number of parts, and absurd compression ratios."""
+    import zipfile
+    try:
+        with zipfile.ZipFile(path) as z:
+            infos = z.infolist()
+    except zipfile.BadZipFile:
+        return                                                # not a zip at all: the normal readers will reject it in their own way
+    total = sum(i.file_size for i in infos)
+    if len(infos) > MAX_MEMBERS or total > MAX_UNPACKED_MB * 1024 * 1024:
+        raise UnsafeFile("الملف يحتوي بيانات أكبر من المعقول (%d ميجابايت بعد الفك)." % (total // (1024 * 1024)))
+    for i in infos:
+        if i.file_size > 1024 * 1024 and i.compress_size and i.file_size / i.compress_size > MAX_RATIO:
+            raise UnsafeFile("الملف مضغوط بشكل غير طبيعي ولا يُقرأ للحماية.")
+
+
 def docx_to_md(path):
     import zipfile
     import xml.etree.ElementTree as ET
@@ -675,7 +700,9 @@ def xlsx_to_md(path):
         wb = ET.fromstring(z.read('xl/workbook.xml'))
         rels = ET.fromstring(z.read('xl/_rels/workbook.xml.rels'))
         target = {r.get('Id'): r.get('Target') for r in rels}
-        for sh in wb.find(_S + 'sheets'):
+        for n_sheet, sh in enumerate(wb.find(_S + 'sheets')):
+            if n_sheet >= MAX_SHEETS:
+                break
             t = target.get(sh.get(_R + 'id'), '')
             t = t.lstrip('/')
             if not t.startswith('xl/'):
@@ -684,9 +711,13 @@ def xlsx_to_md(path):
                 continue
             root = ET.fromstring(z.read(t))
             rows = []
-            for row in root.iter(_S + 'row'):
+            for n_row, row in enumerate(root.iter(_S + 'row')):
+                if n_row >= MAX_SHEET_ROWS:
+                    break
                 cells = {}
                 for c in row.findall(_S + 'c'):
+                    if _col_index(c.get('r') or 'A1') >= MAX_SHEET_COLS:
+                        continue
                     typ = c.get('t')
                     v = c.find(_S + 'v')
                     if typ == 'inlineStr':
@@ -782,6 +813,8 @@ def convert_to_md(path):
         if ocr_available():
             return ocr_to_md(path), 'ocr'
         raise NeedsAI('image')
+    if ext in ('.docx', '.xlsx', '.xlsm'):
+        check_zip_safe(path)                                # raises UnsafeFile: NOT retried with another reader
     builtin = {'.docx': docx_to_md, '.xlsx': xlsx_to_md, '.xlsm': xlsx_to_md, '.html': html_to_md, '.htm': html_to_md}
     if ext in builtin:
         try:

@@ -24,7 +24,7 @@
 {% endmacro %}
 
 {% block page_actions %}
-{% if can('orders.edit') %}<a class="btn" href="{{ url_for('order_edit', po_number=order.PONumber) }}">تعديل الأمر</a>{% endif %}
+{% if can('orders.revise') %}<a class="btn" href="{{ url_for('order_edit', po_number=order.PONumber) }}">تعديل الأمر</a>{% endif %}
 {% if order.QuoteFile %}<a class="btn" href="{{ url_for('order_quote_file', po_number=order.PONumber) }}" target="_blank">فتح عرض السعر</a>{% endif %}
 <a class="btn btn-primary" href="{{ url_for('order_print', po_number=order.PONumber) }}" target="_blank">طباعة أمر الشراء</a>
 {% endblock %}
