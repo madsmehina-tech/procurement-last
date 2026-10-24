@@ -37,3 +37,31 @@ def status_cls(status):
         if any(w in t for w in words):
             return cls
     return "neutral"
+
+
+def paper_alerts(slots, slot_names=()):
+    """For the «next action» strips: how many papers are expired, expire within 30 days, or are still missing.
+    `slots` is {type: slot} or a list of slots (archive.panel); `slot_names` the types that must all be present."""
+    items = list(slots.values()) if isinstance(slots, dict) else list(slots or [])
+    expired = soon = 0
+    for sl in items:
+        for d in sl.get("current", []):
+            st = d.get("expiry_state")
+            if st and st[0] == "expired":
+                expired += 1
+            elif st and st[0] == "soon":
+                soon += 1
+    by_type = {sl["type"]: sl for sl in items}
+    missing = sum(1 for t in slot_names if t in by_type and not by_type[t].get("current"))
+    return {"expired": expired, "soon": soon, "missing": missing}
+
+
+def paper_actions(alerts, tab="papers"):
+    out = []
+    if alerts["expired"]:
+        out.append({"level": "danger", "tab": tab, "text": "%d ورقة منتهية الصلاحية" % alerts["expired"]})
+    if alerts["soon"]:
+        out.append({"level": "warning", "tab": tab, "text": "%d ورقة تنتهي خلال 30 يوماً" % alerts["soon"]})
+    if alerts["missing"]:
+        out.append({"level": "info", "tab": tab, "text": "ينقص %d من الأوراق المطلوبة" % alerts["missing"]})
+    return out

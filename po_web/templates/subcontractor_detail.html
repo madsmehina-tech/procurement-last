@@ -38,7 +38,7 @@
   {% for a in next_actions %}<a class="next-it {{ a.level }}" href="#tab-{{ a.tab }}" data-tab-go="{{ a.tab }}">{{ a.text }}</a>{% endfor %}</section>
 {% else %}<section class="next-bar ok" aria-label="الإجراء التالي">✓ لا يوجد إجراء معلّق لهذا المقاول.</section>{% endif %}
 
-<nav class="tabs no-print" role="tablist" aria-label="أقسام صفحة المقاول">
+<nav class="tabs no-print" role="tablist" aria-label="أقسام صفحة المقاول" data-key="sub" data-start="{{ 'contracts' if (open_dialog or '').startswith('contract') else ('certificates' if (open_dialog or '').startswith('cert') else '') }}">
   <button type="button" role="tab" data-tab="certificates">المستخلصات <span class="tab-n">{{ certs|length }}</span></button>
   <button type="button" role="tab" data-tab="contracts">العقود <span class="tab-n">{{ contracts|length }}</span></button>
   <button type="button" role="tab" data-tab="ledger">الحركات المالية <span class="tab-n">{{ ledger|length }}</span></button>
@@ -141,26 +141,6 @@
 {% if can('certificates.edit') %}<dialog id="dlg-cert-new" class="dlg dlg-wide">{{ cert_form(sub, None, form if open_dialog == 'cert-new' else None, projects_list, contract_choices, True, False, None) }}</dialog>{% endif %}
 {% for g in certs %}<dialog id="dlg-cert-{{ g.CertificateID }}" class="dlg dlg-wide">{{ cert_form(sub, g, form if open_dialog == ('cert-%d' % g.CertificateID) else None, projects_list, contract_choices, can('certificates.edit'), can('certificates.delete'), cert_files[g.CertificateID]) }}</dialog>{% endfor %}
 
-<script>
-// ---- tabs: one section at a time; the address (#contracts ...) and the last choice are remembered
-(function () {
-  const panes = [...document.querySelectorAll('.tab-pane')], btns = [...document.querySelectorAll('.tabs [data-tab]')];
-  const names = btns.map(b => b.dataset.tab);
-  const open = {{ (open_dialog or '')|tojson }};
-  function show(name) {
-    if (!names.includes(name)) name = 'certificates';
-    panes.forEach(p => { p.hidden = p.dataset.pane !== name; });
-    btns.forEach(b => { const on = b.dataset.tab === name; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); });
-    try { sessionStorage.setItem('sub-tab', name); } catch (e) {}
-    if (history.replaceState) history.replaceState(null, '', '#tab-' + name);
-  }
-  let start = (location.hash || '').slice(1).replace(/^tab-/, '');
-  if (!names.includes(start)) { try { start = sessionStorage.getItem('sub-tab') || ''; } catch (e) { start = ''; } }
-  if (open.startsWith('contract')) start = 'contracts'; else if (open.startsWith('cert')) start = 'certificates';
-  show(start);
-  document.addEventListener('click', e => { const b = e.target.closest('[data-tab],[data-tab-go]'); if (!b) return; e.preventDefault(); show(b.dataset.tab || b.dataset.tabGo); });
-})();
-</script>
 <script>
 const SITES = {{ sites_by_project|tojson }}, NEXT = {{ next_numbers|tojson }};
 const fmt = n => (Number(n) || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
