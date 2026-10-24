@@ -51,9 +51,13 @@ def dashboard():
     if auth.can("analytics.view"):                       # the contractors' figures: the SAME numbers as the contractors dashboard (default scope = everything)
         try:
             import reporting_service as rs
+            import ttl_cache
             from routes.reports import _dash_charts
-            d = rs.dashboard(rs.Context(), rs.Scope())
-            charts = _dash_charts(d)
+
+            def compute():
+                data = rs.dashboard(rs.Context(), rs.Scope())
+                return data, _dash_charts(data)
+            d, charts = ttl_cache.get("home_contractors", 60, compute)      # up to 60 s old, and cleared by every save
         except Exception:                                # noqa - the home page must open even if a report fails
             logging.getLogger(__name__).exception("home page: contractor figures failed")
             d = charts = None

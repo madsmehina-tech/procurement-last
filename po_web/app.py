@@ -21,6 +21,7 @@ import audit
 import auth
 import config
 import db
+import ttl_cache
 import ui_helpers
 
 
@@ -62,7 +63,7 @@ def create_app():
         import cycle_files
         return {"current_user": user, "can": auth.can, "pending_users": pending,
                 "staging": config.ENVIRONMENT == "staging", "company_logo": cycle_files.logo(),
-                "flash_kind": ui_helpers.flash_kind}
+                "flash_kind": ui_helpers.flash_kind, "status_cls": ui_helpers.status_cls}
 
     # ONE WRITER AT A TIME. The database is Access (it cannot lock rows) and numbers (purchase orders, cycles, payments, contracts) are
     # "read the last number, add one, insert": two saves at the same instant could take the same number. The server is a single process,
@@ -92,6 +93,8 @@ def create_app():
 
     @app.after_request
     def _after(resp):
+        if request.method not in ("GET", "HEAD", "OPTIONS"):
+            ttl_cache.clear()                       # anything may have changed: the cached home-page figures are dropped
         ms = (time.perf_counter() - getattr(g, "_t0", time.perf_counter())) * 1000
         if not request.path.startswith("/static/"):
             user = session.get("user_id", "-")

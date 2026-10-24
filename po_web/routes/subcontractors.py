@@ -186,6 +186,24 @@ def subcontractor_new():
 
 
 # --------------------------------------------------------------------------- the contractor's page
+def _next_actions(sub_id, my_certs, contracts_rows, ledger, url_for_):
+    """The «what to do next» strip at the top of the contractor page: [{level, text, tab}] most urgent first."""
+    out = []
+    entered = [g for g in my_certs if g["Status"] == "مُدخَل" and g["Remaining"] > 0.005 and not g.get("ClosedAt")]
+    if entered:
+        out.append({"level": "warning", "tab": "certificates", "text": "%d مستخلص مُدخَل بقيمة %s ريال لم يدخل دورة صرف" % (len(entered), "{:,.0f}".format(sum(g["Remaining"] for g in entered)))})
+    in_cycle = [g for g in my_certs if g["Status"] == "ضمن دورة صرف" and not g.get("ClosedAt")]
+    if in_cycle:
+        out.append({"level": "info", "tab": "certificates", "text": "%d مستخلص ضمن دورة صرف حالية" % len(in_cycle)})
+    waiting = [e for e in ledger if e.get("Kind") == ledger_service.K_CREDIT and e.get("Category") == ledger_service.CAT_PAYMENT and e.get("Status") != ledger_service.S_DONE]
+    if waiting:
+        out.append({"level": "warning", "tab": "ledger", "text": "%d دفعة مباشرة مسجّلة ولم تُنفَّذ بعد" % len(waiting)})
+    if not any((c.get("Status") or "ساري") == "ساري" for c in contracts_rows):
+        out.append({"level": "info", "tab": "contracts", "text": "لا يوجد عقد ساري لهذا المقاول"})
+    order = {"danger": 0, "warning": 1, "info": 2}
+    return sorted(out, key=lambda a: order[a["level"]])
+
+
 def _summary(sub_id, contracts_rows, my_certs, pays, fig):
     """The financial summary shown at the top: what management asks first about any contractor."""
     live = [g for g in my_certs if g["Status"] != "مرفوض"]
@@ -259,8 +277,9 @@ def render_sub_page(sub_id, open_dialog=None, form=None):
     for d in archive.list_documents_many("LEDGER") if hasattr(archive, "list_documents_many") else []:
         ledger_files.setdefault(int(d["EntityKey"]), []).append(d)
     fig = cs.sub_figures(sub_id, contracts, certs)
-    return render_template("subcontractor_detail.html", sub=sub, fig=fig, summary=_summary(sub_id, rows, my_certs, pays, fig),
-                           contracts=rows, certs=my_certs, cert_files=cert_files, contract_choices=contract_choices, sites_by_project=sites_by_project, next_numbers=next_numbers, ledger=ledger_service.entries(sub_id), ledger_files=ledger_files, balance=ledger_service.balance_of(sub_id), ledger_categories=ledger_service.CATEGORIES, badge=STATUS_BADGE, slots=slots, others=others, filled=filled,
+    ledger_rows = ledger_service.entries(sub_id)
+    return render_template("subcontractor_detail.html", sub=sub, fig=fig, next_actions=_next_actions(sub_id, my_certs, rows, ledger_rows, url_for), summary=_summary(sub_id, rows, my_certs, pays, fig),
+                           contracts=rows, certs=my_certs, cert_files=cert_files, contract_choices=contract_choices, sites_by_project=sites_by_project, next_numbers=next_numbers, ledger=ledger_rows, ledger_files=ledger_files, balance=ledger_service.balance_of(sub_id), ledger_categories=ledger_service.CATEGORIES, badge=STATUS_BADGE, slots=slots, others=others, filled=filled,
                            slots_total=SLOTS_TOTAL, slot_names=archive.SUB_SLOTS, other_types=archive.SUB_OTHER_TYPES, folder=folder,
                            network=archive.network_path(folder), statuses=["ساري", "موقوف", "منتهي"], projects_list=projects_list,
                            open_dialog=open_dialog or _open_from_query(), form=form or {}, today_iso=datetime.now().strftime("%Y-%m-%d"),

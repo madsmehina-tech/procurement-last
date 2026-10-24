@@ -54,9 +54,9 @@
         {% for o in recent %}
         <tr onclick="location.href='{{ url_for('order_detail', po_number=o.PONumber) }}'" style="cursor:pointer;">
           <td><b>{{ o.PONumber }}</b></td><td>{{ o.SupplierName }}</td><td>{{ o.Project }}</td><td class="n">{{ '{:,.0f}'.format(o.TotalAmount or 0) }}</td>
-          <td><span class="badge {{ status_class(o.ReceiptStatus) }}">{{ o.ReceiptStatus }}</span></td>
-          <td><span class="badge {{ status_class(o.InvoiceStatus) }}">{{ o.InvoiceStatus }}</span></td>
-          <td><span class="badge {{ status_class(o.PaymentStatus) }}">{{ o.PaymentStatus }}</span></td>
+          <td><span class="badge {{ status_cls(o.ReceiptStatus) }}">{{ o.ReceiptStatus }}</span></td>
+          <td><span class="badge {{ status_cls(o.InvoiceStatus) }}">{{ o.InvoiceStatus }}</span></td>
+          <td><span class="badge {{ status_cls(o.PaymentStatus) }}">{{ o.PaymentStatus }}</span></td>
         </tr>
         {% else %}<tr><td colspan="7" style="text-align:center; padding:2rem;" class="ex-muted">لا توجد أوامر مسجّلة بعد. ابدأ بـ «أمر شراء جديد».</td></tr>{% endfor %}
       </tbody>

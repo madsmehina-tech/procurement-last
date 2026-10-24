@@ -19,6 +19,9 @@
     <div class="sum"><span>إجمالي المستخلصات</span><b>{{ '{:,.0f}'.format(fig.due) }}</b><small>مدين في كشف الحساب · {{ s.n_certs }} مستخلص</small></div>
     <div class="sum ok"><span>إجمالي المصروف</span><b>{{ '{:,.0f}'.format(fig.paid) }}</b><small>{{ ('%.0f' % (fig.paid / fig.due * 100)) ~ '% من المستحق · دائن في كشف الحساب' if fig.due else 'دائن في كشف الحساب' }}</small></div>
     <div class="sum {{ 'warn' if fig.remaining > 0 else '' }}"><span>المتبقي للمقاول</span><b><bdi dir="ltr">{{ '{:,.0f}'.format(fig.remaining) }}</bdi></b><small>{{ 'مستحق ولم يُصرف (الرصيد بالسالب في الكشف)' if fig.remaining > 0 else ('صُرف أكثر من المستحق' if fig.remaining < 0 else 'لا توجد فروقات') }}</small></div>
+  </div>
+  <details class="sum-more"><summary>مزيد من الأرقام</summary>
+  <div class="sum-grid">
     <div class="sum {{ 'warn' if s.open_total > 0 else '' }}"><span>الإجمالي</span><b>{{ '{:,.0f}'.format(s.open_total) }}</b><small>المستخلصات المفتوحة ({{ s.open_count }}) في كل المشاريع والمواقع</small></div>
     <div class="sum"><span>عدد العقود</span><b>{{ s.n_contracts }}</b><small>{{ contracts|selectattr('Status', 'equalto', 'ساري')|list|length }} ساري</small></div>
     <div class="sum"><span>عدد المستخلصات</span><b>{{ s.n_certs }}</b><small>{{ certs|selectattr('Status', 'equalto', 'مصروف')|list|length }} مصروف</small></div>
@@ -28,9 +31,22 @@
     <div class="sum"><span>آخر مستخلص</span>
       {% if s.last_cert %}<b>رقم {{ s.last_cert.CertificateNo }}</b><small>{{ (s.last_cert.CertificateDate or s.last_cert.CreatedAt).strftime('%Y-%m-%d') if (s.last_cert.CertificateDate or s.last_cert.CreatedAt) else '' }} · {{ '{:,.0f}'.format(s.last_cert.Value) }}</small>
       {% else %}<b>—</b><small>لا مستخلصات بعد</small>{% endif %}</div>
-  </div>
+  </div></details>
 </section>
 
+{% if next_actions %}<section class="next-bar" aria-label="الإجراء التالي"><b>الإجراء التالي</b>
+  {% for a in next_actions %}<a class="next-it {{ a.level }}" href="#tab-{{ a.tab }}" data-tab-go="{{ a.tab }}">{{ a.text }}</a>{% endfor %}</section>
+{% else %}<section class="next-bar ok" aria-label="الإجراء التالي">✓ لا يوجد إجراء معلّق لهذا المقاول.</section>{% endif %}
+
+<nav class="tabs no-print" role="tablist" aria-label="أقسام صفحة المقاول">
+  <button type="button" role="tab" data-tab="certificates">المستخلصات <span class="tab-n">{{ certs|length }}</span></button>
+  <button type="button" role="tab" data-tab="contracts">العقود <span class="tab-n">{{ contracts|length }}</span></button>
+  <button type="button" role="tab" data-tab="ledger">الحركات المالية <span class="tab-n">{{ ledger|length }}</span></button>
+  <button type="button" role="tab" data-tab="papers">الأوراق <span class="tab-n">{{ filled }}/{{ slots_total }}</span></button>
+  <button type="button" role="tab" data-tab="data">بيانات المقاول</button>
+</nav>
+
+<div class="tab-pane" data-pane="data">
 <form method="post" action="{{ url_for('subcontractor_edit', sub_id=sub.SubcontractorID) }}" class="card" id="dataForm" style="padding:22px 24px; margin-bottom:1.5rem;">
   <div class="doc-head"><h3 class="doc-title">بيانات المقاول</h3>
     <div class="row-form" style="display:flex; gap:8px;">
@@ -58,7 +74,11 @@
   </fieldset>
 </form>
 
+</div>
+<div class="tab-pane" data-pane="papers">
 {{ papers_panel("SUB", sub.SubcontractorID, "أوراق المقاول", slots, others, folder, network, can('subcontractors.edit')) }}
+</div>
+<div class="tab-pane" data-pane="contracts">
 
 <section class="card" id="contracts" style="margin-top:1.5rem;">
   <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -73,7 +93,7 @@
         <td>{{ '{:,.0f}'.format(c.value) if c.value else '—' }}</td><td>{{ '{:,.0f}'.format(c.executed) }}</td>
         <td>{% if c.pct is not none %}<div class="pbar"><span style="width:{{ [c.pct,100]|min }}%;" class="{{ 'over' if c.pct >= 90 else '' }}"></span></div><small>{{ c.pct }}%</small>{% else %}—{% endif %}</td>
         <td>{{ '{:,.0f}'.format(c.due) }}</td><td>{{ '{:,.0f}'.format(c.paid) }}</td>
-        <td><span class="badge {{ 'success' if (c.Status or 'ساري') == 'ساري' else 'neutral' }}">{{ c.Status or 'ساري' }}</span></td>
+        <td><span class="badge {{ status_cls(c.Status or 'ساري') }}">{{ c.Status or 'ساري' }}</span></td>
         <td>{% if c.files %}<span class="badge success">{{ c.files|length }} ملف</span>{% else %}<span class="badge neutral">بلا ملف</span>{% endif %}</td>
         <td><div class="row-form" style="display:flex; gap:6px;">
           <button class="btn" type="button" data-open="dlg-contract-view-{{ c.ContractID }}">عرض</button>
@@ -83,6 +103,8 @@
   </table></div>
 </section>
 
+</div>
+<div class="tab-pane" data-pane="certificates">
 <section class="card" id="certificates" style="margin-top:1.5rem;">
   <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
     <span>كل مستخلصاته ({{ certs|length }})</span>
@@ -105,7 +127,10 @@
   </table></div>
 </section>
 
+</div>
+<div class="tab-pane" data-pane="ledger">
 {% include "_ledger_section.html" %}
+</div>
 
 {# ------------------------------------------------------------------ the windows #}
 {% if can('contracts.edit') %}<dialog id="dlg-contract-new" class="dlg">{{ contract_form(sub, None, 'new', form if open_dialog == 'contract-new' else None, projects_list, statuses, True) }}</dialog>{% endif %}
@@ -116,6 +141,26 @@
 {% if can('certificates.edit') %}<dialog id="dlg-cert-new" class="dlg dlg-wide">{{ cert_form(sub, None, form if open_dialog == 'cert-new' else None, projects_list, contract_choices, True, False, None) }}</dialog>{% endif %}
 {% for g in certs %}<dialog id="dlg-cert-{{ g.CertificateID }}" class="dlg dlg-wide">{{ cert_form(sub, g, form if open_dialog == ('cert-%d' % g.CertificateID) else None, projects_list, contract_choices, can('certificates.edit'), can('certificates.delete'), cert_files[g.CertificateID]) }}</dialog>{% endfor %}
 
+<script>
+// ---- tabs: one section at a time; the address (#contracts ...) and the last choice are remembered
+(function () {
+  const panes = [...document.querySelectorAll('.tab-pane')], btns = [...document.querySelectorAll('.tabs [data-tab]')];
+  const names = btns.map(b => b.dataset.tab);
+  const open = {{ (open_dialog or '')|tojson }};
+  function show(name) {
+    if (!names.includes(name)) name = 'certificates';
+    panes.forEach(p => { p.hidden = p.dataset.pane !== name; });
+    btns.forEach(b => { const on = b.dataset.tab === name; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); });
+    try { sessionStorage.setItem('sub-tab', name); } catch (e) {}
+    if (history.replaceState) history.replaceState(null, '', '#tab-' + name);
+  }
+  let start = (location.hash || '').slice(1).replace(/^tab-/, '');
+  if (!names.includes(start)) { try { start = sessionStorage.getItem('sub-tab') || ''; } catch (e) { start = ''; } }
+  if (open.startsWith('contract')) start = 'contracts'; else if (open.startsWith('cert')) start = 'certificates';
+  show(start);
+  document.addEventListener('click', e => { const b = e.target.closest('[data-tab],[data-tab-go]'); if (!b) return; e.preventDefault(); show(b.dataset.tab || b.dataset.tabGo); });
+})();
+</script>
 <script>
 const SITES = {{ sites_by_project|tojson }}, NEXT = {{ next_numbers|tojson }};
 const fmt = n => (Number(n) || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});

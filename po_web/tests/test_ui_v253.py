@@ -104,3 +104,29 @@ def test_no_page_has_a_broken_html_attribute(client):
         p.feed(r.get_data(as_text=True))
     assert seen >= 8, "too few pages rendered to mean anything"
     assert not bad, bad
+
+
+def test_home_figures_are_cached_and_a_save_clears_them(client):
+    import fake_db
+    import ttl_cache
+    ttl_cache.clear()
+    client.get("/")
+    fake_db.CALLS[0] = 0
+    client.get("/")
+    second = fake_db.CALLS[0]
+    ttl_cache.clear()
+    fake_db.CALLS[0] = 0
+    client.get("/")
+    assert second < fake_db.CALLS[0]                        # the cached visit asks the database less
+    client.get("/")
+    assert "home_contractors" in ttl_cache._STORE
+    client.post("/logout")                                  # any non-GET request
+    assert "home_contractors" not in ttl_cache._STORE
+
+
+def test_one_colour_rule_for_every_status():
+    from ui_helpers import status_cls
+    assert status_cls("مصروف") == "success" and status_cls("تم السداد") == "success" and status_cls("تمت الترسية") == "success"
+    assert status_cls("استلام جزئي") == "warning" and status_cls("بانتظار قرار الإدارة") == "warning" and status_cls("ضمن دورة صرف") == "warning"
+    assert status_cls("مرفوض") == "danger" and status_cls("مفسوخ") == "danger" and status_cls("ملغاة") == "danger"
+    assert status_cls("مسودة") == "neutral" and status_cls("مُدخَل") == "neutral" and status_cls("") == "neutral"

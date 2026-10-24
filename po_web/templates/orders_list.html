@@ -78,10 +78,7 @@
 {% endmacro %}
 
 {% macro overall_class(s) -%}
-  {%- if s == "مكتمل" -%}success
-  {%- elif s == "بانتظار الاستلام" -%}danger
-  {%- else -%}warning
-  {%- endif -%}
+  {%- if status_cls(s) == "neutral" -%}warning{%- else -%}{{ status_cls(s) }}{%- endif -%}
 {%- endmacro %}
 
 <div class="card">

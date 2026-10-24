@@ -19,3 +19,21 @@ def flash_kind(message):
     if any(p in text for p in _ERROR_PARTS):
         return "error"
     return "notice"
+
+
+# ---------------------------------------------------------------------------------------------------------------- status colours
+# ONE rule for every status badge in the system:  green = done · yellow = waiting · red = a problem · grey = draft / information.
+_DONE = ("مكتمل", "تم الاستلام", "تم السداد", "تم الإصدار", "مصروف", "منفّذة", "تمت الترسية", "ساري", "مفعّل", "موقّع", "مرفق", "متوفر", "مغلقة", "نشط", "الحالية")
+_WAIT = ("معلق", "معلّق", "بانتظار", "استلام جزئي", "جزئي", "ضمن دورة", "معتمدة", "قيد", "لم يبدأ", "صادر", "جاهزة للإقفال", "ينتهي")
+_PROBLEM = ("مرفوض", "مفسوخ", "معطّل", "ملغاة", "منتهٍ منذ", "متأخر", "منتهية")
+
+
+def status_cls(status):
+    """'success' | 'warning' | 'danger' | 'neutral' for a status text (exact words first, then keywords)."""
+    t = (status or "").strip()
+    if not t:
+        return "neutral"
+    for words, cls in ((_PROBLEM, "danger"), (_WAIT, "warning"), (_DONE, "success")):
+        if any(w in t for w in words):
+            return cls
+    return "neutral"
