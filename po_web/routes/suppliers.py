@@ -9,6 +9,7 @@ from datetime import datetime
 from flask import flash, redirect, render_template, request, send_file, url_for
 
 import archive
+import ui_helpers
 import auth
 import db
 import pdfgen
@@ -233,8 +234,11 @@ def supplier_detail(supplier_id):
                     key=lambda d: d["UploadedAt"] or datetime.min, reverse=True)
     filled = sum(1 for t in archive.SUPPLIER_SLOTS if by_type[t]["current"]) + (1 if others else 0)
     folder = s.get("ArchiveFolder") or archive.supplier_root_rel(s["Name"])
+    next_actions = ui_helpers.paper_actions(ui_helpers.paper_alerts(slots, archive.SUPPLIER_SLOTS))
+    if not orders:
+        next_actions.append({"level": "info", "tab": "orders", "text": "لا توجد أوامر شراء لهذا المورد بعد"})
     return render_template(
-        "supplier_detail.html", supplier=s, orders=orders[:8], orders_count=len(orders),
+        "supplier_detail.html", supplier=s, next_actions=next_actions, orders=orders[:8], orders_count=len(orders),
         total=sum(o["TotalAmount"] or 0 for o in orders), slots=by_type, others=others, filled=filled,
         slots_total=SLOTS_TOTAL, folder=folder + "/" + archive.SUPPLIER_PAPERS, network=archive.network_path(folder + "/" + archive.SUPPLIER_PAPERS),
         other_types=archive.SUPPLIER_OTHER_TYPES, slot_names=archive.SUPPLIER_SLOTS,

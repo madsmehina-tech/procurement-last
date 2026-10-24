@@ -56,7 +56,7 @@
         <td>{{ g.SiteName or contract.SiteName }}</td><td><b>{{ g.CertificateNo }}</b></td>
         <td>{{ g.CertificateDate.strftime('%Y-%m-%d') if g.CertificateDate else '' }}</td>
         <td>{{ '{:,.2f}'.format(g.GrossAmount or 0) }}</td><td>{{ '{:,.2f}'.format(g.Total) }}</td><td>{{ '{:,.2f}'.format(g.Paid) }}</td>
-        <td><span class="badge {{ {'مُدخَل':'neutral','ضمن دورة صرف':'warning','مصروف':'success','مرفوض':'danger'}[g.Status] }}">{{ g.Status }}</span></td>
+        <td><span class="badge {{ status_cls(g.Status) }}">{{ g.Status }}</span></td>
       </tr>
     {% else %}<tr><td colspan="7" style="text-align:center; color:var(--text-secondary); padding:24px;">لا توجد مستخلصات بعد.</td></tr>{% endfor %}
     </tbody>

@@ -24,7 +24,7 @@
   <table class="list"><thead><tr><th>الدورة</th><th>التاريخ</th><th>الحالة</th><th>المرحلة</th><th>البنود</th><th>مبلغ الصرف</th><th>تم تحويله</th></tr></thead><tbody>
   {% for c in rows %}<tr style="cursor:pointer;" onclick="location.href='{{ url_for('cycle_detail', cycle_id=c.CycleID) }}'">
     <td><b style="color:var(--accent);">دورة رقم {{ c.CycleNo }}</b>{% if c.Title %}<br><small style="color:var(--text-secondary);">{{ c.Title }}</small>{% endif %}</td>
-    <td>{{ (c.CycleDate or c.CreatedAt).strftime('%Y-%m-%d') }}</td><td><span class="badge {{ badge[c.Status] }}">{{ c.Status }}</span></td>
+    <td>{{ (c.CycleDate or c.CreatedAt).strftime('%Y-%m-%d') }}</td><td><span class="badge {{ status_cls(c.Status) }}">{{ c.Status }}</span></td>
     <td>{{ c.stage_name }}</td><td>{{ c.lines }}</td><td>{{ '{:,.2f}'.format(c.approved) if c.Status in ('معتمدة', 'منفّذة') else '—' }}</td><td>{{ '{:,.2f}'.format(c.transferred) }}</td></tr>
   {% else %}<tr><td colspan="7" style="text-align:center; color:var(--text-secondary); padding:24px;">لا توجد دورات بعد.</td></tr>{% endfor %}
   </tbody></table></div></div>

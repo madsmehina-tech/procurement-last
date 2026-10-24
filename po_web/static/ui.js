@@ -44,4 +44,29 @@
       f.dataset.sent = ""; f.querySelectorAll("button, input[type=submit]").forEach(function (b) { b.disabled = false; });
     });
   });
+
+  // tabs: <nav class="tabs" data-key="x" data-start="name"> with [data-tab] buttons and .tab-pane[data-pane] sections.
+  // The address (#tab-name) and the last choice are remembered; any [data-tab-go] link switches tab.
+  document.querySelectorAll(".tabs[data-key]").forEach(function (nav) {
+    var btns = [].slice.call(nav.querySelectorAll("[data-tab]")), names = btns.map(function (b) { return b.dataset.tab; });
+    var panes = [].slice.call(document.querySelectorAll(".tab-pane")), key = "tab-" + nav.dataset.key;
+    function show(name) {
+      if (names.indexOf(name) < 0) name = names[0];
+      panes.forEach(function (p) { p.hidden = p.dataset.pane !== name; });
+      btns.forEach(function (b) { var on = b.dataset.tab === name; b.classList.toggle("on", on); b.setAttribute("aria-selected", on ? "true" : "false"); });
+      try { sessionStorage.setItem(key, name); } catch (e) {}
+      if (history.replaceState) history.replaceState(null, "", "#tab-" + name);
+    }
+    var start = (location.hash || "").slice(1).replace(/^tab-/, "");
+    if (names.indexOf(start) < 0) { try { start = sessionStorage.getItem(key) || ""; } catch (e) { start = ""; } }
+    if (nav.dataset.start) start = nav.dataset.start;
+    show(start);
+    document.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-tab],[data-tab-go]");
+      if (!b || (b.dataset.tab && !nav.contains(b) && !b.dataset.tabGo)) return;
+      var name = b.dataset.tab || b.dataset.tabGo;
+      if (names.indexOf(name) < 0) return;
+      e.preventDefault(); show(name);
+    });
+  });
 })();

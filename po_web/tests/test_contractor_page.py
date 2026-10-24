@@ -33,10 +33,30 @@ def test_next_action_strip_tells_what_is_waiting(client):
     assert "لم يدخل دورة صرف" in html and "لا يوجد عقد ساري" in html
 
 
-def test_strip_is_calm_when_nothing_waits(client):
+def test_strip_reports_only_what_is_really_waiting(client):
     sub = h.add_sub()
     import fake_db
     from datetime import datetime
     fake_db.execute("INSERT INTO [Contracts] ([SubcontractorID], [Project], [Status], [CreatedAt]) VALUES (?, 'م', 'ساري', ?)", (sub, datetime.now()))
     html = client.get("/subcontractors/%d" % sub).get_data(as_text=True)
-    assert "لا يوجد إجراء معلّق" in html
+    strip = re.search(r'<section class="next-bar.*?</section>', html, re.S).group(0)
+    assert "لا يوجد عقد ساري" not in strip and "دورة صرف" not in strip            # money and contract items are calm ...
+    assert "ينقص" in strip                                                       # ... only the missing papers are still reported
+
+
+def test_supplier_page_has_tabs_and_a_strip(client):
+    import fake_db
+    from datetime import datetime
+    sid = fake_db.execute_insert("INSERT INTO [Suppliers] ([Name], [CreatedAt]) VALUES ('مورد الأسمنت', ?)", (datetime.now(),))
+    html = client.get("/suppliers/%d" % sid).get_data(as_text=True)
+    assert html.count('role="tab"') == 3 and 'data-key="sup"' in html
+    assert sorted(re.findall(r'data-pane="(\w+)"', html)) == ["data", "orders", "papers"]
+    assert html.count("<div") == html.count("</div>")
+    assert "الإجراء التالي" in html and "ينقص" in html                       # no papers uploaded yet
+
+
+def test_the_tab_script_is_generic_and_the_contractor_page_uses_it(client):
+    sub = h.add_sub()
+    html = client.get("/subcontractors/%d" % sub).get_data(as_text=True)
+    assert 'data-key="sub"' in html and "// ---- tabs" not in html
+    assert "[data-tab]" in open("static/ui.js", encoding="utf-8").read()
