@@ -266,18 +266,31 @@ def test_a_fully_paid_transaction_creates_no_settlement(client, world):
     assert fake_db.scalar("SELECT COUNT(*) FROM [LedgerEntries]", default=0) == 0
 
 
-def test_the_close_confirmation_is_valid_javascript_with_the_amount(client, world):
-    """The first version of this dialog produced «confirm(إقفال ...)» without quotes: a JavaScript error, so the dialog never appeared."""
+def _close_confirm_text(html):
+    """What a BROWSER would run on submitting the close form: parsed with a real HTML parser (a regex hid the broken-quotes bug twice)."""
     import json
     import re
+    from html.parser import HTMLParser
+    found = {}
+
+    class P(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            names = [n for n, _v in attrs]
+            for n in names:                                    # a broken attribute shows up as garbage attribute names
+                assert re.match(r"^[A-Za-z_:][-A-Za-z0-9_:.]*$", n), "broken HTML attribute: %r" % n
+            d = dict(attrs)
+            if tag == "form" and (d.get("action") or "").endswith("/close"):
+                found["js"] = d.get("onsubmit")
+    P().feed(html)
+    m = re.fullmatch(r"return confirm\((.*)\);", found.get("js") or "", re.S)
+    assert m, "the close form has no valid confirm(): %r" % found.get("js")
+    return json.loads(m.group(1))                              # the argument must be one valid JSON string
+
+
+def test_the_close_confirmation_is_valid_javascript_with_the_amount(client, world):
+    """Twice the dialog never appeared (missing quotes, then quotes breaking the HTML attribute): parse it like a browser does."""
     a = _ready_to_close(world)
-    html = client.get("/archive?cert=%d" % a).get_data(as_text=True)
-    m = re.search(r'<form[^>]*/close"[^>]*onsubmit="return confirm\((.*?)\);">', html, re.S)
-    assert m, "no confirm() on the close form"
-    arg = m.group(1).replace("&#34;", '"').replace("&quot;", '"')
-    text = json.loads(arg)                                         # a real JSON string: quotes, newlines, Arabic - all valid
+    text = _close_confirm_text(client.get("/archive?cert=%d" % a).get_data(as_text=True))
     assert "100,000.00" in text and "تسوية عند الإقفال" in text
     _pay_form(client, a)
-    html = client.get("/archive?cert=%d" % a).get_data(as_text=True)
-    arg2 = re.search(r'<form[^>]*/close"[^>]*onsubmit="return confirm\((.*?)\);">', html, re.S).group(1).replace("&#34;", '"')
-    assert "تسوية" not in json.loads(arg2)                         # a fully paid transaction gets the plain question
+    assert "تسوية" not in _close_confirm_text(client.get("/archive?cert=%d" % a).get_data(as_text=True))   # fully paid: the plain question

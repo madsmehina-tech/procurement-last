@@ -78,3 +78,29 @@ def test_script_and_styles_exist():
 def test_the_menu_has_a_way_back_to_the_home_page(client):
     html = client.get("/orders").get_data(as_text=True)
     assert 'href="/"' in html and "الرئيسية" in html
+
+
+PAGES = ["/", "/orders", "/orders/new", "/suppliers", "/items", "/compare", "/subcontractors", "/certificates", "/cycles", "/payments", "/archive",
+         "/contracts", "/settings/account", "/settings/users", "/settings/roles", "/settings/projects", "/settings/company", "/project-analysis"]
+
+
+def test_no_page_has_a_broken_html_attribute(client):
+    """A quote inside an attribute silently cuts it (this hid the close-confirmation dialog twice). Parse every main page like a browser."""
+    from html.parser import HTMLParser
+    bad = []
+
+    class P(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            for n, _v in attrs:
+                if not re.match(r"^[A-Za-z_:@][-A-Za-z0-9_:.]*$", n):
+                    bad.append((self.url, tag, n[:40]))
+    seen = 0
+    for url in PAGES:
+        r = client.get(url)
+        if r.status_code != 200:
+            continue
+        seen += 1
+        p = P(); p.url = url
+        p.feed(r.get_data(as_text=True))
+    assert seen >= 8, "too few pages rendered to mean anything"
+    assert not bad, bad
