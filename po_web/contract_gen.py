@@ -198,8 +198,8 @@ def build_values(cid):
         v["عبارة_القيمة"] = (("القيمة التقديرية للعقد %s ريال قبل الضريبة (%s ريال شاملة الضريبة)، وتُحتسب القيمة النهائية بالكميات المنفذة فعلياً." % (money(ex), money(incl))) if ex is not None
                              else "تُحتسب القيمة النهائية بالكميات المنفذة فعلياً وفق أسعار الوحدة الواردة في الجدول أعلاه.")
         v["طريقة_الاحتساب"] = "تُحتسب الأعمال بسعر الوحدة الوارد بالجدول وبالكميات المنفذة فعلياً بعد القياس والاعتماد من الطرف الأول، والكميات الواردة بالجدول تقديرية وتخضع لإعادة القياس."
-    for k, val in d["data"].items():
-        if not k.startswith("_"):
+    for k, val in d["data"].items():                       # a custom field can never replace a value the system computes (amount in words, party data ...)
+        if not k.startswith("_") and V.norm_key(k) not in V.STANDARD:
             v[V.norm_key(k)] = val
     return {k: (str(x) if x is not None and not isinstance(x, str) else x) for k, x in v.items()}
 
@@ -289,7 +289,7 @@ def save(form, user, contract_id=None):
     specs = [(clean_spaces(n), (d or "").strip()) for n, d in _rows(form, "spec_name", "spec_desc") if clean_spaces(n)]
     tranches = [(clean_spaces(a), _num(b), _num(c), clean_spaces(d)) for a, b, c, d in _rows(form, "tr_label", "tr_pct", "tr_amount", "tr_due")
                 if clean_spaces(a) or _num(b) is not None or _num(c) is not None or clean_spaces(d)]
-    custom = {k[3:]: (v or "").strip() for k, v in form.items() if k.startswith("cf_") and (v or "").strip()}
+    custom = {k[3:]: (v or "").strip() for k, v in form.items() if k.startswith("cf_") and (v or "").strip() and V.norm_key(k[3:]) not in V.STANDARD}
     ex, _v, _i = totals([{"Qty": q, "UnitPrice": p} for _d, _u, q, p in price_lines], model)
     vat = round(ex * VAT_RATE, 2) if ex is not None else None
     cdate, start, end = parse_date(form.get("contract_date")) or datetime.now(), parse_date(form.get("start_date")), parse_date(form.get("end_date"))

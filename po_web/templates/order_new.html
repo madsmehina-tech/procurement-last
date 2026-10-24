@@ -116,10 +116,10 @@
     <button type="submit" class="btn btn-primary btn-lg" id="saveBtn">{{ 'حفظ التعديل' if edit_po else 'حفظ أمر الشراء (PDF)' }}</button>
     <button type="submit" class="btn btn-lg" formaction="{{ url_for('order_preview') }}" formtarget="_blank" formnovalidate>معاينة</button>
     {% if edit_po %}<a class="btn btn-lg" href="{{ url_for('order_detail', po_number=edit_po) }}">إلغاء</a>
-    {% elif can('orders.edit') %}<button type="button" class="btn btn-lg" id="retrieveBtn">استرداد أمر شراء</button>{% endif %}
+    {% elif can('orders.revise') %}<button type="button" class="btn btn-lg" id="retrieveBtn">استرداد أمر شراء</button>{% endif %}
     <span class="po-actions-total">المطلوب سداده: <b id="grandMirror">0.00</b> ريال</span>
   </div>
-  {% if not edit_po and can('orders.edit') %}
+  {% if not edit_po and can('orders.revise') %}
   <div id="retrieveBox" class="retrieve-box">
     <b>استرداد أمر شراء محفوظ لتعديله</b>
     <div style="display:flex; gap:8px; margin-top:8px;">

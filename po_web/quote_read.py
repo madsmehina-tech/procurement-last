@@ -102,7 +102,10 @@ def read_offer(path, known=(), exclude=(), pages=(1, 3)):
     quote2po._TLS.pages = pages
     quote2po._TLS.lang = None
     try:
-        md, engine = quote2po.convert_to_md(path)
+        try:
+            md, engine = quote2po.convert_to_md(path)
+        except quote2po.UnsafeFile as e:                            # refused before unpacking: the person types the order by hand
+            return {"md": "", "engine": "unsafe", "res": {"items": []}, "items": [], "notes": ["لم يُقرأ الملف: %s" % e]}
         res = quote2po.parse_quote(md, known=known, exclude=exclude)
         if engine != "ocr":
             return {"md": md, "engine": engine, "res": res, "items": res.get("items", []), "notes": notes}

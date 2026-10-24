@@ -21,6 +21,7 @@ CATALOG = [
         ("orders.view", "عرض أوامر الشراء ومتابعتها"),
         ("orders.create", "إنشاء أمر شراء"),
         ("orders.edit", "تحديث حالات الأمر ورفع مستنداته"),
+        ("orders.revise", "تعديل أصناف وأسعار أمر شراء قائم"),
         ("orders.print", "طباعة أمر الشراء"),
     ]),
     ("مقارنة عروض الأسعار", [
@@ -83,7 +84,7 @@ def _views():
 DEFAULT_ROLES = [
     (ADMIN_KEY, "مدير النظام (Administrator)", "كل الصلاحيات، ولا يمكن تعديله", None),
     ("procurement", "مشتريات", "أوامر الشراء والموردون والأصناف ولوحة المؤشرات",
-     ["orders.view", "orders.create", "orders.edit", "orders.print", "suppliers.view", "suppliers.edit",
+     ["orders.view", "orders.create", "orders.edit", "orders.revise", "orders.print", "suppliers.view", "suppliers.edit",
       "items.view", "analytics.view", "analytics.export"]),
     ("contracts", "عقود", "مقاولو الباطن والعقود والمستخلصات",
      ["subcontractors.view", "subcontractors.edit", "contracts.view", "contracts.edit", "certificates.view",
@@ -124,7 +125,7 @@ ENDPOINT_PERMS = {
     "order_new": "orders.create", "order_parse_quote": "orders.create", "order_quote_copy": "orders.create",
     "order_print": "orders.print",
     "items_list": "items.view", "item_detail": "items.view", "items_print": "items.view", "items_export_pdf": "items.view", "items_export_xlsx": "items.view",
-    "order_preview": "orders.create", "order_edit": "orders.edit", "order_pdf": "orders.edit", "order_revision_print": "orders.print",
+    "order_preview": "orders.create", "order_edit": "orders.revise", "order_pdf": "orders.edit", "order_revision_print": "orders.print",
     "orders_analytics": "analytics.view", "orders_analytics_export": "analytics.export",
     "suppliers_list": "suppliers.view", "supplier_detail": "suppliers.view", "suppliers_export_xlsx": "suppliers.view", "suppliers_export_pdf": "suppliers.view",
     "supplier_new": "suppliers.edit", "supplier_edit": "suppliers.edit",
