@@ -6,7 +6,8 @@ import conftest
 import fake_db
 import seed
 
-BUDGET = {"/": 15, "/subcontractors": 35, "/certificates": 25, "/payments": 35, "/orders": 12, "/orders/new": 20, "/items": 20, "/suppliers": 10,
+BUDGET = {"/": 32,   # the home page now also carries the contractors' figures (same numbers as their dashboard)
+           "/subcontractors": 35, "/certificates": 25, "/payments": 35, "/orders": 12, "/orders/new": 20, "/items": 20, "/suppliers": 10,
           "/cycles": 25, "/archive": 25, "/contracts": 15, "/subcontractors/dashboard": 30, "/orders/analytics": 12}
 
 

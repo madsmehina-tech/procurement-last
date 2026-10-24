@@ -47,8 +47,19 @@ def dashboard():
         "[ReceiptStatus], [InvoiceStatus], [PaymentStatus] "
         "FROM [PurchaseOrders] ORDER BY [CreatedAt] DESC"
     )
+    d = charts = None
+    if auth.can("analytics.view"):                       # the contractors' figures: the SAME numbers as the contractors dashboard (default scope = everything)
+        try:
+            import reporting_service as rs
+            from routes.reports import _dash_charts
+            d = rs.dashboard(rs.Context(), rs.Scope())
+            charts = _dash_charts(d)
+        except Exception:                                # noqa - the home page must open even if a report fails
+            logging.getLogger(__name__).exception("home page: contractor figures failed")
+            d = charts = None
     return render_template(
         "dashboard.html",
+        d=d, charts=charts,
         orders_count=orders_count,
         total_amount=total_amount,
         due_soon=due_soon,

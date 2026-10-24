@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% set active = "dashboard" %}
 {% block title %}لوحة التحكم{% endblock %}
-{% block subtitle %}نظرة عامة على المشتريات · Procurement overview{% endblock %}
+{% block subtitle %}ملخص اليوم: ما صُرف وما تبقّى وما ينتظر قراراً{% endblock %}
+{% from "_exec_charts.html" import hbars, vcols, donut %}
 
 {% macro status_class(s) -%}
   {%- if s in ["مكتمل", "تم الاستلام", "تم السداد", "تم الإصدار"] -%}success
@@ -10,53 +11,63 @@
   {%- else -%}neutral
   {%- endif -%}
 {%- endmacro %}
-
+{% macro kpi(label, value, note='', cls='', unit='ريال', href='') %}<{{ 'a href="%s"' % href if href else 'div' }} class="ex-card ex-c3 ex-kpi {{ cls }}" {{ 'style="display:flex;"' if href }}><div class="ex-kpi-lab">{{ label }}</div><div class="ex-kpi-val">{{ value }}{% if unit %}<small> {{ unit }}</small>{% endif %}</div><div class="ex-muted">{{ note }}</div></{{ 'a' if href else 'div' }}>{% endmacro %}
+{% macro card(title, cols='ex-c6') %}<div class="ex-card {{ cols }}"><div class="ex-head"><div><h3 class="ex-title">{{ title }}</h3></div></div>{{ caller() }}</div>{% endmacro %}
 {% from "_attention.html" import attention_panel %}
-{% block content %}
-{{ attention_panel(todo) }}
-<div class="kpi-grid">
-  <div class="kpi-card">
-    <p class="kpi-label">إجمالي عدد الأوامر</p>
-    <p class="kpi-value">{{ orders_count }}</p>
-  </div>
-  <div class="kpi-card">
-    <p class="kpi-label">إجمالي القيمة (ريال)</p>
-    <p class="kpi-value">{{ '{:,.0f}'.format(total_amount) }}</p>
-  </div>
-  <div class="kpi-card warning">
-    <p class="kpi-label">فواتير مستحقة خلال 7 أيام</p>
-    <p class="kpi-value">{{ due_soon }}</p>
-  </div>
-  <div class="kpi-card danger">
-    <p class="kpi-label">استلام جزئي معلّق</p>
-    <p class="kpi-value">{{ partial_receipt }}</p>
-  </div>
-</div>
 
-<div class="card">
-  <div class="card-header">أحدث أوامر الشراء</div>
-  <table class="list">
-    <thead>
-      <tr>
-        <th>رقم الأمر</th><th>المورد</th><th>المشروع</th><th>الإجمالي</th>
-        <th>الاستلام</th><th>الفاتورة</th><th>السداد</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for o in recent %}
-      <tr onclick="location.href='{{ url_for('order_detail', po_number=o.PONumber) }}'" style="cursor:pointer;">
-        <td>{{ o.PONumber }}</td>
-        <td>{{ o.SupplierName }}</td>
-        <td>{{ o.Project }}</td>
-        <td>{{ '{:,.0f}'.format(o.TotalAmount or 0) }}</td>
-        <td><span class="badge {{ status_class(o.ReceiptStatus) }}">{{ o.ReceiptStatus }}</span></td>
-        <td><span class="badge {{ status_class(o.InvoiceStatus) }}">{{ o.InvoiceStatus }}</span></td>
-        <td><span class="badge {{ status_class(o.PaymentStatus) }}">{{ o.PaymentStatus }}</span></td>
-      </tr>
-      {% else %}
-      <tr><td colspan="7" style="text-align:center; color:var(--text-secondary); padding:2rem;">لا توجد أوامر مسجّلة بعد.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+{% block page_actions %}
+{% if can('orders.create') %}<a class="btn btn-primary" href="{{ url_for('order_new') }}">+ أمر شراء جديد</a>{% endif %}
+{% if can('certificates.edit') %}<a class="btn" href="{{ url_for('certificate_new_any') }}">+ مستخلص جديد</a>{% endif %}
+<button type="button" class="btn" id="themeBtn" title="الوضع الداكن / الفاتح">الوضع الداكن / الفاتح</button>
+{% endblock %}
+
+{% block content %}
+{% include "_exec_css.html" %}
+{% include "_exec_extra_css.html" %}
+<div class="exec" id="exec" data-theme="light">
+  <div class="ex-grid" style="margin-bottom:16px;">
+    {% if d %}{% set k = d.kpi %}
+    {{ kpi('إجمالي المستخلصات', '{:,.0f}'.format(k.certs_total), 'صافي المستحق للمقاولين', href=url_for('certificates_list') if can('certificates.view') else '') }}
+    {{ kpi('إجمالي المصروف', '{:,.0f}'.format(k.paid), '%s%% من المستحقات' % k.paid_ratio, 'ok', href=url_for('payments_list') if can('payments.view') else '') }}
+    {{ kpi('المتبقي للمقاولين', '{:,.0f}'.format(k.remaining), 'رصيد كشوف الحساب حتى اليوم', 'warn', href=url_for('subs_dashboard')) }}
+    {% endif %}
+    {{ kpi('أوامر الشراء', '{:,.0f}'.format(total_amount), '%d أمراً' % orders_count, href=url_for('orders_list')) }}
+  </div>
+
+  <div class="ex-grid" style="margin-bottom:16px;">
+    <div class="ex-c7" style="grid-column:span 7;">{{ attention_panel(todo) }}</div>
+    {% if d %}{% call card('المصروف مقابل المتبقي', 'ex-c5') %}{{ donut(charts.ratio, charts.ratio_center) }}{% endcall %}{% endif %}
+  </div>
+
+  {% if d %}
+  <div class="ex-grid" style="margin-bottom:16px;">
+    {% call card('تطور الصرف شهرياً', 'ex-c7') %}{{ vcols(charts.month_labels, [{'name': 'المصروف', 'color': 'var(--p2)', 'values': d.monthly.paid}]) }}{% endcall %}
+    {% call card('أكبر المقاولين بالمتبقي', 'ex-c5') %}{{ hbars(charts.top_remaining, 'var(--c-rust)') }}{% endcall %}
+  </div>
+  {% endif %}
+
+  <div class="ex-card ex-c12">
+    <div class="ex-head"><div><h3 class="ex-title">أحدث أوامر الشراء</h3></div>{% if can('orders.view') %}<a class="btn" href="{{ url_for('orders_list') }}">عرض الكل</a>{% endif %}</div>
+    <table class="ex-tbl">
+      <thead><tr><th>رقم الأمر</th><th>المورد</th><th>المشروع</th><th class="n">الإجمالي</th><th>الاستلام</th><th>الفاتورة</th><th>السداد</th></tr></thead>
+      <tbody>
+        {% for o in recent %}
+        <tr onclick="location.href='{{ url_for('order_detail', po_number=o.PONumber) }}'" style="cursor:pointer;">
+          <td><b>{{ o.PONumber }}</b></td><td>{{ o.SupplierName }}</td><td>{{ o.Project }}</td><td class="n">{{ '{:,.0f}'.format(o.TotalAmount or 0) }}</td>
+          <td><span class="badge {{ status_class(o.ReceiptStatus) }}">{{ o.ReceiptStatus }}</span></td>
+          <td><span class="badge {{ status_class(o.InvoiceStatus) }}">{{ o.InvoiceStatus }}</span></td>
+          <td><span class="badge {{ status_class(o.PaymentStatus) }}">{{ o.PaymentStatus }}</span></td>
+        </tr>
+        {% else %}<tr><td colspan="7" style="text-align:center; padding:2rem;" class="ex-muted">لا توجد أوامر مسجّلة بعد. ابدأ بـ «أمر شراء جديد».</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
+<script>
+(function () {
+  const root = document.getElementById('exec'), btn = document.getElementById('themeBtn'), key = 'po-exec-theme';
+  try { if (localStorage.getItem(key) === 'dark') root.dataset.theme = 'dark'; } catch (e) {}
+  btn.addEventListener('click', () => { root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark'; try { localStorage.setItem(key, root.dataset.theme); } catch (e) {} });
+})();
+</script>
 {% endblock %}
