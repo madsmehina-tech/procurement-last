@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% set active = "" %}
+{% block title %}نتائج البحث{% endblock %}
+{% block subtitle %}{% if q %}عن «{{ q }}»{% else %}اكتب كلمة في مربع البحث بالأعلى{% endif %}{% endblock %}
+{% block content %}
+{% for g in groups %}
+<section class="sr-group card" style="padding:18px 22px;"><h2>{{ g.title }} <small style="color:var(--text-secondary);">({{ g['items']|length }})</small></h2>
+  <ul class="sr-list">{% for it in g['items'] %}<li><a href="{{ it.url }}"><b>{{ it.label }}</b><small>{{ it.note }}</small></a></li>{% endfor %}</ul></section>
+{% else %}
+{% if q %}<div class="card" style="padding:28px; text-align:center; color:var(--text-secondary);">لا توجد نتائج لـ «{{ q }}». جرّب كلمة أقصر أو رقماً فقط.</div>{% endif %}
+{% endfor %}
+{% endblock %}

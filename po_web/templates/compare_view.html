@@ -2,7 +2,7 @@
 {% set active = "compare" %}
 {% set step_now = 5 if c.Status == 'تمت الترسية' else (2 if not quotes else 3) %}
 {% block title %}{{ c.Title }}{% endblock %}
-{% block subtitle %}{{ c.Kind }} · {{ c.ProjectName or 'بدون مشروع' }}{% if c.SiteName %} / {{ c.SiteName }}{% endif %} · <span class="badge {{ 'success' if c.Status == 'تمت الترسية' else 'neutral' }}">{{ c.Status }}</span>{% endblock %}
+{% block subtitle %}{{ c.Kind }} · {{ c.ProjectName or 'بدون مشروع' }}{% if c.SiteName %} / {{ c.SiteName }}{% endif %} · <span class="badge {{ status_cls(c.Status) }}">{{ c.Status }}</span>{% endblock %}
 {% block page_actions %}<a class="btn" href="{{ url_for('compare_list') }}">&rarr; المقارنات</a>{% if quotes %}<a class="btn" href="{{ url_for('compare_match', compare_id=c.CompareID) }}">مطابقة البنود</a><a class="btn btn-primary" href="{{ url_for('compare_table', compare_id=c.CompareID) }}">جدول المقارنة</a>{% endif %}{% endblock %}
 {% block content %}
 {% include "_compare_css.html" %}{% include "_compare_steps.html" %}

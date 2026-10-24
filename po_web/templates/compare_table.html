@@ -4,7 +4,7 @@
 {% set quotes = a.quotes %}
 {% set printing = False %}
 {% block title %}مقارنة: {{ c.Title }}{% endblock %}
-{% block subtitle %}الخطوة 5: المقارنة ولوحة القرار · {{ c.ProjectName or 'بدون مشروع' }}{% if c.SiteName %} / {{ c.SiteName }}{% endif %} · <span class="badge {{ 'success' if c.Status == 'تمت الترسية' else 'neutral' }}">{{ c.Status }}</span>{% endblock %}
+{% block subtitle %}الخطوة 5: المقارنة ولوحة القرار · {{ c.ProjectName or 'بدون مشروع' }}{% if c.SiteName %} / {{ c.SiteName }}{% endif %} · <span class="badge {{ status_cls(c.Status) }}">{{ c.Status }}</span>{% endblock %}
 {% block page_actions %}<a class="btn" href="{{ url_for('compare_view', compare_id=c.CompareID) }}">&rarr; العروض</a><a class="btn" href="{{ url_for('compare_print', compare_id=c.CompareID) }}" target="_blank">طباعة</a>
 <a class="btn" href="{{ url_for('compare_pdf', compare_id=c.CompareID) }}">تصدير PDF</a><a class="btn btn-primary" href="{{ url_for('compare_xlsx', compare_id=c.CompareID) }}">تصدير Excel</a>{% endblock %}
 {% block content %}

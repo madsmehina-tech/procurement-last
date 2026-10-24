@@ -39,7 +39,7 @@
         <td>{{ '{:,.0f}'.format(r.executed) }}</td>
         <td>{% if r.pct is not none %}<div class="pbar"><span style="width:{{ [r.pct, 100]|min }}%;" class="{{ 'over' if r.pct >= 90 else '' }}"></span></div><small>{{ r.pct }}%</small>{% else %}<small style="color:var(--text-secondary);">لا توجد قيمة</small>{% endif %}</td>
         <td>{{ '{:,.0f}'.format(r.remaining) }}</td>
-        <td><span class="badge {{ 'success' if (r.Status or 'ساري') == 'ساري' else ('warning' if r.Status in ('مسودة', 'صادر') else 'neutral') }}">{{ r.Status or 'ساري' }}</span></td>
+        <td><span class="badge {{ status_cls(r.Status or 'ساري') }}">{{ r.Status or 'ساري' }}</span></td>
       </tr>
     {% else %}<tr><td colspan="9" style="text-align:center; color:var(--text-secondary); padding:28px;">لا توجد عقود مطابقة.</td></tr>{% endfor %}
     </tbody>

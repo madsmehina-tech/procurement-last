@@ -15,7 +15,7 @@
   <thead><tr><th>المقارنة</th><th>المشروع / الموقع</th><th>النوع</th><th>العروض</th><th>الحالة</th><th>الفائز</th><th>الوفر</th><th>التاريخ</th></tr></thead>
   <tbody>{% for c in rows %}<tr style="cursor:pointer;" onclick="location.href='{{ url_for('compare_view', compare_id=c.CompareID) }}'">
     <td><b>{{ c.Title }}</b></td><td>{{ c.ProjectName or '—' }}{% if c.SiteName %}<br><small style="color:var(--text-secondary);">{{ c.SiteName }}</small>{% endif %}</td><td>{{ c.Kind }}</td><td>{{ c.offers }}</td>
-    <td><span class="badge {{ 'success' if c.Status == 'تمت الترسية' else 'neutral' }}">{{ c.Status }}</span></td><td>{{ c.winner or '—' }}</td>
+    <td><span class="badge {{ status_cls(c.Status) }}">{{ c.Status }}</span></td><td>{{ c.winner or '—' }}</td>
     <td>{{ '{:,.0f}'.format(c.SavingsVsAvg) if c.SavingsVsAvg else '—' }}</td><td>{{ c.CreatedAt.strftime('%Y-%m-%d') if c.CreatedAt else '' }}</td></tr>
   {% else %}<tr><td colspan="8" style="text-align:center; color:var(--text-secondary); padding:34px;">لا توجد مقارنات بعد. اضغط «+ مقارنة جديدة» وارفع عروض الموردين.</td></tr>{% endfor %}</tbody></table></div></div>
 {% if stats.parties %}<div class="card" style="margin-top:14px;"><div class="card-header">نسبة الفوز لكل مورد / مقاول</div><div class="tbl-wrap"><table class="list"><thead><tr><th>الطرف</th><th>العروض المقدَّمة</th><th>مرات الفوز</th><th>نسبة الفوز</th></tr></thead>

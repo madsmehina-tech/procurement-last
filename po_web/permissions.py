@@ -116,7 +116,7 @@ ENDPOINT_PERMS = {
     # public
     "login": PUBLIC, "logout": PUBLIC, "register": PUBLIC, "health": PUBLIC,
     # any signed-in user
-    "dashboard": None, "settings_account": None, "settings_profile_save": None,
+    "dashboard": None, "global_search": None, "settings_account": None, "settings_profile_save": None,
     "settings_password_save": None, "settings_avatar_save": None, "avatar_view": None,
     # purchasing
     "orders_list": "orders.view", "order_detail": "orders.view", "order_signed_file": "orders.view",
