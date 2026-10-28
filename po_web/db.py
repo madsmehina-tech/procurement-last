@@ -56,6 +56,12 @@ def ansi_codec():
     return codec
 
 
+def wide_text():
+    """True on a PC whose ANSI code page cannot hold Arabic (e.g. 1252, an English Windows): there the text we send travels as UTF-16
+    («wide»), which every PC can carry, instead of the narrow code page that would crash on the first Arabic letter or turn it into «?»."""
+    return ansi_codec() not in ("utf-8", "cp1256")
+
+
 def get_conn(autocommit=True):
     """Opens a fresh connection. Access/Jet has no real connection pooling,
     so callers open one per request and close it when done."""
@@ -67,7 +73,10 @@ def get_conn(autocommit=True):
     codec = ansi_codec()
     conn.setdecoding(pyodbc.SQL_CHAR, encoding=codec)        # narrow text coming FROM the driver
     conn.setdecoding(pyodbc.SQL_WCHAR, encoding="utf-16le")  # wide text is always UTF-16 little-endian
-    conn.setencoding(encoding=codec)                         # parameters we send TO the driver
+    if wide_text():
+        conn.setencoding(encoding="utf-16le", ctype=pyodbc.SQL_WCHAR)      # the SQL text and the parameters we send TO the driver (any code page)
+    else:
+        conn.setencoding(encoding=codec)                     # the PC's code page can carry Arabic: keep the narrow behaviour that is proven
     return conn
 
 
@@ -80,11 +89,13 @@ def get_conn(autocommit=True):
 #   - the Arabic percent sign and the riyal symbols                                 -> % / the word ريال
 #   - invisible direction marks that PDFs and Word leave in copied text             -> removed
 # Anything else outside the code page becomes '?' instead of an error. On a PC with the UTF-8 option nothing is touched.
-from textfit import fit_text as _fit
+from textfit import fit_text as _fit, fit_wide as _fit_wide
 
 
 def fit_text(value, codec=None):
     """Makes a string safe to send to the driver on this PC (see textfit.py)."""
+    if codec is None and wide_text():
+        return _fit_wide(value)                          # nothing is lost in UTF-16: only the invisible marks / Arabic-Indic digits are normalised
     return _fit(value, codec or ansi_codec())
 
 
@@ -92,7 +103,7 @@ def _fit_params(params):
     if not params:
         return params
     codec = ansi_codec()
-    return tuple(fit_text(p, codec) for p in params)
+    return tuple(fit_text(p) for p in params)
 
 
 # ---- long text -----------------------------------------------------------------------------------------------------
@@ -111,9 +122,10 @@ def _long_sizes(params):
     sizes, found = [], False
     for p in params:
         if isinstance(p, str):
-            n = len(p.encode(codec, errors="replace"))
+            wide = wide_text()
+            n = len(p) if wide else len(p.encode(codec, errors="replace"))      # UTF-16 text is sized in characters, narrow text in bytes
             if n > _LONG_BYTES:
-                sizes.append((pyodbc.SQL_LONGVARCHAR, n, 0))
+                sizes.append((getattr(pyodbc, "SQL_WLONGVARCHAR", pyodbc.SQL_LONGVARCHAR) if wide else pyodbc.SQL_LONGVARCHAR, n, 0))
                 found = True
                 continue
         sizes.append(None)

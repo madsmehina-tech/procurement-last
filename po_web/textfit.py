@@ -21,3 +21,10 @@ def fit_text(value, codec="utf-8"):
     if codec == "utf-8" or not isinstance(value, str):
         return value
     return value.translate(_FIT_MAP).encode(codec, errors="replace").decode(codec)
+
+
+def fit_wide(value):
+    """For a PC whose driver takes UTF-16: only the normalisation (Arabic-Indic digits, invisible marks) - no character is replaced by «?»."""
+    if not isinstance(value, str):
+        return value
+    return value.translate(_FIT_MAP)
