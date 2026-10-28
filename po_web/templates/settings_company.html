@@ -13,5 +13,12 @@
   <div class="form-2"><div><label class="set-lab">ممثل الشركة (الموقِّع)</label><input class="inp" name="repname" value="{{ c.get('RepName') or '' }}"></div><div><label class="set-lab">صفته</label><input class="inp" name="reptitle" value="{{ c.get('RepTitle') or '' }}"></div></div>
   <div class="form-3"><div><label class="set-lab">البنك</label><input class="inp" name="bankname" value="{{ c.get('BankName') or '' }}"></div><div><label class="set-lab">الآيبان</label><input class="inp" name="iban" value="{{ c.get('IBAN') or '' }}" dir="ltr"></div>
     <div><label class="set-lab">اسم صاحب الحساب</label><input class="inp" name="accountholder" value="{{ c.get('AccountHolder') or '' }}"></div></div>
-  <div style="margin-top:16px;"><button class="btn btn-primary btn-lg" type="submit">حفظ</button></div></form>
+  <h4 style="margin:18px 0 6px;font-size:14px;">توقيعات أوامر الصرف (تظهر على نموذج «طلب الصرف»)</h4>
+  <div class="form-2"><div><label class="set-lab" style="margin-top:0;">المحاسب</label><input class="inp" name="signaccountant" value="{{ c.get('SignAccountant') or '' }}"></div>
+    <div><label class="set-lab" style="margin-top:0;">مدير الحسابات</label><input class="inp" name="signaccounts" value="{{ c.get('SignAccounts') or '' }}"></div>
+    <div><label class="set-lab">المدير المالي</label><input class="inp" name="signfinance" value="{{ c.get('SignFinance') or '' }}"></div>
+    <div><label class="set-lab">المدير العام</label><input class="inp" name="signgm" value="{{ c.get('SignGM') or '' }}"></div></div>
+  <label class="set-lab">القسم الطالب الافتراضي</label><input class="inp" name="voucherdept" value="{{ c.get('VoucherDept') or '' }}" placeholder="مثال: العقود والمشتريات (C&P)">
+  <div style="margin-top:16px;"><button class="btn btn-primary btn-lg" type="submit">حفظ</button></div>
+</form>
 {% endblock %}

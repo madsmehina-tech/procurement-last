@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% set active = "suppliers" %}
+{% block title %}كشف حساب المورد — {{ supplier.Name }}{% endblock %}
+{% block subtitle %}مدين: ما يستحقه المورد (أوامر الشراء) · دائن: ما دُفع له أو خُصم · الرصيد = دائن − مدين{% endblock %}
+{% block page_actions %}
+<a class="btn" href="{{ url_for('supplier_detail', supplier_id=supplier.SupplierID) }}#tab-account">&rarr; ملف المورد</a>
+<a class="btn" href="{{ url_for('supplier_statement_print', supplier_id=supplier.SupplierID, **request.args) }}" target="_blank">طباعة</a>
+<a class="btn" href="{{ url_for('supplier_statement_pdf', supplier_id=supplier.SupplierID, **request.args) }}">تصدير PDF</a>
+{% endblock %}
+{% block content %}
+<form method="get" class="card" style="padding:16px 18px; margin-bottom:1rem; display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; gap:12px; align-items:end;">
+  <div><label class="set-lab" style="margin-top:0;" for="df">من تاريخ</label><input id="df" class="search-box" type="date" name="date_from" value="{{ f.date_from }}" style="width:100%;"></div>
+  <div><label class="set-lab" style="margin-top:0;" for="dt">إلى تاريخ</label><input id="dt" class="search-box" type="date" name="date_to" value="{{ f.date_to }}" style="width:100%;"></div>
+  <div><label class="set-lab" style="margin-top:0;" for="pj">المشروع</label><select id="pj" class="search-box" name="project" style="width:100%;"><option value="">كل المشاريع</option>{% for p in d.projects %}<option {{ 'selected' if f.project == p else '' }}>{{ p }}</option>{% endfor %}</select></div>
+  <div><label class="set-lab" style="margin-top:0;" for="bs">احتساب المشتريات</label><select id="bs" class="search-box" name="basis" style="width:100%;"><option value="orders" {{ 'selected' if f.basis == 'orders' else '' }}>كل أوامر الشراء</option><option value="invoiced" {{ 'selected' if f.basis == 'invoiced' else '' }}>الفواتير الصادرة فقط</option></select></div>
+  <div style="display:flex; gap:8px;"><button class="btn btn-primary" type="submit">تطبيق</button><a class="btn" href="{{ url_for('supplier_statement', supplier_id=supplier.SupplierID) }}">مسح</a></div>
+</form>
+
+<section class="cy-kpis" style="grid-template-columns: repeat(4, minmax(0, 1fr));">
+  <div class="cy-card"><div class="cy-l">رصيد الافتتاح</div><div class="cy-v">{% if d.opening_entry %}<bdi dir="ltr">{{ '{:,.0f}'.format(d.opening_entry.amount) }}</bdi>{% else %}—{% endif %}</div><div class="cy-h">{% if d.opening_entry %}{{ d.opening_entry.label }} · {{ d.opening_entry.date.strftime('%Y-%m-%d') }}{% else %}لم يُسجَّل بعد{% endif %}</div></div>
+  <div class="cy-card"><div class="cy-l">إجمالي المشتريات</div><div class="cy-v">{{ '{:,.0f}'.format(d.purchases) }}</div><div class="cy-h">أوامر الشراء في الفترة</div></div>
+  <div class="cy-card"><div class="cy-l">المسدَّد والمخصوم</div><div class="cy-v ok">{{ '{:,.0f}'.format(d.paid) }}</div><div class="cy-h">دفعات ومرتجعات وخصومات</div></div>
+  <div class="cy-card"><div class="cy-l">الرصيد الحالي</div><div class="cy-v" style="color:{{ '#8A2A22' if d.balance < 0 else '#1A5E3C' }};"><bdi dir="ltr">{{ '{:,.0f}'.format(d.balance) }}</bdi></div><div class="cy-h">{{ d.note }}</div></div>
+</section>
+
+<div class="card" style="padding:0;"><div class="tbl-wrap">
+  <table class="list" style="table-layout:fixed; min-width:760px;">
+    <colgroup><col style="width:6%"><col style="width:12%"><col style="width:44%"><col style="width:13%"><col style="width:13%"><col style="width:12%"></colgroup>
+    <thead><tr><th>مسلسل</th><th>التاريخ</th><th>الوصف</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead>
+    <tbody>
+    {% if f.date_from %}<tr style="background:#FBFAF7;"><td></td><td></td><td><b>رصيد سابق</b></td><td></td><td></td><td><b><bdi dir="ltr">{{ '{:,.2f}'.format(d.opening) }}</bdi></b></td></tr>{% endif %}
+    {% for l in d.lines %}
+      <tr {% if l.kind == 'opening' %}style="background:var(--accent-bg);"{% endif %}><td style="color:var(--text-secondary);">{{ l.seq }}</td><td>{{ l.date.strftime('%Y-%m-%d') if l.date.year > 1 else '' }}</td><td style="word-break:normal; overflow-wrap:break-word;">{{ l.desc }}</td>
+        <td>{{ '{:,.2f}'.format(l.debit) if l.debit else '' }}</td><td style="color:#1A5E3C;">{{ '{:,.2f}'.format(l.credit) if l.credit else '' }}</td>
+        <td><b style="color:{{ '#8A2A22' if l.balance < 0 else '#1A5E3C' if l.balance > 0 else 'inherit' }};"><bdi dir="ltr">{{ '{:,.2f}'.format(l.balance) }}</bdi></b></td></tr>
+    {% else %}<tr><td colspan="6" style="text-align:center; color:var(--text-secondary); padding:28px;">لا توجد حركات مطابقة.</td></tr>{% endfor %}
+    </tbody>
+    <tfoot><tr style="background:#F7F5EF; font-weight:700;"><td colspan="3">الإجمالي</td><td>{{ '{:,.2f}'.format(d.debit) }}</td><td>{{ '{:,.2f}'.format(d.credit) }}</td><td><bdi dir="ltr">{{ '{:,.2f}'.format(d.balance) }}</bdi></td></tr></tfoot>
+  </table>
+</div></div>
+<p class="set-hint">الرصيد بالسالب: للمورد مستحقات علينا · بالموجب: دفعنا أكثر من المستحق · صفر: لا فروقات. أمر الشراء المعلَّم «تم السداد» يُحتسب مسدَّداً بكامل قيمته في تاريخ سداده، إلا إذا سُجّلت له دفعة يدوية تحمل رقمه فتُحتسب بمبلغها. ما قبل تاريخ رصيد الافتتاح مشمول فيه ولا يظهر مرة ثانية.</p>
+{% endblock %}

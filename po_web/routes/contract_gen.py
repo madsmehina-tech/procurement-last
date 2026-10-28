@@ -284,7 +284,8 @@ def contract_template_test(version_id):
 def settings_company():
     if request.method == "POST":
         f = request.form
-        cols = ("LegalName", "CR", "VatNo", "UnifiedNo", "Address", "City", "Phone", "Email", "RepName", "RepTitle", "BankName", "IBAN", "AccountHolder")
+        cols = ("LegalName", "CR", "VatNo", "UnifiedNo", "Address", "City", "Phone", "Email", "RepName", "RepTitle", "BankName", "IBAN", "AccountHolder",
+                "SignAccountant", "SignAccounts", "SignFinance", "SignGM", "VoucherDept")
         vals = [clean_spaces(f.get(c.lower(), "")) for c in cols]
         if not vals[0]:
             flash("اسم الشركة النظامي مطلوب.")

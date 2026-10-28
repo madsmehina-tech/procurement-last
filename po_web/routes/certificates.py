@@ -16,6 +16,7 @@ import contracts_service as cs
 import db
 import masterdata
 import money_guards as mg
+import opening_service
 from finance import STATUS_BADGE, ST_ENTERED, ST_IN_CYCLE, ST_PAID, ST_REJECTED, CERT_STATUSES, classify_status, norm_status
 from routes import route
 from routes.documents import save_entity_document
@@ -153,6 +154,10 @@ def _read_cert_form(sub_id, existing=None):
     if v["materials"] + v["penalties"] > v["value"] + 0.005:
         errors.append("الخصومات (%s) أكبر من قيمة المستخلص (%s)." % ("{:,.2f}".format(v["materials"] + v["penalties"]), "{:,.2f}".format(v["value"])))
     v["date"] = _date("cert_date")
+    try:                                                         # what is dated before the opening balance is already inside it
+        opening_service.guard_sub_date(sub_id, v["date"], "هذا المستخلص")
+    except opening_service.OpeningError as e:
+        errors.append(str(e))
     nxt = 1
     v["no"] = int(existing["CertificateNo"]) if existing and existing.get("CertificateNo") else 1
     if v["project"] and v["site"]:

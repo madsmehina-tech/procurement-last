@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% set active = "vouchers" %}
+{% block title %}{{ ('تعديل ' ~ voucher.VoucherNo) if voucher else 'إنشاء أمر صرف عام' }}{% endblock %}
+{% block subtitle %}اختر المشروع ثم المستفيد؛ يسحب النظام مستنداته المستحقة، وتكمل بقية بيانات النموذج{% endblock %}
+{% block page_actions %}<a class="btn" href="{{ url_for('vouchers_list') }}">&rarr; أوامر الصرف</a>{% endblock %}
+{% block content %}
+<form method="post" id="vf" class="card" style="padding:22px 24px; max-width:980px;" novalidate>
+  <h3 class="doc-title" style="margin:0 0 10px;">1 · المشروع والمستفيد</h3>
+  <div class="form-3">
+    <div><label class="set-lab" style="margin-top:0;" for="project_id">اسم المشروع</label>
+      <select class="inp" id="project_id" name="project_id" required><option value="">— اختر المشروع —</option>{% for p in projects %}<option value="{{ p.ProjectID }}" {{ 'selected' if v.project_id|string == p.ProjectID|string else '' }}>{{ p.ProjectName }}</option>{% endfor %}</select></div>
+    <div><label class="set-lab" style="margin-top:0;">المستفيد هو</label>
+      <div style="display:flex; gap:18px; padding-top:8px;"><label><input type="radio" name="party_kind" value="sup" {{ 'checked' if v.party_kind != 'sub' else '' }}> مورد</label><label><input type="radio" name="party_kind" value="sub" {{ 'checked' if v.party_kind == 'sub' else '' }}> مقاول</label></div></div>
+    <div><label class="set-lab" style="margin-top:0;" for="party_id">اسم المستفيد</label>
+      <select class="inp" id="party_id" name="party_id" required data-selected="{{ v.party_id }}"><option value="">— اختر —</option></select></div>
+  </div>
+  <div id="docs-box" class="card" style="padding:12px 16px; margin-top:12px; background:var(--surface-2);" hidden>
+    <b>مستندات مستحقة لهذا المستفيد على هذا المشروع</b> <small class="set-hint" style="margin:0;">علّم ما تريد صرفه الآن؛ يُضاف كبند ومستند مرجعي.</small>
+    <div id="docs-list" style="margin-top:8px; display:flex; flex-direction:column; gap:6px;"></div></div>
+
+  <h3 class="doc-title" style="margin:20px 0 10px;">2 · بيانات الطلب</h3>
+  <div class="form-3">
+    <div><label class="set-lab" style="margin-top:0;" for="voucher_date">التاريخ</label><input class="inp" type="date" id="voucher_date" name="voucher_date" value="{{ v.voucher_date }}" required></div>
+    <div><label class="set-lab" style="margin-top:0;" for="request_type">نوع الطلب</label><input class="inp" id="request_type" name="request_type" maxlength="120" value="{{ v.request_type }}" placeholder="مثال: أعمال زراعة"></div>
+    <div><label class="set-lab" style="margin-top:0;" for="department">القسم الطالب</label><input class="inp" id="department" name="department" maxlength="120" value="{{ v.department }}"></div>
+    <div><label class="set-lab" for="cost_center">مركز التكلفة</label><input class="inp" id="cost_center" name="cost_center" maxlength="255" value="{{ v.cost_center }}" placeholder="افتراضياً اسم المشروع"></div>
+    <div><label class="set-lab" for="pay_method">طريقة السداد</label><select class="inp" id="pay_method" name="pay_method">{% for m in pay_methods %}<option {{ 'selected' if v.pay_method == m else '' }}>{{ m }}</option>{% endfor %}</select></div>
+    <div><label class="set-lab" for="pay_statement">بيان السداد</label><input class="inp" id="pay_statement" name="pay_statement" maxlength="255" value="{{ v.pay_statement }}"></div>
+  </div>
+  <label class="set-lab" for="description">البيان</label><input class="inp" id="description" name="description" maxlength="255" required value="{{ v.description }}" placeholder="مثال: سداد مستخلص أعمال زراعة">
+
+  <h3 class="doc-title" style="margin:20px 0 6px;">3 · المستندات المرجعية</h3>
+  <table class="list" style="margin-bottom:6px; width:100%;"><thead><tr><th style="width:34%;">المستند</th><th>الرقم</th><th style="width:60px;"></th></tr></thead><tbody id="refs">
+    {% for r in v.refs %}<tr><td><select class="inp" style="width:100%;" name="ref_type">{% for t in ref_types %}<option {{ 'selected' if r.type == t else '' }}>{{ t }}</option>{% endfor %}</select></td><td><input class="inp" style="width:100%;" name="ref_no" maxlength="60" value="{{ r.no }}"></td><td><button type="button" class="btn" data-del>×</button></td></tr>{% endfor %}
+  </tbody></table>
+  <button type="button" class="btn" id="add-ref">+ مستند مرجعي</button>
+
+  <h3 class="doc-title" style="margin:20px 0 6px;">4 · بنود الطلب</h3>
+  <div class="tbl-wrap"><table class="list" style="width:100%;"><thead><tr><th>البيان</th><th style="width:100px;">الكمية</th><th style="width:150px;">السعر</th><th style="width:140px;">الإجمالي</th><th style="width:60px;"></th></tr></thead><tbody id="items">
+    {% for i in v['items'] %}<tr><td><input class="inp" style="width:100%;" name="item_desc" maxlength="255" value="{{ i.desc }}"></td><td><input class="inp" style="width:100%;" name="item_qty" inputmode="decimal" value="{{ i.qty }}"></td><td><input class="inp" style="width:100%;" name="item_price" inputmode="decimal" value="{{ i.price }}"></td><td class="line-total" style="font-weight:700;">—</td><td><button type="button" class="btn" data-del>×</button></td></tr>{% endfor %}
+  </tbody></table></div>
+  <button type="button" class="btn" id="add-item" style="margin-top:6px;">+ بند</button>
+
+  <div class="form-3" style="margin-top:14px;">
+    <div><label class="set-lab" style="margin-top:0;" for="amount_mode">الأسعار أعلاه</label><select class="inp" id="amount_mode" name="amount_mode">{% for k, lab in modes.items() %}<option value="{{ k }}" {{ 'selected' if v.amount_mode == k else '' }}>{{ lab }}</option>{% endfor %}</select></div>
+    <div><label class="set-lab" style="margin-top:0;" for="vat_pct">ضريبة القيمة المضافة</label><select class="inp" id="vat_pct" name="vat_pct"><option value="15" {{ 'selected' if v.vat_pct|string == '15' else '' }}>15%</option><option value="0" {{ 'selected' if v.vat_pct|string == '0' else '' }}>بدون ضريبة</option></select></div>
+    <div><label class="set-lab" style="margin-top:0;" for="discount">الخصم (بعد الضريبة)</label><input class="inp" id="discount" name="discount" inputmode="decimal" value="{{ v.discount }}"></div>
+  </div>
+  <div id="totals" class="card" style="padding:12px 16px; margin-top:12px; background:var(--accent-bg); display:grid; grid-template-columns: repeat(4, 1fr); gap:10px; text-align:center;">
+    <div><small>الإجمالي قبل الخصم</small><br><b id="t-sub">—</b></div><div><small>الضريبة</small><br><b id="t-vat">—</b></div><div><small>الإجمالي بعد الضريبة</small><br><b id="t-tot">—</b></div><div><small>صافي قيمة الطلب</small><br><b id="t-net" style="font-size:18px; color:var(--accent);">—</b></div></div>
+  <p class="set-hint">المبلغ بالحروف يظهر في الأمر المطبوع بعد الحفظ. الخصم يُحتسب بعد الضريبة كما في أوامر الشراء.</p>
+
+  <details style="margin-top:14px;"><summary style="cursor:pointer; font-weight:700;">التوقيعات والملاحظات (تُؤخذ من «بيانات الشركة» ويمكن تغييرها لهذا الأمر)</summary>
+    <div class="form-2" style="margin-top:8px;">{% for k, lab, col in sign_fields %}<div><label class="set-lab" style="margin-top:0;" for="sign_{{ k }}">{{ lab }}</label><input class="inp" id="sign_{{ k }}" name="sign_{{ k }}" maxlength="120" value="{{ v.sign.get(k, '') }}"></div>{% endfor %}</div>
+    <label class="set-lab" for="notes">ملاحظات تظهر في الأمر</label><textarea class="inp" id="notes" name="notes" rows="2" maxlength="1000">{{ v.notes }}</textarea></details>
+
+  <div style="margin-top:18px; display:flex; gap:10px;"><button class="btn btn-primary btn-lg" type="submit">{{ 'حفظ التعديل' if voucher else 'حفظ كمسودة' }}</button><a class="btn btn-lg" href="{{ url_for('vouchers_list') }}">إلغاء</a></div>
+</form>
+
+<template id="tpl-ref"><tr><td><select class="inp" style="width:100%;" name="ref_type">{% for t in ref_types %}<option>{{ t }}</option>{% endfor %}</select></td><td><input class="inp" style="width:100%;" name="ref_no" maxlength="60"></td><td><button type="button" class="btn" data-del>×</button></td></tr></template>
+<template id="tpl-item"><tr><td><input class="inp" style="width:100%;" name="item_desc" maxlength="255"></td><td><input class="inp" style="width:100%;" name="item_qty" inputmode="decimal" value="1"></td><td><input class="inp" style="width:100%;" name="item_price" inputmode="decimal"></td><td class="line-total" style="font-weight:700;">—</td><td><button type="button" class="btn" data-del>×</button></td></tr></template>
+<script>
+(function () {
+  const $ = id => document.getElementById(id), form = $('vf'), projSel = $('project_id'), partySel = $('party_id');
+  const kind = () => (form.querySelector('input[name=party_kind]:checked') || {}).value || 'sup';
+  const projName = () => projSel.selectedIndex > 0 ? projSel.options[projSel.selectedIndex].text : '';
+  const fmt = n => (Number(n) || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const r2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
+
+  // ---- the linked lists: project -> (supplier | contractor) -> their unpaid documents
+  async function loadParties(keep) {
+    const q = new URLSearchParams({kind: kind(), project: projName()});
+    let rows = [];
+    try { rows = await (await fetch('{{ url_for("voucher_api_parties") }}?' + q)).json(); } catch (e) {}
+    const want = keep || partySel.value || partySel.dataset.selected || '';
+    partySel.replaceChildren(new Option('— اختر —', ''));
+    const rel = rows.filter(r => r.related), other = rows.filter(r => !r.related);
+    const group = (label, list) => { if (!list.length) return; const g = document.createElement('optgroup'); g.label = label; list.forEach(r => g.appendChild(new Option(r.name, r.id))); partySel.appendChild(g); };
+    if (projName()) { group('مرتبطون بهذا المشروع', rel); group(kind() === 'sup' ? 'باقي الموردين' : 'باقي المقاولين', other); } else group(kind() === 'sup' ? 'الموردون' : 'المقاولون', rows);
+    partySel.value = want;
+    partySel.dataset.selected = '';
+    loadDocs();
+  }
+  async function loadDocs() {
+    const box = $('docs-box'), list = $('docs-list');
+    list.replaceChildren();
+    if (!partySel.value) { box.hidden = true; return; }
+    let docs = [];
+    try { docs = await (await fetch('{{ url_for("voucher_api_documents") }}?' + new URLSearchParams({kind: kind(), id: partySel.value, project: projName()}))).json(); } catch (e) {}
+    box.hidden = false;
+    if (!docs.length) { list.textContent = 'لا توجد مستندات مستحقة على هذا المشروع. أضف البنود يدوياً.'; return; }
+    docs.forEach((d, i) => {
+      const lab = document.createElement('label'); lab.style.cssText = 'display:flex; gap:8px; align-items:center;';
+      const cb = Object.assign(document.createElement('input'), {type: 'checkbox'}); cb.dataset.i = i;
+      lab.append(cb, document.createTextNode(d.label + ' — ' + fmt(d.amount) + ' ريال'));
+      cb.addEventListener('change', () => toggleDoc(cb.checked, d, i));
+      list.appendChild(lab);
+    });
+  }
+  function toggleDoc(on, d, i) {
+    const key = 'doc' + i + '_' + d.type + d.no;
+    document.querySelectorAll('[data-doc="' + key + '"]').forEach(r => r.remove());
+    if (!on) { recalc(); return; }
+    $('amount_mode').value = 'incl';                                   // an unpaid certificate / order amount already INCLUDES the VAT
+    const blank = [...document.querySelectorAll('#items tr')].find(r => !r.dataset.doc && !r.querySelector('[name=item_desc]').value.trim() && !r.querySelector('[name=item_price]').value.trim());
+    const it = blank || add('tpl-item', 'items'); it.dataset.doc = key;                  // the empty first row is reused
+    it.querySelector('[name=item_desc]').value = d.desc; it.querySelector('[name=item_price]').value = d.amount.toFixed(2);
+    const rf = add('tpl-ref', 'refs'); rf.dataset.doc = key; rf.querySelector('[name=ref_type]').value = d.type; rf.querySelector('[name=ref_no]').value = d.no;
+    if (!$('description').value) $('description').value = d.desc;
+    recalc();
+  }
+  function add(tpl, body) { const tr = $(tpl).content.firstElementChild.cloneNode(true); $(body).appendChild(tr); return tr; }
+
+  // ---- live totals (a preview: the saved figures come from the server, with the same rules)
+  function recalc() {
+    let sum = 0;
+    document.querySelectorAll('#items tr').forEach(tr => {
+      const q = parseFloat(tr.querySelector('[name=item_qty]').value) || 0, p = parseFloat(tr.querySelector('[name=item_price]').value) || 0;
+      const t = r2(q * p); sum += t; tr.querySelector('.line-total').textContent = t ? fmt(t) : '—';
+    });
+    const pct = parseFloat($('vat_pct').value) || 0, incl = $('amount_mode').value === 'incl';
+    let sub, vat, tot;
+    if (incl) { tot = r2(sum); sub = pct ? r2(tot / (1 + pct / 100)) : tot; vat = r2(tot - sub); } else { sub = r2(sum); vat = r2(sub * pct / 100); tot = r2(sub + vat); }
+    const disc = parseFloat($('discount').value) || 0;
+    $('t-sub').textContent = fmt(sub); $('t-vat').textContent = fmt(vat); $('t-tot').textContent = fmt(tot); $('t-net').textContent = fmt(tot - disc);
+  }
+  form.addEventListener('input', recalc);
+  form.addEventListener('click', e => { if (e.target.matches('[data-del]')) { e.target.closest('tr').remove(); recalc(); } });
+  $('add-ref').addEventListener('click', () => add('tpl-ref', 'refs'));
+  $('add-item').addEventListener('click', () => { add('tpl-item', 'items'); });
+  projSel.addEventListener('change', () => { const cc = $('cost_center'); if (!cc.value || cc.dataset.auto === '1') { cc.value = projName(); cc.dataset.auto = '1'; } loadParties(''); });
+  $('cost_center').addEventListener('input', () => { $('cost_center').dataset.auto = '0'; });
+  form.querySelectorAll('input[name=party_kind]').forEach(r => r.addEventListener('change', () => loadParties('')));
+  partySel.addEventListener('change', loadDocs);
+  if (!document.querySelector('#items tr')) add('tpl-item', 'items');
+  loadParties(partySel.dataset.selected); recalc();
+})();
+</script>
+{% endblock %}

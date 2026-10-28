@@ -72,6 +72,11 @@ def add_entry(sub_id, kind, category, description, amount, when, project, site, 
     if amount <= 0:
         raise LedgerError("المبلغ يجب أن يكون أكبر من صفر.")
     status = S_DONE if (category != CAT_PAYMENT or executed) else S_PENDING
+    import opening_service
+    try:
+        opening_service.guard_sub_date(sub_id, when or datetime.now(), "هذه الحركة")
+    except opening_service.OpeningError as e:
+        raise LedgerError(str(e))
     project, site = clean_spaces(project), clean_spaces(site)
     if site and not project:
         raise LedgerError("اكتب اسم المشروع مع الموقع.")
@@ -138,6 +143,8 @@ def delete_entry(entry_id):
         raise LedgerError("هذه الحركة مرتبطة بدورة صرف فلا تُحذف.")
     if e.get("SettledCertID"):
         raise LedgerError("هذه «تسوية عند إقفال المعاملة»؛ تُلغى بإعادة فتح المعاملة من الأرشيف (بصلاحية أعلى).")
+    if e.get("Category") == "رصيد افتتاحي":
+        raise LedgerError("هذا «رصيد الافتتاح»؛ يُعدَّل أو يُلغى من بطاقة «رصيد الافتتاح» لا من قائمة الحركات.")
     db.execute("DELETE FROM [LedgerEntries] WHERE [EntryID] = ?", (entry_id,))
     return e["SubcontractorID"]
 

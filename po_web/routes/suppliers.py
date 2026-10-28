@@ -9,6 +9,8 @@ from datetime import datetime
 from flask import flash, redirect, render_template, request, send_file, url_for
 
 import archive
+import opening_service
+import supplier_account
 import ui_helpers
 import auth
 import db
@@ -212,7 +214,8 @@ def supplier_new():
         "INSERT INTO [Suppliers] ([Name], [CR], [TaxNumber], [RepName], [Phone], [RepEmail], [BankAccount], [Notes], [CreatedAt]) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (name, cr, tax, rep, phone, email, bank, notes, datetime.now()))
     archive.ensure_supplier_folder(supplier_id)
-    flash("تم إضافة المورد. ارفع أوراقه من قسم «الملفات» أدناه.")
+    msg = opening_service.from_form("sup", supplier_id, request.form, (auth.current_user() or {}).get("Username", "")) if auth.can("accounts.opening") else ""
+    flash("تم إضافة المورد. ارفع أوراقه من قسم «الملفات» أدناه. %s" % msg)
     return redirect(url_for("supplier_detail", supplier_id=supplier_id))
 
 
@@ -237,8 +240,13 @@ def supplier_detail(supplier_id):
     next_actions = ui_helpers.paper_actions(ui_helpers.paper_alerts(slots, archive.SUPPLIER_SLOTS))
     if not orders:
         next_actions.append({"level": "info", "tab": "orders", "text": "لا توجد أوامر شراء لهذا المورد بعد"})
+    stmt = supplier_account.statement(supplier_id)
+    all_entries = supplier_account.entries(supplier_id)
+    po_all = supplier_account.supplier_orders(supplier_id, s["Name"])
+    account = {"opening": opening_service.supplier_opening(supplier_id), "entries": all_entries, "purchases": stmt["purchases"], "paid": stmt["paid"], "balance": stmt["balance"],
+               "note": stmt["note"], "categories": supplier_account.CATEGORIES, "projects": stmt["projects"], "po_list": sorted(o["PONumber"] for o in po_all)}
     return render_template(
-        "supplier_detail.html", supplier=s, next_actions=next_actions, orders=orders[:8], orders_count=len(orders),
+        "supplier_detail.html", supplier=s, next_actions=next_actions, account=account, today_iso=datetime.now().strftime("%Y-%m-%d"), orders=orders[:8], orders_count=len(orders),
         total=sum(o["TotalAmount"] or 0 for o in orders), slots=by_type, others=others, filled=filled,
         slots_total=SLOTS_TOTAL, folder=folder + "/" + archive.SUPPLIER_PAPERS, network=archive.network_path(folder + "/" + archive.SUPPLIER_PAPERS),
         other_types=archive.SUPPLIER_OTHER_TYPES, slot_names=archive.SUPPLIER_SLOTS,

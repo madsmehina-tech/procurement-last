@@ -23,7 +23,7 @@ def route(rule, **options):
 def register_all(app):
     from routes import (  # noqa: F401  (importing registers the routes)
         auth_routes, orders, analytics, suppliers, subcontractors, contracts, certificates, documents, system,
-        settings, items, payments, cycles, archive_tab, ledger, reports, compare, contract_gen, search,
+        settings, items, payments, cycles, archive_tab, ledger, reports, compare, contract_gen, search, supplier_account, vouchers,
     )
     missing = [f.__name__ for _, f, _ in _REGISTRY if f.__name__ not in permissions.ENDPOINT_PERMS]
     if missing:
