@@ -156,7 +156,10 @@ def create_app():
         try:                                    # the real reason is shown to the administrator only (never to other users)
             user = auth.current_user()
             if user and user.get("IsAdmin"):
-                detail = "%s: %s" % (type(orig).__name__, " ".join(str(orig).split())[:500])
+                import traceback
+                frames = traceback.extract_tb(getattr(orig, "__traceback__", None))[-3:]
+                where = " ← ".join("%s:%d (%s)" % (os.path.basename(f.filename), f.lineno, f.name) for f in reversed(frames))
+                detail = "%s: %s  |  الصفحة: %s %s  |  الموضع: %s" % (type(orig).__name__, " ".join(str(orig).split())[:400], request.method, request.path, where)
         except Exception:                       # noqa - the error page must never fail itself
             detail = None
         return _error_page(500, "حدث خطأ غير متوقع", "سُجّل الخطأ في ملف logs/error.log. أخبر مسؤول النظام بوقت حدوثه.", detail)

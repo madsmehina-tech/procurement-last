@@ -130,3 +130,17 @@ def test_one_colour_rule_for_every_status():
     assert status_cls("استلام جزئي") == "warning" and status_cls("بانتظار قرار الإدارة") == "warning" and status_cls("ضمن دورة صرف") == "warning"
     assert status_cls("مرفوض") == "danger" and status_cls("مفسوخ") == "danger" and status_cls("ملغاة") == "danger"
     assert status_cls("مسودة") == "neutral" and status_cls("مُدخَل") == "neutral" and status_cls("") == "neutral"
+
+
+def test_the_error_page_tells_the_administrator_where_it_happened(client, monkeypatch):
+    import search_service
+    import app as appmod
+
+    def boom(*a, **k):
+        raise UnicodeEncodeError("charmap", "x", 0, 1, "undefined")
+    monkeypatch.setattr(search_service, "search", boom)
+    appmod.app.config["PROPAGATE_EXCEPTIONS"] = False
+    r = client.get("/search?q=abc")
+    html = r.get_data(as_text=True)
+    assert r.status_code == 500
+    assert "GET /search" in html and "الموضع" in html and "test_ui_v253.py" in html
