@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% set active = "opening_balances" %}
+{% block title %}أرصدة الافتتاح{% endblock %}
+{% block subtitle %}ما كان مستحقاً للمقاولين والموردين (أو عليهم) يوم بدء العمل بالنظام — أدخلها كلها هنا دفعة واحدة{% endblock %}
+{% block content %}
+<div class="card" style="padding:16px 20px; margin-bottom:1rem;">
+  <p style="margin:0 0 6px;"><b>كيف تعمل هذه الصفحة؟</b></p>
+  <ol style="margin:0; padding-inline-start:22px; line-height:1.9;">
+    <li>اكتب <b>تاريخ الافتتاح</b> (يوم بدء العمل الفعلي بالنظام). كل ما قبله يُعتبر مشمولاً بالأرصدة ولا يُدخل ثانية.</li>
+    <li>أمام كل طرف اكتب <b>المبلغ</b> واختر <b>الاتجاه</b>: «مستحق للطرف» إن كنا مدينين له، أو «مستحق علينا» إن كان هو مدين لنا.</li>
+    <li>اترك المبلغ فارغاً لمن لا رصيد له أو لمن لا تريد تغيير رصيده. ثم اضغط «حفظ الأرصدة».</li>
+  </ol>
+</div>
+<form method="post">
+  <div class="card" style="padding:14px 20px; margin-bottom:1rem; display:flex; gap:12px; align-items:end; flex-wrap:wrap;">
+    <div><label class="set-lab" style="margin-top:0;" for="as_of">تاريخ الافتتاح (الرصيد كما في)</label><input id="as_of" class="search-box" type="date" name="as_of" value="{{ today }}" required></div>
+    <div style="flex:1; min-width:200px;"><label class="set-lab" style="margin-top:0;" for="flt">بحث في القائمة</label><input id="flt" class="search-box" type="search" placeholder="اكتب جزءاً من الاسم" style="width:100%;"></div>
+    <button class="btn btn-primary" type="submit">حفظ الأرصدة</button>
+  </div>
+  <div class="card" style="padding:0;"><div class="tbl-wrap"><table class="list" id="ob-table">
+    <thead><tr><th>الاسم</th><th>النوع</th><th>الرصيد المسجَّل حالياً</th><th>المبلغ الجديد (ريال)</th><th>الاتجاه</th><th>ملاحظة</th></tr></thead>
+    <tbody>{% for p in parties %}{% set key = p.kind ~ ':' ~ p.id %}
+      <tr data-name="{{ p.name }}">
+        <td><b>{{ p.name }}</b><input type="hidden" name="party" value="{{ key }}"><input type="hidden" name="name_{{ key }}" value="{{ p.name }}"></td>
+        <td><span class="badge neutral">{{ 'مقاول' if p.kind == 'sub' else 'مورد' }}</span></td>
+        <td>{% if p.opening %}<bdi dir="ltr">{{ '{:,.2f}'.format(p.opening.amount) }}</bdi><br><small style="color:var(--text-secondary);">{{ p.opening.label }} · {{ p.opening.date.strftime('%Y-%m-%d') if p.opening.date else '' }}</small>{% else %}—{% endif %}</td>
+        <td><input class="search-box" name="amount_{{ key }}" inputmode="decimal" style="width:130px;" aria-label="مبلغ {{ p.name }}"></td>
+        <td><select class="search-box" name="dir_{{ key }}" aria-label="اتجاه {{ p.name }}"><option value="party">مستحق للطرف</option><option value="us">مستحق علينا</option></select></td>
+        <td><input class="search-box" name="note_{{ key }}" maxlength="120" style="width:100%; min-width:140px;"></td>
+      </tr>
+    {% else %}<tr><td colspan="6" style="text-align:center; padding:28px; color:var(--text-secondary);">لا يوجد مقاولون أو موردون بعد. أضفهم أولاً.</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</form>
+<script>
+document.getElementById('flt').addEventListener('input', function () {
+  const q = this.value.trim();
+  document.querySelectorAll('#ob-table tbody tr').forEach(r => { r.hidden = q && !(r.dataset.name || '').includes(q); });
+});
+</script>
+{% endblock %}

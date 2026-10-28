@@ -1,0 +1,61 @@
+{% from "_opening_card.html" import opening_card %}
+{{ opening_card(account.opening, url_for('supplier_opening_save', supplier_id=supplier.SupplierID), url_for('supplier_opening_clear', supplier_id=supplier.SupplierID), can('accounts.opening'), today_iso, 'المورد') }}
+
+<section class="cy-kpis" style="grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom:1rem;">
+  <div class="cy-card"><div class="cy-l">إجمالي المشتريات</div><div class="cy-v">{{ '{:,.0f}'.format(account.purchases) }}</div><div class="cy-h">أوامر الشراء بعد رصيد الافتتاح</div></div>
+  <div class="cy-card"><div class="cy-l">المسدَّد والمخصوم</div><div class="cy-v ok">{{ '{:,.0f}'.format(account.paid) }}</div><div class="cy-h">دفعات ومرتجعات وخصومات</div></div>
+  <div class="cy-card"><div class="cy-l">الرصيد الحالي</div><div class="cy-v" style="color:{{ '#8A2A22' if account.balance < 0 else '#1A5E3C' }};"><bdi dir="ltr">{{ '{:,.0f}'.format(account.balance) }}</bdi></div><div class="cy-h">{{ account.note }}</div></div>
+</section>
+
+<section class="card" style="margin-bottom:1rem;">
+  <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+    <span>حركات الحساب المسجَّلة ({{ account.entries|length }})</span>
+    <span style="display:flex; gap:8px;"><a class="btn" href="{{ url_for('supplier_statement', supplier_id=supplier.SupplierID) }}">كشف الحساب الكامل ←</a>
+    {% if can('suppliers.account') %}<button class="btn btn-primary" type="button" data-open="dlg-sup-entry">+ إضافة حركة</button>{% endif %}</span></div>
+  <p class="set-hint" style="margin:0 18px 8px;">دائن: دفعة للمورد، مرتجع / إشعار دائن، خصم · مدين: استحقاق آخر، رد دفعة. أوامر الشراء تدخل الكشف تلقائياً ولا تُسجَّل هنا.</p>
+  <div class="tbl-wrap"><table class="list">
+    <thead><tr><th>التاريخ</th><th>النوع</th><th>التصنيف</th><th>الوصف</th><th>المشروع / الأمر</th><th>المبلغ</th><th></th></tr></thead>
+    <tbody>{% for e in account.entries %}
+      <tr><td>{{ e.EntryDate.strftime('%Y-%m-%d') if e.EntryDate else '' }}</td>
+        <td><span class="badge {{ 'success' if e.Kind == 'دائن' else 'warning' }}">{{ e.Kind }}</span></td><td>{{ e.Category }}</td><td>{{ e.Description }}</td>
+        <td>{{ e.ProjectName or '—' }}{% if e.PONumber %}<br><small style="color:var(--text-secondary);">{{ e.PONumber }}</small>{% endif %}</td>
+        <td><b>{{ '{:,.2f}'.format(e.Amount) }}</b></td>
+        <td>{% if e.Category != 'رصيد افتتاحي' and can('suppliers.account') %}<form method="post" action="{{ url_for('supplier_entry_delete', entry_id=e.EntryID) }}" onsubmit="return confirm('حذف هذه الحركة؟');"><button class="btn" type="submit" style="color:var(--danger);">حذف</button></form>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="7" style="text-align:center; color:var(--text-secondary); padding:24px;">لا توجد حركات مسجّلة بعد.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+
+{% if can('suppliers.account') %}
+<dialog id="dlg-sup-entry" class="dlg">
+  <form method="post" action="{{ url_for('supplier_entry_add', supplier_id=supplier.SupplierID) }}" style="padding:22px; min-width:min(520px, 90vw);">
+    <h3 style="margin-top:0;">حركة على حساب المورد</h3>
+    <div class="form-2">
+      <div><label class="set-lab" style="margin-top:0;">النوع</label><select class="search-box" name="kind" id="se-kind" style="width:100%;"><option value="دائن">دائن (دفع / خصم لصالح المورد)</option><option value="مدين">مدين (استحقاق على الشركة)</option></select></div>
+      <div><label class="set-lab" style="margin-top:0;">التصنيف</label><select class="search-box" name="category" id="se-cat" style="width:100%;"></select></div>
+    </div>
+    <label class="set-lab">الوصف</label><input class="search-box" name="description" required maxlength="200" style="width:100%;">
+    <div class="form-3">
+      <div><label class="set-lab">المبلغ (ريال)</label><input class="search-box" name="amount" inputmode="decimal" required style="width:100%;"></div>
+      <div><label class="set-lab">التاريخ</label><input class="search-box" type="date" name="entry_date" value="{{ today_iso }}" required style="width:100%;"></div>
+      <div><label class="set-lab">مرجع التحويل (اختياري)</label><input class="search-box" name="bank_ref" maxlength="60" style="width:100%;"></div>
+    </div>
+    <div class="form-2">
+      <div><label class="set-lab">المشروع (اختياري)</label><input class="search-box" name="project" list="dl-sup-projects" style="width:100%;"><datalist id="dl-sup-projects">{% for p in account.projects %}<option value="{{ p }}">{% endfor %}</datalist></div>
+      <div><label class="set-lab">أمر الشراء المرتبط (اختياري)</label><select class="search-box" name="po_number" style="width:100%;"><option value="">— لا شيء —</option>{% for o in account.po_list %}<option value="{{ o }}">{{ o }}</option>{% endfor %}</select></div>
+    </div>
+    <p class="set-hint">إن سجّلت دفعة وربطتها بأمر شراء معلَّم «تم السداد» فتُحتسب بمبلغها هنا بدل احتسابه مسدداً بكامل قيمته.</p>
+    <div style="display:flex; gap:8px; margin-top:12px;"><button class="btn btn-primary" type="submit">حفظ</button><button class="btn" type="button" data-close>إلغاء</button></div>
+  </form>
+</dialog>
+<script>
+(function () {
+  const CATS = {{ account.categories|tojson }}, kind = document.getElementById('se-kind'), cat = document.getElementById('se-cat');
+  function fill() { cat.replaceChildren(...CATS[kind.value].map(c => Object.assign(document.createElement('option'), {textContent: c, value: c}))); }
+  kind.addEventListener('change', fill); fill();
+  document.addEventListener('click', e => {
+    const o = e.target.closest('[data-open="dlg-sup-entry"]'); if (o) { document.getElementById('dlg-sup-entry').showModal(); }
+    if (e.target.closest('#dlg-sup-entry [data-close]')) { document.getElementById('dlg-sup-entry').close(); }
+  });
+})();
+</script>
+{% endif %}

@@ -8,6 +8,7 @@ from datetime import datetime
 from flask import flash, redirect, render_template, request, send_file, url_for
 
 import archive
+import opening_service
 import ui_helpers
 import auth
 import contracts_service as cs
@@ -182,7 +183,8 @@ def subcontractor_new():
         flash("تعذّر حفظ المقاول ولم يتغير أي شيء. السبب: %s" % " ".join(str(e).split())[:200])
         return render_template("subcontractor_form.html", sub=request.form)
     archive.ensure_sub_folder(sub_id)                     # إدارة مقاولي الباطن / <المقاول> / {أوراق المقاول، العقود، المستخلصات}
-    flash("تم إضافة المقاول. من هذه الصفحة تُدار أوراقه وعقوده ومستخلصاته.")
+    msg = opening_service.from_form("sub", sub_id, request.form, (auth.current_user() or {}).get("Username", "")) if auth.can("accounts.opening") else ""
+    flash("تم إضافة المقاول. من هذه الصفحة تُدار أوراقه وعقوده ومستخلصاته. %s" % msg)
     return redirect(url_for("subcontractor_detail", sub_id=sub_id))
 
 
@@ -281,7 +283,7 @@ def render_sub_page(sub_id, open_dialog=None, form=None):
     fig = cs.sub_figures(sub_id, contracts, certs)
     ledger_rows = ledger_service.entries(sub_id)
     return render_template("subcontractor_detail.html", sub=sub, fig=fig, next_actions=_next_actions(sub_id, my_certs, rows, ledger_rows, url_for, ui_helpers.paper_actions(ui_helpers.paper_alerts(slots, archive.SUB_SLOTS))), summary=_summary(sub_id, rows, my_certs, pays, fig),
-                           contracts=rows, certs=my_certs, cert_files=cert_files, contract_choices=contract_choices, sites_by_project=sites_by_project, next_numbers=next_numbers, ledger=ledger_rows, ledger_files=ledger_files, balance=ledger_service.balance_of(sub_id), ledger_categories=ledger_service.CATEGORIES, badge=STATUS_BADGE, slots=slots, others=others, filled=filled,
+                           contracts=rows, certs=my_certs, cert_files=cert_files, contract_choices=contract_choices, sites_by_project=sites_by_project, next_numbers=next_numbers, ledger=ledger_rows, opening=opening_service.sub_opening(sub_id), ledger_files=ledger_files, balance=ledger_service.balance_of(sub_id), ledger_categories=ledger_service.CATEGORIES, badge=STATUS_BADGE, slots=slots, others=others, filled=filled,
                            slots_total=SLOTS_TOTAL, slot_names=archive.SUB_SLOTS, other_types=archive.SUB_OTHER_TYPES, folder=folder,
                            network=archive.network_path(folder), statuses=["ساري", "موقوف", "منتهي"], projects_list=projects_list,
                            open_dialog=open_dialog or _open_from_query(), form=form or {}, today_iso=datetime.now().strftime("%Y-%m-%d"),

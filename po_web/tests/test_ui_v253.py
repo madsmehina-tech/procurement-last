@@ -81,7 +81,8 @@ def test_the_menu_has_a_way_back_to_the_home_page(client):
 
 
 PAGES = ["/", "/orders", "/orders/new", "/suppliers", "/items", "/compare", "/subcontractors", "/certificates", "/cycles", "/payments", "/archive",
-         "/contracts", "/settings/account", "/settings/users", "/settings/roles", "/settings/projects", "/settings/company", "/project-analysis"]
+         "/contracts", "/settings/account", "/settings/users", "/settings/roles", "/settings/projects", "/settings/company", "/project-analysis",
+         "/vouchers", "/vouchers/new", "/settings/opening-balances", "/search?q=a"]
 
 
 def test_no_page_has_a_broken_html_attribute(client):

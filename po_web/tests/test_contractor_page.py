@@ -49,8 +49,8 @@ def test_supplier_page_has_tabs_and_a_strip(client):
     from datetime import datetime
     sid = fake_db.execute_insert("INSERT INTO [Suppliers] ([Name], [CreatedAt]) VALUES ('مورد الأسمنت', ?)", (datetime.now(),))
     html = client.get("/suppliers/%d" % sid).get_data(as_text=True)
-    assert html.count('role="tab"') == 3 and 'data-key="sup"' in html
-    assert sorted(re.findall(r'data-pane="(\w+)"', html)) == ["data", "orders", "papers"]
+    assert html.count('role="tab"') == 4 and 'data-key="sup"' in html
+    assert sorted(re.findall(r'data-pane="(\w+)"', html)) == ["account", "data", "orders", "papers"]
     assert html.count("<div") == html.count("</div>")
     assert "الإجراء التالي" in html and "ينقص" in html                       # no papers uploaded yet
 

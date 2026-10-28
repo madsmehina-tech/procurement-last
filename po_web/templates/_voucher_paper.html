@@ -1,0 +1,67 @@
+{# The printed form «طلب صرف» - the same markup is shown on screen (voucher_view) and printed (voucher_print). #}
+<style>
+.vp { --vp-blue:#1F5FAE; --vp-line:#C9D6E6; --vp-soft:#EAF1FA; direction: rtl; font-family: "Segoe UI", Tahoma, Arial, sans-serif; color:#16202E; font-size:12px; line-height:1.55; background:#fff; position:relative; }
+.vp * { box-sizing: border-box; }
+.vp-head { display:flex; align-items:center; gap:14px; padding-bottom:8px; border-bottom:2px solid var(--vp-blue); }
+.vp-head img { height:62px; width:auto; object-fit:contain; flex:none; }
+.vp-co b { font-size:17px; display:block; } .vp-co span { display:block; color:#33415A; font-size:11.5px; }
+.vp-mid { display:flex; justify-content:space-between; align-items:center; margin:10px 0 8px; }
+.vp-title { font-size:26px; font-weight:800; color:var(--vp-blue); }
+.vp-id { border:1px solid var(--vp-line); background:var(--vp-soft); border-radius:8px; padding:6px 12px; line-height:1.8; min-width:150px; }
+.vp-id b { font-size:13px; }
+.vp table { width:100%; border-collapse:collapse; }
+.vp-info td { border:1px solid var(--vp-line); padding:6px 10px; vertical-align:middle; }
+.vp-info td.l { width:13%; background:var(--vp-soft); color:var(--vp-blue); font-weight:700; white-space:nowrap; }
+.vp-info td.v { width:37%; }
+.vp h4 { margin:12px 0 5px; font-size:13px; color:var(--vp-blue); border-inline-start:4px solid var(--vp-blue); padding-inline-start:8px; }
+.vp-tbl th { background:var(--vp-blue); color:#fff; padding:6px 8px; text-align:right; font-weight:700; }
+.vp-tbl.light th { background:var(--vp-soft); color:var(--vp-blue); border:1px solid var(--vp-line); }
+.vp-tbl td { border:1px solid var(--vp-line); padding:6px 8px; }
+.vp-tbl td.n { text-align:center; font-variant-numeric: tabular-nums; white-space:nowrap; }
+.vp table.vp-tot { width:46%; margin-inline-start:auto; margin-top:10px; }
+.vp-tot td { border:1px solid var(--vp-line); padding:6px 10px; }
+.vp-tot td.n { text-align:left; font-variant-numeric: tabular-nums; direction:ltr; }
+.vp-tot tr.net td { background:var(--vp-blue); color:#fff; font-weight:800; font-size:14px; }
+.vp-words { margin-top:12px; border:1.5px dashed #7C97BC; background:#F5F8FD; padding:8px 12px; border-radius:6px; }
+.vp-sign { display:flex; gap:10px; margin-top:22px; }
+.vp-sign > div { flex:1; border:1px solid var(--vp-line); border-radius:8px; padding:8px 8px 10px; text-align:center; min-height:84px; }
+.vp-sign b { display:block; margin-bottom:34px; font-size:12.5px; }
+.vp-sign i { display:block; border-top:1px solid #16202E; margin:0 6px 4px; }
+.vp-foot { margin-top:16px; padding-top:6px; border-top:1px solid var(--vp-blue); font-size:10.5px; color:#475569; }
+.vp-stamp { position:absolute; top:42%; right:18%; transform:rotate(-18deg); font-size:64px; font-weight:800; color:rgba(180,30,30,.22); border:6px solid rgba(180,30,30,.22); padding:0 22px; border-radius:12px; pointer-events:none; }
+</style>
+<div class="vp">
+  {% if v.Status == 'ملغي' %}<div class="vp-stamp">ملغي</div>{% endif %}
+  <div class="vp-head">
+    <img src="{{ company_logo }}" alt="شعار الشركة">
+    <div class="vp-co"><b>{{ company.get('LegalName') or 'شركة الهضب للتجارة والمقاولات' }}</b>
+      <span>سجل تجاري{% if company.get('CR') %}: {{ company.get('CR') }}{% endif %}{% if company.get('UnifiedNo') %} / رقم موحد: {{ company.get('UnifiedNo') }}{% endif %}{% if company.get('VatNo') %} - الرقم الضريبي: {{ company.get('VatNo') }}{% endif %}</span>
+      <span>{{ [company.get('Address'), company.get('City')]|select|join('، ') }}</span></div>
+  </div>
+  <div class="vp-mid">
+    <div class="vp-id">رقم الطلب: <b>{{ v.VoucherNo }}</b><br>التاريخ: <b>{{ v.VoucherDate.strftime('%d-%m-%Y') if v.VoucherDate else '' }}</b><br>الحالة: <b>{{ v.Status }}</b></div>
+    <div class="vp-title">طلب صرف</div>
+  </div>
+  <table class="vp-info"><tbody>
+    <tr><td class="l">المستفيد</td><td class="v">{{ v.PartyName }}<small style="color:#64748B;"> ({{ v.PartyKind }})</small></td><td class="l">نوع الطلب</td><td class="v">{{ v.RequestType or '—' }}</td></tr>
+    <tr><td class="l">القسم الطالب</td><td class="v">{{ v.Department or '—' }}</td><td class="l">مركز التكلفة</td><td class="v">{{ v.CostCenter or v.ProjectName }}</td></tr>
+    <tr><td class="l">طريقة السداد</td><td class="v">{{ v.PayMethod }}</td><td class="l">بيان السداد</td><td class="v">{{ v.PayStatement or '—' }}</td></tr>
+    <tr><td class="l">البيان</td><td class="v" colspan="3">{{ v.Description }}</td></tr>
+  </tbody></table>
+  {% if refs %}<h4>المستندات المرجعية</h4>
+  <table class="vp-tbl light"><thead><tr><th>المستند</th><th>الرقم</th></tr></thead><tbody>{% for r in refs %}<tr><td>{{ r.type }}</td><td>{{ r.no }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+  <h4>بنود الطلب</h4>
+  <table class="vp-tbl"><thead><tr><th style="width:5%;">#</th><th>البيان</th><th style="width:12%;">الكمية</th><th style="width:17%;">السعر</th><th style="width:17%;">الإجمالي</th></tr></thead>
+    <tbody>{% for i in items %}<tr><td class="n">{{ loop.index }}</td><td>{{ i.desc }}</td><td class="n">{{ ('%g' % i.qty) }}</td><td class="n">{{ '{:,.2f}'.format(i.price) }}</td><td class="n">{{ '{:,.2f}'.format(i.total) }}</td></tr>{% endfor %}</tbody></table>
+  <table class="vp-tot"><tbody>
+    <tr><td>الإجمالي قبل الخصم</td><td class="n">{{ '{:,.2f}'.format(v.Subtotal) }}</td></tr>
+    <tr><td>الضريبة %{{ '%g' % v.VatPct }}</td><td class="n">{{ '{:,.2f}'.format(v.VatAmount) }}</td></tr>
+    <tr><td><b>الإجمالي بعد الضريبة</b></td><td class="n"><b>{{ '{:,.2f}'.format(v.Total) }}</b></td></tr>
+    {% if v.Discount %}<tr><td>الخصم (بعد الضريبة)</td><td class="n">- {{ '{:,.2f}'.format(v.Discount) }}</td></tr>{% endif %}
+    <tr class="net"><td>صافي قيمة الطلب</td><td class="n">{{ '{:,.2f}'.format(v.Net) }}</td></tr>
+  </tbody></table>
+  <div class="vp-words"><b>المبلغ بالحروف :</b> {{ words }}</div>
+  {% if v.Notes %}<div class="vp-words" style="border-style:solid; background:#fff; margin-top:8px;"><b>ملاحظات :</b> {{ v.Notes }}</div>{% endif %}
+  <div class="vp-sign">{% for s in signs %}<div><b>{{ s.title }}</b><i></i>{{ s.name or ' ' }}</div>{% endfor %}</div>
+  <div class="vp-foot">تاريخ ووقت الطباعة: {{ printed_at }}</div>
+</div>

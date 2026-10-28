@@ -1,4 +1,6 @@
 {# «الدفعات» on the contractor's page: the movements typed by hand (direct payments, materials charged to him, refunds ...) #}
+{% from "_opening_card.html" import opening_card %}
+{{ opening_card(opening, url_for('sub_opening_save', sub_id=sub.SubcontractorID), url_for('sub_opening_clear', sub_id=sub.SubcontractorID), can('accounts.opening'), today_iso, 'المقاول') }}
 <section class="card" id="ledger" style="margin-top:1.5rem;">
   <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
     <span>الدفعات والحركات المالية ({{ ledger|length }}) <small class="set-hint" style="margin:0;">الرصيد الحالي في كشف الحساب: <b style="color:{{ '#8A2A22' if balance < 0 else '#1A5E3C' }};"><bdi dir="ltr">{{ '{:,.0f}'.format(balance) }}</bdi></b></small></span>

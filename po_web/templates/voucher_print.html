@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ v.VoucherNo }} — طلب صرف</title>
+<style>
+  @page { size: A4 portrait; margin: 10mm; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  body { padding: 0 2mm; }
+  .toolbar { text-align: center; padding: 10px; } .toolbar button { font: inherit; padding: 8px 22px; cursor: pointer; }
+  @media print { .toolbar { display: none; } }
+</style>
+</head>
+<body>
+<div class="toolbar"><button onclick="window.print()">طباعة / حفظ PDF</button></div>
+{% include "_voucher_paper.html" %}
+</body>
+</html>

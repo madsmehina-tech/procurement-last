@@ -5,7 +5,8 @@
 {% block subtitle %}ملف المورد وأوراقه · Supplier profile &amp; papers{% endblock %}
 {% block page_actions %}<a class="btn" href="{{ url_for('suppliers_list') }}">&rarr; الموردون</a>
 {% if can('contractgen.create') %}<a class="btn btn-primary" href="{{ url_for('contract_generate', party='sup:%d' % supplier.SupplierID) }}">إنشاء اتفاقية توريد</a>{% endif %}
-<a class="btn" href="{{ url_for('orders_list', supplier=supplier.Name) }}">عرض في تاب المتابعة ←</a>{% endblock %}
+<a class="btn" href="{{ url_for('orders_list', supplier=supplier.Name) }}">عرض في تاب المتابعة ←</a>
+<a class="btn" href="{{ url_for('supplier_statement', supplier_id=supplier.SupplierID) }}">كشف الحساب</a>{% endblock %}
 
 {% block content %}
 <div class="kpi-grid">
@@ -22,6 +23,7 @@
 {% else %}<section class="next-bar ok" aria-label="الإجراء التالي">✓ لا يوجد إجراء معلّق لهذا المورد.</section>{% endif %}
 <nav class="tabs no-print" role="tablist" aria-label="أقسام صفحة المورد" data-key="sup">
   <button type="button" role="tab" data-tab="orders">أوامر الشراء <span class="tab-n">{{ orders_count }}</span></button>
+  <button type="button" role="tab" data-tab="account">الحساب</button>
   <button type="button" role="tab" data-tab="papers">الأوراق <span class="tab-n">{{ filled }}/{{ slots_total }}</span></button>
   <button type="button" role="tab" data-tab="data">بيانات المورد</button>
 </nav>
@@ -54,6 +56,9 @@
   <textarea class="search-box" style="width:100%; height:64px;" name="notes" {{ ro }}>{{ supplier.Notes or '' }}</textarea>
 </form>
 
+</div>
+<div class="tab-pane" data-pane="account">
+{% include "_supplier_account.html" %}
 </div>
 <div class="tab-pane" data-pane="papers">
 {{ supplier_files(supplier, slots, others, folder, network, can('suppliers.edit')) }}

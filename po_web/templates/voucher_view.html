@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% set active = "vouchers" %}
+{% block title %}{{ v.VoucherNo }}{% endblock %}
+{% block subtitle %}أمر صرف عام — {{ v.PartyName }} · {{ v.ProjectName }}{% endblock %}
+{% block page_actions %}
+<a class="btn" href="{{ url_for('vouchers_list') }}">&rarr; أوامر الصرف</a>
+<a class="btn btn-primary" href="{{ url_for('voucher_print', voucher_id=v.VoucherID) }}" target="_blank">طباعة</a>
+<a class="btn" href="{{ url_for('voucher_pdf', voucher_id=v.VoucherID) }}">تصدير PDF</a>
+{% if v.Status == 'مسودة' and can('vouchers.create') %}<a class="btn" href="{{ url_for('voucher_edit', voucher_id=v.VoucherID) }}">تعديل</a>{% endif %}
+{% if v.Status == 'مسودة' and can('vouchers.approve') %}<form method="post" action="{{ url_for('voucher_approve', voucher_id=v.VoucherID) }}" onsubmit="return confirm('اعتماد أمر الصرف؟ لن يمكن تعديله بعد الاعتماد.');" style="display:inline;"><button class="btn" type="submit" style="color:var(--success);">اعتماد</button></form>{% endif %}
+{% if v.Status != 'ملغي' and can('vouchers.approve') %}<form method="post" action="{{ url_for('voucher_cancel', voucher_id=v.VoucherID) }}" onsubmit="return confirm('إلغاء أمر الصرف؟ يبقى في السجل ولا يُحذف.');" style="display:inline;"><button class="btn" type="submit" style="color:var(--danger);">إلغاء الأمر</button></form>{% endif %}
+{% endblock %}
+{% block content %}
+<div class="card" style="padding:22px; max-width:860px; margin:0 auto;">{% include "_voucher_paper.html" %}</div>
+<p class="set-hint" style="text-align:center;">أمر الصرف مستند للطباعة والتوقيع؛ لا يُسجَّل به صرف في كشف حساب المقاول أو المورد. سجّل الدفعة نفسها من دورة الصرف أو الدفعة المباشرة أو حساب المورد.</p>
+{% endblock %}

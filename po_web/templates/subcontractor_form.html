@@ -17,6 +17,15 @@
     <label class="set-lab">ملاحظات</label><textarea class="search-box" style="width:100%; height:70px;" name="notes">{{ f.get('notes', '') }}</textarea>
     <p class="set-hint">بعد الحفظ تُرفع أوراق المقاول (السجل التجاري، الشهادات، العقود...) من صفحته، وتُحفظ في «إدارة مقاولي الباطن ← المقاول ← أوراق المقاول».</p>
   </div>
+
+  {% if can('accounts.opening') %}<fieldset style="margin-top:1.25rem; border:1px solid var(--border); border-radius:12px; padding:12px 16px;">
+    <legend style="font-weight:700; padding:0 8px;">رصيد الافتتاح (اختياري)</legend>
+    <p class="set-hint" style="margin:0 0 8px;">إن كان لهذا الطرف مبلغ مستحق له أو عليه في النظام القديم فسجّله الآن، ليبدأ كشف الحساب منه. يمكنك تركه وتسجيله لاحقاً.</p>
+    <div class="form-3">
+      <div><label class="set-lab" style="margin-top:0;" for="op-dir">الاتجاه</label><select id="op-dir" class="inp" name="opening_direction"><option value="party">مستحق للطرف (نحن مدينون له)</option><option value="us">مستحق علينا (هو مدين لنا)</option></select></div>
+      <div><label class="set-lab" style="margin-top:0;" for="op-amt">المبلغ (ريال)</label><input id="op-amt" class="inp" name="opening_amount" inputmode="decimal"></div>
+      <div><label class="set-lab" style="margin-top:0;" for="op-date">كما في تاريخ</label><input id="op-date" class="inp" type="date" name="opening_as_of"></div>
+    </div></fieldset>{% endif %}
   <div style="margin-top:1.25rem; display:flex; gap:10px;"><button type="submit" class="btn btn-primary">حفظ المقاول</button><a class="btn" href="{{ url_for('subcontractors_list') }}">إلغاء</a></div>
 </form>
 {% endblock %}

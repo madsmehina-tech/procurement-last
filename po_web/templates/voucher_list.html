@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% set active = "vouchers" %}
+{% block title %}الطباعة — أوامر الصرف العامة{% endblock %}
+{% block subtitle %}أنشئ أمر صرف على نموذج الشركة من بيانات المشروع والمورد أو المقاول، ثم اطبعه أو صدّره PDF{% endblock %}
+{% block page_actions %}{% if can('vouchers.create') %}<a class="btn btn-primary btn-lg" href="{{ url_for('voucher_new') }}">+ إنشاء أمر صرف عام</a>{% endif %}{% endblock %}
+{% block content %}
+{% if can('vouchers.create') %}
+<section class="card" style="padding:22px 26px; margin-bottom:1.25rem; display:flex; gap:18px; align-items:center; justify-content:space-between; flex-wrap:wrap; background:linear-gradient(135deg, var(--accent-bg), #fff);">
+  <div><h2 style="margin:0 0 6px; font-size:20px;">أمر صرف عام</h2>
+    <p style="margin:0; color:var(--text-secondary); max-width:560px;">اختر المشروع، ثم مورداً أو مقاولاً، فيسحب النظام مستنداته المستحقة (مستخلصات أو أوامر شراء) ويجهّز النموذج بالضريبة والمبلغ بالحروف والتوقيعات. الرقم القادم: <b>{{ next_no }}</b>.</p></div>
+  <a class="btn btn-primary btn-lg" href="{{ url_for('voucher_new') }}" style="min-width:220px; text-align:center;">إنشاء أمر صرف عام</a>
+</section>
+{% endif %}
+<div class="kpi-grid">
+  <div class="kpi-card"><p class="kpi-label">عدد الأوامر</p><p class="kpi-value">{{ kpi.count }}</p></div>
+  <div class="kpi-card {{ 'warning' if kpi.draft else '' }}"><p class="kpi-label">مسودات تنتظر الاعتماد</p><p class="kpi-value">{{ kpi.draft }}</p></div>
+  <div class="kpi-card"><p class="kpi-label">معتمدة</p><p class="kpi-value">{{ kpi.approved }}</p></div>
+  <div class="kpi-card"><p class="kpi-label">صافي المعتمد (ريال)</p><p class="kpi-value">{{ '{:,.0f}'.format(kpi.net) }}</p></div>
+</div>
+<form method="get" class="card" style="padding:12px 16px; margin-bottom:1rem; display:flex; gap:10px; align-items:end; flex-wrap:wrap;">
+  <div><label class="set-lab" style="margin-top:0;" for="q">بحث</label><input id="q" class="search-box" name="q" value="{{ q }}" placeholder="رقم، مستفيد، مشروع"></div>
+  <div><label class="set-lab" style="margin-top:0;" for="st">الحالة</label><select id="st" class="search-box" name="status"><option value="">كل الحالات</option>{% for s in statuses %}<option {{ 'selected' if status == s else '' }}>{{ s }}</option>{% endfor %}</select></div>
+  <button class="btn btn-primary" type="submit">تطبيق</button>{% if q or status %}<a class="btn" href="{{ url_for('vouchers_list') }}">مسح</a>{% endif %}
+</form>
+<div class="card" style="padding:0;"><div class="tbl-wrap"><table class="list">
+  <thead><tr><th>الرقم</th><th>التاريخ</th><th>المستفيد</th><th>المشروع</th><th>البيان</th><th>الصافي (ريال)</th><th>الحالة</th><th></th></tr></thead>
+  <tbody>{% for r in rows %}
+    <tr style="cursor:pointer;" onclick="location.href='{{ url_for('voucher_view', voucher_id=r.VoucherID) }}'">
+      <td><b style="color:var(--accent);">{{ r.VoucherNo }}</b></td><td>{{ r.VoucherDate.strftime('%Y-%m-%d') if r.VoucherDate else '' }}</td>
+      <td>{{ r.PartyName }} <small style="color:var(--text-secondary);">({{ r.PartyKind }})</small></td><td>{{ r.ProjectName }}</td><td>{{ r.Description }}</td>
+      <td><b>{{ '{:,.2f}'.format(r.Net or 0) }}</b></td><td><span class="badge {{ status_cls(r.Status) }}">{{ r.Status }}</span></td>
+      <td><a class="btn" href="{{ url_for('voucher_print', voucher_id=r.VoucherID) }}" target="_blank" onclick="event.stopPropagation();">طباعة</a></td></tr>
+  {% else %}<tr><td colspan="8" style="text-align:center; color:var(--text-secondary); padding:34px;">لا توجد أوامر صرف{% if q or status %} مطابقة{% endif %} بعد.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% if can('vouchers.approve') and can_set_start %}
+<form method="post" action="{{ url_for('voucher_start_no') }}" class="card" style="padding:14px 18px; margin-top:1rem; display:flex; gap:10px; align-items:end; flex-wrap:wrap;">
+  <div><label class="set-lab" style="margin-top:0;" for="fn">أول رقم يُصدَر من هذا النظام (لمتابعة ترقيم النظام القديم)</label><input id="fn" class="search-box" name="first_no" inputmode="numeric" value="{{ next_no[3:]|int }}" style="width:120px;"></div>
+  <button class="btn" type="submit">حفظ بداية الترقيم</button><span class="set-hint" style="margin:0;">مثال: آخر أمر في النظام القديم PR-0026 فاكتب 27. يُتاح هذا قبل إنشاء أول أمر فقط.</span>
+</form>{% endif %}
+{% endblock %}

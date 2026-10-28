@@ -26,7 +26,7 @@ import db
 WIPE = ["OrderRevisions", "OrderItems", "PurchaseOrders", "ComparisonItems", "QuoteLines", "Quotes", "Comparisons",
         "Payments", "CycleDecisions", "CycleLog", "PaymentCycles", "LedgerEntries", "Certificates",
         "ContractSites", "ContractLines", "ContractTranches", "ContractData", "ContractHistory", "Contracts",
-        "Documents", "NumberSeries"]
+        "SupplierEntries", "PaymentVouchers", "Documents", "NumberSeries"]
 
 
 def plan():

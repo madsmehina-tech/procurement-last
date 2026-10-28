@@ -57,6 +57,15 @@ CATALOG = [
         ("certificates.pay", "تسجيل صرف المستخلص"),
         ("certificates.delete", "حذف مستخلص (غير المصروف)"),
     ]),
+    ("الطباعة وأوامر الصرف", [
+        ("vouchers.view", "عرض أوامر الصرف العامة وطباعتها"),
+        ("vouchers.create", "إنشاء أمر صرف عام وتعديل المسودة"),
+        ("vouchers.approve", "اعتماد أمر الصرف أو إلغاؤه وضبط بداية الترقيم"),
+    ]),
+    ("أرصدة الحسابات", [
+        ("accounts.opening", "تسجيل أرصدة الافتتاح للمقاولين والموردين"),
+        ("suppliers.account", "حركات كشف حساب المورد (دفعات، مرتجعات، استحقاقات)"),
+    ]),
     ("الدفعات", [("payments.view", "عرض الدفعات وكشف حساب المقاول"), ("payments.edit", "إضافة حركات الدفعات (دائن / مدين) وتنفيذها وحذفها")]),
     ("دورة الصرف", [
         ("cycles.view", "عرض دورات الصرف"),
@@ -117,7 +126,15 @@ ENDPOINT_PERMS = {
     # public
     "login": PUBLIC, "logout": PUBLIC, "register": PUBLIC, "health": PUBLIC,
     # any signed-in user
-    "dashboard": None, "global_search": None, "settings_account": None, "settings_profile_save": None,
+    "dashboard": None, "global_search": None,
+    # vouchers + supplier account + opening balances (v26)
+    "vouchers_list": "vouchers.view", "voucher_view": "vouchers.view", "voucher_print": "vouchers.view", "voucher_pdf": "vouchers.view",
+    "voucher_new": "vouchers.create", "voucher_edit": "vouchers.create", "voucher_api_parties": "vouchers.create", "voucher_api_documents": "vouchers.create",
+    "voucher_approve": "vouchers.approve", "voucher_cancel": "vouchers.approve", "voucher_start_no": "vouchers.approve",
+    "supplier_statement": "suppliers.view", "supplier_statement_print": "suppliers.view", "supplier_statement_pdf": "suppliers.view",
+    "supplier_entry_add": "suppliers.account", "supplier_entry_delete": "suppliers.account",
+    "supplier_opening_save": "accounts.opening", "supplier_opening_clear": "accounts.opening", "sub_opening_save": "accounts.opening", "sub_opening_clear": "accounts.opening",
+    "opening_balances": "accounts.opening", "settings_account": None, "settings_profile_save": None,
     "settings_password_save": None, "settings_avatar_save": None, "avatar_view": None,
     # purchasing
     "orders_list": "orders.view", "order_detail": "orders.view", "order_signed_file": "orders.view",
