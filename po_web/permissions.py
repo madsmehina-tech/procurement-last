@@ -106,13 +106,13 @@ DEFAULT_ROLES = [
 
 
 def _doc_upload_perm(**kw):
-    return {"CERT": "certificates.edit", "SUPPLIER": "suppliers.edit", "SUB": "subcontractors.edit", "CYCLE": "cycles.manage", "CONTRACT": "contracts.edit", "LEDGER": "payments.edit", "PAYMENT": "cycles.manage", "QUOTE": "compare.edit", "COMPARE": "compare.edit"}.get(request.form.get("entity_type"), "orders.edit")
+    return {"CERT": "certificates.edit", "SUPPLIER": "suppliers.edit", "SUB": "subcontractors.edit", "CYCLE": "cycles.manage", "CONTRACT": "contracts.edit", "LEDGER": "payments.edit", "PAYMENT": "cycles.manage", "QUOTE": "compare.edit", "COMPARE": "compare.edit", "VOUCHER": "vouchers.create"}.get(request.form.get("entity_type"), "orders.edit")
 
 
 def _doc_view_perm(**kw):
     import archive
     doc = archive.get_document(kw.get("doc_id"))
-    return {"CERT": "certificates.view", "SUPPLIER": "suppliers.view", "SUB": "subcontractors.view", "CYCLE": "cycles.view", "CONTRACT": "contracts.view", "LEDGER": "payments.view", "PAYMENT": "payments.view", "QUOTE": "compare.view", "COMPARE": "compare.view"}.get(doc.get("EntityType") if doc else None, "orders.view")
+    return {"CERT": "certificates.view", "SUPPLIER": "suppliers.view", "SUB": "subcontractors.view", "CYCLE": "cycles.view", "CONTRACT": "contracts.view", "LEDGER": "payments.view", "PAYMENT": "payments.view", "QUOTE": "compare.view", "COMPARE": "compare.view", "VOUCHER": "vouchers.view"}.get(doc.get("EntityType") if doc else None, "orders.view")
 
 
 def _doc_hide_perm(**kw):
@@ -134,7 +134,7 @@ ENDPOINT_PERMS = {
     "supplier_statement": "suppliers.view", "supplier_statement_print": "suppliers.view", "supplier_statement_pdf": "suppliers.view",
     "supplier_entry_add": "suppliers.account", "supplier_entry_delete": "suppliers.account",
     "supplier_opening_save": "accounts.opening", "supplier_opening_clear": "accounts.opening", "sub_opening_save": "accounts.opening", "sub_opening_clear": "accounts.opening",
-    "opening_balances": "accounts.opening", "settings_account": None, "settings_profile_save": None,
+    "opening_balances": "accounts.opening", "voucher_archive": "vouchers.approve", "settings_account": None, "settings_profile_save": None,
     "settings_password_save": None, "settings_avatar_save": None, "avatar_view": None,
     # purchasing
     "orders_list": "orders.view", "order_detail": "orders.view", "order_signed_file": "orders.view",
