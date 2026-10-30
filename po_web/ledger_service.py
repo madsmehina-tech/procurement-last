@@ -61,8 +61,9 @@ def entries(sub_id):
     return sorted(rows, key=lambda r: (r.get("EntryDate") or datetime.min, r["EntryID"]), reverse=True)
 
 
-def add_entry(sub_id, kind, category, description, amount, when, project, site, executed, bank_ref, user):
-    """Saves one movement. A direct payment may be saved as not executed yet; every other movement is executed at once."""
+def add_entry(sub_id, kind, category, description, amount, when, project, site, executed, bank_ref, user, tx=None):
+    """Saves one movement. A direct payment may be saved as not executed yet; every other movement is executed at once.
+    `tx`: save inside the caller's transaction (the voucher approval does that, so the approval and the payment are ONE unit)."""
     kind, category, description = (kind or "").strip(), (category or "").strip(), clean_spaces(description)
     if kind not in CATEGORIES or category not in CATEGORIES[kind]:
         raise LedgerError("اختر النوع (دائن / مدين) والتصنيف.")
@@ -80,18 +81,25 @@ def add_entry(sub_id, kind, category, description, amount, when, project, site, 
     project, site = clean_spaces(project), clean_spaces(site)
     if site and not project:
         raise LedgerError("اكتب اسم المشروع مع الموقع.")
-    with db.transaction() as tx:
-        pid = sid = None
-        if project:
-            pid, project, _n = masterdata.resolve_project(project, tx)
-            if site:
-                sid, site, _n = masterdata.resolve_site(pid, site, tx)
-        pay_no = next_pay_no(sub_id, tx) if (status == S_DONE and category == CAT_PAYMENT) else None      # an executed payment gets its number now
-        return tx.execute_insert(
-            "INSERT INTO [LedgerEntries] ([SubcontractorID], [Kind], [Category], [Description], [Amount], [EntryDate], [ProjectID], [SiteID], [ProjectName], [SiteName], "
-            "[Status], [ExecAt], [BankRef], [PayNo], [CreatedBy], [CreatedAt]) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (sub_id, kind, category, description[:250], amount, when or datetime.now(), pid, sid, project or None, site or None, status,
-             datetime.now() if status == S_DONE else None, (bank_ref or "")[:80], pay_no, user, datetime.now()))
+    if tx is not None:
+        db.close_request_conn()                              # the guard above read through the shared reader: close it before the caller's transaction writes
+        return _insert_entry(tx, sub_id, kind, category, description, amount, when, project, site, status, bank_ref, user)
+    with db.transaction() as own:
+        return _insert_entry(own, sub_id, kind, category, description, amount, when, project, site, status, bank_ref, user)
+
+
+def _insert_entry(tx, sub_id, kind, category, description, amount, when, project, site, status, bank_ref, user):
+    pid = sid = None
+    if project:
+        pid, project, _n = masterdata.resolve_project(project, tx)
+        if site:
+            sid, site, _n = masterdata.resolve_site(pid, site, tx)
+    pay_no = next_pay_no(sub_id, tx) if (status == S_DONE and category == CAT_PAYMENT) else None      # an executed payment gets its number now
+    return tx.execute_insert(
+        "INSERT INTO [LedgerEntries] ([SubcontractorID], [Kind], [Category], [Description], [Amount], [EntryDate], [ProjectID], [SiteID], [ProjectName], [SiteName], "
+        "[Status], [ExecAt], [BankRef], [PayNo], [CreatedBy], [CreatedAt]) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (sub_id, kind, category, description[:250], amount, when or datetime.now(), pid, sid, project or None, site or None, status,
+         datetime.now() if status == S_DONE else None, (bank_ref or "")[:80], pay_no, user, datetime.now()))
 
 
 SETTLEMENT_CATEGORY = "تسوية أخرى"

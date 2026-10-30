@@ -29,8 +29,9 @@ MODES = {"excl": "الأسعار غير شاملة الضريبة", "incl": "ا�
 MAX_ITEMS, MAX_REFS = 40, 20
 SERIES_KEY = "PR"
 EPS = 0.005
-SIGN_FIELDS = (("accountant", "المحاسب", "SignAccountant"), ("accounts", "مدير الحسابات", "SignAccounts"),
-               ("finance", "المدير المالي", "SignFinance"), ("gm", "المدير العام", "SignGM"))
+SIGN_FIELDS = (("contracts", "مدير العقود والمشتريات", "SignContracts"), ("projects", "مدير عام المشاريع", "SignProjects"), ("accounts", "مدير الحسابات", "SignAccounts"),
+               ("finance", "المدير المالي", "SignFinance"), ("gm", "المدير العام", "SignGM"))          # the order printed from the right
+YES, NO = "نعم", "لا"
 
 
 class VoucherError(Exception):
@@ -102,7 +103,7 @@ def defaults(company):
     c = company or {}
     return {"voucher_date": datetime.now().strftime("%Y-%m-%d"), "project_id": "", "party_kind": "sup", "party_id": "", "request_type": "", "department": c.get("VoucherDept") or "",
             "cost_center": "", "pay_method": PAY_METHODS[0], "pay_statement": "", "description": "", "amount_mode": "incl", "vat_pct": "15", "discount": "",
-            "items": [], "refs": [], "notes": "",
+            "items": [], "refs": [], "notes": "", "show_totals": False, "post_choice": NO,
             "sign": {k: (c.get(col) or "") for k, _lab, col in SIGN_FIELDS}}
 
 
@@ -180,11 +181,12 @@ def parse(form):
         errors.append("أضف بنداً واحداً على الأقل بمبلغه.")
     d["items"] = items
     refs = []
-    for t, n in zip(form.getlist("ref_type"), form.getlist("ref_no")):
+    from itertools import zip_longest
+    for t, n, rid in zip_longest(form.getlist("ref_type"), form.getlist("ref_no"), form.getlist("ref_id"), fillvalue=""):
         n = clean_spaces(n)
         if not n:
             continue
-        refs.append({"type": t if t in REF_TYPES else "أخرى", "no": n[:60]})
+        refs.append({"type": t if t in REF_TYPES else "أخرى", "no": n[:60], "id": clean_spaces(rid)[:40]})      # id: the certificate id / order number the line was pulled from
     if len(refs) > MAX_REFS:
         errors.append("عدد المستندات المرجعية أكثر من %d." % MAX_REFS)
     d["refs"] = refs
@@ -194,6 +196,8 @@ def parse(form):
         d["discount"] = form.get("discount") or ""
         errors.append(str(e))
     d["sign"] = {k: clean_spaces(form.get("sign_" + k))[:120] for k, _lab, _col in SIGN_FIELDS}
+    d["show_totals"] = form.get("show_totals") == "1"
+    d["post_choice"] = YES if form.get("post_choice") == "yes" else NO
     if not errors:
         t = compute([(i["qty"], i["price"]) for i in items], d["amount_mode"], float(d["vat_pct"]), d["discount"])
         if t["total"] > mg.MAX_MONEY:
@@ -215,7 +219,8 @@ def _columns(d, totals):
             "AmountMode": d["amount_mode"], "VatPct": float(d["vat_pct"]), "Subtotal": totals["subtotal"], "VatAmount": totals["vat"], "Total": totals["total"],
             "Discount": totals["discount"], "Net": totals["net"],
             "ItemsJson": json.dumps([dict(i, total=t) for i, t in zip(d["items"], totals["lines"])], ensure_ascii=False),
-            "RefsJson": json.dumps(d["refs"], ensure_ascii=False), "SignJson": json.dumps(d["sign"], ensure_ascii=False), "Notes": d["notes"] or None}
+            "RefsJson": json.dumps(d["refs"], ensure_ascii=False), "SignJson": json.dumps(d["sign"], ensure_ascii=False), "Notes": d["notes"] or None,
+            "ShowTotals": 1 if d.get("show_totals") else 0, "PostChoice": d.get("post_choice") or NO}
 
 
 def create(d, user):
@@ -257,18 +262,101 @@ def listing(status="", q=""):
     return rows
 
 
+def _paid_refs(v):
+    return json.loads(v.get("RefsJson") or "[]")
+
+
+def _contractor_post(tx, v, user):
+    """The payment of a contractor's voucher, as «تم التحويل». Returns (kind, ref, message).
+    * the voucher names certificates (pulled from the list, so with their ids) and their remaining adds up to the net: each is PAID in full (the same
+      Payments record and status change as «تسجيل الصرف»), so the certificate, the statement and the contractor page all agree;
+    * otherwise it is added as an executed DIRECT PAYMENT in the contractor's statement (the certificates are not touched - the message says so)."""
+    import contracts_service as cs
+    import ledger_service as ls
+    from finance import ST_ENTERED, ST_PAID
+    sub_id, net = int(v["SubcontractorID"]), _r2(v["Net"])
+    _s, _c, certs, _p = cs.load()
+    db.close_request_conn()                                       # the reading is done: no reader connection stays open while this transaction writes
+    mine = {g["CertificateID"]: g for g in certs if g["SubcontractorID"] == sub_id}
+    named = []
+    for r in _paid_refs(v):
+        if r.get("type") != "مستخلص":
+            continue
+        g = mine.get(int(r["id"])) if str(r.get("id") or "").isdigit() else None
+        if g is None:                                              # typed by hand: accepted only when the number is unique on this project
+            hits = [x for x in mine.values() if str(x["CertificateNo"]) == str(r.get("no")) and norm_key(x.get("Project")) == norm_key(v["ProjectName"])]
+            g = hits[0] if len(hits) == 1 else None
+        if g is not None and g["CertificateID"] not in [x["CertificateID"] for x in named]:
+            named.append(g)
+    when = v.get("VoucherDate") or datetime.now()
+    if named and abs(sum(g["Remaining"] for g in named) - net) <= 0.01:
+        for g in named:
+            if g["Status"] != ST_ENTERED or g.get("CycleID"):
+                raise VoucherError("المستخلص رقم %s حالته «%s»%s؛ لا يُسجَّل صرفه من أمر الصرف. نفّذ تحويله من دورة الصرف ثم اختر «لا» هنا." %
+                                   (g["CertificateNo"], g["Status"], " وهو ضمن دورة صرف" if g.get("CycleID") else ""))
+            try:
+                mg.check_new_payment(tx, g["CertificateID"], g["Remaining"])
+            except mg.MoneyError as e:
+                raise VoucherError("المستخلص رقم %s: %s" % (g["CertificateNo"], e))
+            tx.execute("INSERT INTO [Payments] ([CertificateID], [SubcontractorID], [PaidAt], [Amount], [BankRef], [Note], [CreatedBy], [CreatedAt]) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                       (g["CertificateID"], sub_id, when, g["Remaining"], v["VoucherNo"], ("أمر صرف %s" % v["VoucherNo"])[:250], user, datetime.now()))
+            tx.execute("UPDATE [Certificates] SET [Status] = ?, [PaymentDate] = ? WHERE [CertificateID] = ?", (ST_PAID, when, g["CertificateID"]))
+        return ("cert", ",".join(str(g["CertificateID"]) for g in named),
+                "سُجّل صرف %d مستخلص بقيمة %s ريال «تم التحويل» وظهر في كشف حساب المقاول." % (len(named), "{:,.2f}".format(net)))
+    refs_text = "، ".join("%s %s" % (r["type"], r["no"]) for r in _paid_refs(v))
+    try:
+        ls.add_entry(sub_id, ls.K_CREDIT, ls.CAT_PAYMENT, ("أمر صرف %s — %s%s" % (v["VoucherNo"], v["Description"], (" (" + refs_text + ")") if refs_text else ""))[:250], net, when,
+                     v["ProjectName"], "", True, v["VoucherNo"], user, tx=tx)
+    except ls.LedgerError as e:
+        raise VoucherError(str(e))
+    why = "لا مستخلصات مرجعية" if not named else "مبلغ الأمر لا يطابق متبقي المستخلصات المرجعية"
+    return ("ledger", "", "سُجّلت دفعة مباشرة %s ريال «تم التحويل» في كشف حساب المقاول (%s؛ لم تتغير حالة أي مستخلص)." % ("{:,.2f}".format(net), why))
+
+
+def _supplier_post(tx, v, user):
+    import opening_service
+    import supplier_account
+    supplier_id, net, when = int(v["SupplierID"]), _r2(v["Net"]), v.get("VoucherDate") or datetime.now()
+    try:
+        opening_service.guard_supplier_date(supplier_id, when, "أمر الصرف")
+    except opening_service.OpeningError as e:
+        raise VoucherError(str(e))
+    orders = {o["PONumber"] for o in supplier_account.supplier_orders(supplier_id)}
+    db.close_request_conn()
+    po_refs = [r for r in _paid_refs(v) if r.get("type") == "أمر شراء" and (r.get("id") or r.get("no")) in orders]
+    po = (po_refs[0].get("id") or po_refs[0]["no"]) if len(po_refs) == 1 else None          # naming ONE order stops it being counted as paid twice
+    tx.execute("INSERT INTO [SupplierEntries] ([SupplierID], [Kind], [Category], [Description], [Amount], [EntryDate], [ProjectName], [PONumber], [BankRef], [CreatedBy], [CreatedAt]) "
+               "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (supplier_id, "دائن", "دفعة", ("أمر صرف %s — %s" % (v["VoucherNo"], v["Description"]))[:250], net, when,
+                                                             v["ProjectName"] or None, po, v["VoucherNo"], user, datetime.now()))
+    extra = "" if len(po_refs) <= 1 else " تنبيه: الأمر يشمل %d أوامر شراء ولم يُربط بأي منها؛ إن علّمتها «تم السداد» فستُحتسب مسدَّدة مرة ثانية." % len(po_refs)
+    return ("supplier", po or "", "سُجّلت دفعة %s ريال «تم التحويل» في كشف حساب المورد.%s" % ("{:,.2f}".format(net), extra))
+
+
 def approve(voucher_id, user):
+    """Approves the voucher. With the answer «نعم» the payment is added to the account in the SAME transaction: both happen or neither does.
+    Returns the sentence to show the person."""
     v = get(voucher_id)
     if not v or v["Status"] != ST_DRAFT:
         raise VoucherError("يُعتمد أمر الصرف وهو «مسودة» فقط.")
-    db.execute("UPDATE [PaymentVouchers] SET [Status] = ?, [ApprovedBy] = ?, [ApprovedAt] = ?, [ModifiedAt] = ? WHERE [VoucherID] = ?", (ST_APPROVED, user, datetime.now(), datetime.now(), voucher_id))
-    audit.log("voucher_approve", "VOUCHER", v["VoucherNo"], "{:,.2f}".format(v["Net"] or 0))
+    msg = "اعتُمد أمر الصرف ولم يعد قابلاً للتعديل."
+    with db.transaction() as tx:
+        now = datetime.now()
+        cols = {"Status": ST_APPROVED, "ApprovedBy": user, "ApprovedAt": now, "ModifiedAt": now}
+        if v.get("PostChoice") == YES and not v.get("PostedAt"):
+            kind, ref, text = (_supplier_post if v["PartyKind"] == "مورد" else _contractor_post)(tx, v, user)
+            cols.update({"PostedAt": now, "PostedBy": user, "PostedKind": kind, "PostedRef": ref[:250]})
+            msg += " " + text
+        tx.execute("UPDATE [PaymentVouchers] SET %s WHERE [VoucherID] = ? AND [Status] = ?" % ", ".join("[%s] = ?" % c for c in cols), tuple(cols.values()) + (voucher_id, ST_DRAFT))
+    audit.log("voucher_approve", "VOUCHER", v["VoucherNo"], "{:,.2f}".format(v["Net"] or 0) + (" + إضافة للكشف" if v.get("PostChoice") == YES else ""))
+    return msg
 
 
 def cancel(voucher_id, user):
     v = get(voucher_id)
     if not v or v["Status"] == ST_CANCELLED:
         raise VoucherError("أمر الصرف غير موجود أو ملغي بالفعل.")
+    if v.get("PostedAt"):
+        raise VoucherError("هذا الأمر سُجّلت دفعته في كشف الحساب. أزل الدفعة من الكشف أولاً (المستخلص ← إلغاء تسجيل الصرف، أو احذف الدفعة المباشرة / دفعة المورد برقم %s) ثم ألغِ الأمر." % v["VoucherNo"])
     db.execute("UPDATE [PaymentVouchers] SET [Status] = ?, [CancelledBy] = ?, [CancelledAt] = ?, [ModifiedAt] = ? WHERE [VoucherID] = ?", (ST_CANCELLED, user, datetime.now(), datetime.now(), voucher_id))
     audit.log("voucher_cancel", "VOUCHER", v["VoucherNo"], "")
 
@@ -305,7 +393,7 @@ def documents(kind, party_id, project_name=""):
         for o in sorted(supplier_account.supplier_orders(int(party_id)), key=lambda o: o.get("OrderDate") or datetime.min, reverse=True):
             if o.get("PaymentStatus") == "تم السداد" or (pk and norm_key(o.get("Project")) != pk) or _r2(o.get("TotalAmount")) <= 0:
                 continue
-            out.append({"type": "أمر شراء", "no": o["PONumber"], "amount": _r2(o["TotalAmount"]),
+            out.append({"type": "أمر شراء", "no": o["PONumber"], "id": o["PONumber"], "amount": _r2(o["TotalAmount"]),
                         "label": "أمر شراء %s — %s" % (o["PONumber"], o.get("Project") or ""), "desc": "سداد أمر الشراء %s" % o["PONumber"]})
     else:
         import contracts_service as cs
@@ -314,7 +402,7 @@ def documents(kind, party_id, project_name=""):
             if g["Status"] == "مرفوض" or g.get("ClosedAt") or g["Remaining"] <= EPS or (pk and norm_key(g.get("Project")) != pk):
                 continue
             site = (" — " + g["SiteName"]) if g.get("SiteName") else ""
-            out.append({"type": "مستخلص", "no": str(g["CertificateNo"]), "amount": _r2(g["Remaining"]),
+            out.append({"type": "مستخلص", "no": str(g["CertificateNo"]), "id": str(g["CertificateID"]), "amount": _r2(g["Remaining"]),
                         "label": "مستخلص رقم %s%s — المتبقي" % (g["CertificateNo"], site), "desc": "سداد مستخلص رقم %s%s" % (g["CertificateNo"], site)})
     return out
 

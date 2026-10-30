@@ -22,22 +22,21 @@
   <div class="form-3">
     <div><label class="set-lab" style="margin-top:0;" for="voucher_date">التاريخ</label><input class="inp" type="date" id="voucher_date" name="voucher_date" value="{{ v.voucher_date }}" required></div>
     <div><label class="set-lab" style="margin-top:0;" for="request_type">نوع الطلب</label><input class="inp" id="request_type" name="request_type" maxlength="120" value="{{ v.request_type }}" placeholder="مثال: أعمال زراعة"></div>
-    <div><label class="set-lab" style="margin-top:0;" for="department">القسم الطالب</label><input class="inp" id="department" name="department" maxlength="120" value="{{ v.department }}"></div>
+    <div><label class="set-lab" style="margin-top:0;" for="department">القسم (يظهر تحت اسم الشركة)</label><input class="inp" id="department" name="department" maxlength="120" value="{{ v.department }}"></div>
     <div><label class="set-lab" for="cost_center">مركز التكلفة</label><input class="inp" id="cost_center" name="cost_center" maxlength="255" value="{{ v.cost_center }}" placeholder="افتراضياً اسم المشروع"></div>
     <div><label class="set-lab" for="pay_method">طريقة السداد</label><select class="inp" id="pay_method" name="pay_method">{% for m in pay_methods %}<option {{ 'selected' if v.pay_method == m else '' }}>{{ m }}</option>{% endfor %}</select></div>
-    <div><label class="set-lab" for="pay_statement">بيان السداد</label><input class="inp" id="pay_statement" name="pay_statement" maxlength="255" value="{{ v.pay_statement }}"></div>
   </div>
   <label class="set-lab" for="description">البيان</label><input class="inp" id="description" name="description" maxlength="255" required value="{{ v.description }}" placeholder="مثال: سداد مستخلص أعمال زراعة">
 
-  <h3 class="doc-title" style="margin:20px 0 6px;">3 · المستندات المرجعية</h3>
+  <h3 class="doc-title" style="margin:20px 0 6px;">3 · المستندات المرجعية <small class="set-hint" style="margin:0;">(للربط بالمستخلص / أمر الشراء، ولا تُطبع)</small></h3>
   <table class="list" style="margin-bottom:6px; width:100%;"><thead><tr><th style="width:34%;">المستند</th><th>الرقم</th><th style="width:60px;"></th></tr></thead><tbody id="refs">
-    {% for r in v.refs %}<tr><td><select class="inp" style="width:100%;" name="ref_type">{% for t in ref_types %}<option {{ 'selected' if r.type == t else '' }}>{{ t }}</option>{% endfor %}</select></td><td><input class="inp" style="width:100%;" name="ref_no" maxlength="60" value="{{ r.no }}"></td><td><button type="button" class="btn" data-del>×</button></td></tr>{% endfor %}
+    {% for r in v.refs %}<tr><td><select class="inp" style="width:100%;" name="ref_type">{% for t in ref_types %}<option {{ 'selected' if r.type == t else '' }}>{{ t }}</option>{% endfor %}</select></td><td><input class="inp" style="width:100%;" name="ref_no" maxlength="60" value="{{ r.no }}"><input type="hidden" name="ref_id" value="{{ r.id or '' }}"></td><td><button type="button" class="btn" data-del>×</button></td></tr>{% endfor %}
   </tbody></table>
   <button type="button" class="btn" id="add-ref">+ مستند مرجعي</button>
 
   <h3 class="doc-title" style="margin:20px 0 6px;">4 · بنود الطلب</h3>
-  <div class="tbl-wrap"><table class="list" style="width:100%;"><thead><tr><th>البيان</th><th style="width:100px;">الكمية</th><th style="width:150px;">السعر</th><th style="width:140px;">الإجمالي</th><th style="width:60px;"></th></tr></thead><tbody id="items">
-    {% for i in v['items'] %}<tr><td><input class="inp" style="width:100%;" name="item_desc" maxlength="255" value="{{ i.desc }}"></td><td><input class="inp" style="width:100%;" name="item_qty" inputmode="decimal" value="{{ i.qty }}"></td><td><input class="inp" style="width:100%;" name="item_price" inputmode="decimal" value="{{ i.price }}"></td><td class="line-total" style="font-weight:700;">—</td><td><button type="button" class="btn" data-del>×</button></td></tr>{% endfor %}
+  <div class="tbl-wrap"><table class="list" style="width:100%;"><thead><tr><th>البيان</th><th style="width:180px;">المبلغ (ريال)</th><th style="width:60px;"></th></tr></thead><tbody id="items">
+    {% for i in v['items'] %}<tr><td><input class="inp" style="width:100%;" name="item_desc" maxlength="255" value="{{ i.desc }}"><input type="hidden" name="item_qty" value="1"></td><td><input class="inp" style="width:100%;" name="item_price" inputmode="decimal" value="{{ i.price }}"></td><td><button type="button" class="btn" data-del>×</button></td></tr>{% endfor %}
   </tbody></table></div>
   <button type="button" class="btn" id="add-item" style="margin-top:6px;">+ بند</button>
 
@@ -48,17 +47,28 @@
   </div>
   <div id="totals" class="card" style="padding:12px 16px; margin-top:12px; background:var(--accent-bg); display:grid; grid-template-columns: repeat(4, 1fr); gap:10px; text-align:center;">
     <div><small>الإجمالي قبل الخصم</small><br><b id="t-sub">—</b></div><div><small>الضريبة</small><br><b id="t-vat">—</b></div><div><small>الإجمالي بعد الضريبة</small><br><b id="t-tot">—</b></div><div><small>صافي قيمة الطلب</small><br><b id="t-net" style="font-size:18px; color:var(--accent);">—</b></div></div>
-  <p class="set-hint">المبلغ بالحروف يظهر في الأمر المطبوع بعد الحفظ. الخصم يُحتسب بعد الضريبة كما في أوامر الشراء.</p>
+  <label style="display:flex; gap:8px; align-items:center; margin-top:8px;"><input type="checkbox" name="show_totals" value="1" {{ 'checked' if v.show_totals else '' }}> اطبع جدول الضريبة والإجماليات أسفل البنود <small class="set-hint" style="margin:0;">(نموذج الشركة الحالي لا يطبعه؛ المبلغ بالحروف يُطبع دائماً بصافي القيمة)</small></label>
+
+  <section class="card" style="margin-top:16px; padding:14px 18px; border:2px solid var(--accent); background:var(--accent-bg);" aria-label="إضافة الدفعة لكشف الحساب">
+    <b id="post-q" style="font-size:15px;">هل تريد إضافة هذه الدفعة إلى كشف حساب المورد؟</b>
+    <div style="display:flex; gap:26px; margin-top:8px; flex-wrap:wrap;">
+      <label><input type="radio" name="post_choice" value="no" {{ 'checked' if v.post_choice != 'نعم' else '' }}> <b>لا</b> — الأمر للطباعة فقط</label>
+      <label><input type="radio" name="post_choice" value="yes" {{ 'checked' if v.post_choice == 'نعم' else '' }}> <b>نعم</b> — تُسجَّل الدفعة <b>«تم التحويل»</b> في الكشف عند <b>اعتماد</b> الأمر</label></div>
+    <p class="set-hint" style="margin:6px 0 0;" id="post-help">لا يُسجَّل شيء قبل الاعتماد، ويتم الاعتماد والتسجيل معاً أو لا يتم أيٌّ منهما. إن ذكرتَ مستخلصاً مسحوباً من القائمة ويطابق مبلغه فيُغلق صرفه، وإلا تُسجَّل دفعة مباشرة في الكشف.</p>
+  </section>
 
   <details style="margin-top:14px;"><summary style="cursor:pointer; font-weight:700;">التوقيعات والملاحظات (تُؤخذ من «بيانات الشركة» ويمكن تغييرها لهذا الأمر)</summary>
     <div class="form-2" style="margin-top:8px;">{% for k, lab, col in sign_fields %}<div><label class="set-lab" style="margin-top:0;" for="sign_{{ k }}">{{ lab }}</label><input class="inp" id="sign_{{ k }}" name="sign_{{ k }}" maxlength="120" value="{{ v.sign.get(k, '') }}"></div>{% endfor %}</div>
     <label class="set-lab" for="notes">ملاحظات تظهر في الأمر</label><textarea class="inp" id="notes" name="notes" rows="2" maxlength="1000">{{ v.notes }}</textarea></details>
 
-  <div style="margin-top:18px; display:flex; gap:10px;"><button class="btn btn-primary btn-lg" type="submit">{{ 'حفظ التعديل' if voucher else 'حفظ كمسودة' }}</button><a class="btn btn-lg" href="{{ url_for('vouchers_list') }}">إلغاء</a></div>
+  <div style="margin-top:18px; display:flex; gap:10px; flex-wrap:wrap;">
+    <button class="btn btn-lg" type="submit">{{ 'حفظ التعديل' if voucher else 'حفظ كمسودة' }}</button>
+    {% if can('vouchers.approve') %}<button class="btn btn-primary btn-lg" type="submit" name="action" value="approve" id="btn-approve">حفظ واعتماد</button>{% endif %}
+    <a class="btn btn-lg" href="{{ url_for('vouchers_list') }}">إلغاء</a></div>
 </form>
 
-<template id="tpl-ref"><tr><td><select class="inp" style="width:100%;" name="ref_type">{% for t in ref_types %}<option>{{ t }}</option>{% endfor %}</select></td><td><input class="inp" style="width:100%;" name="ref_no" maxlength="60"></td><td><button type="button" class="btn" data-del>×</button></td></tr></template>
-<template id="tpl-item"><tr><td><input class="inp" style="width:100%;" name="item_desc" maxlength="255"></td><td><input class="inp" style="width:100%;" name="item_qty" inputmode="decimal" value="1"></td><td><input class="inp" style="width:100%;" name="item_price" inputmode="decimal"></td><td class="line-total" style="font-weight:700;">—</td><td><button type="button" class="btn" data-del>×</button></td></tr></template>
+<template id="tpl-ref"><tr><td><select class="inp" style="width:100%;" name="ref_type">{% for t in ref_types %}<option>{{ t }}</option>{% endfor %}</select></td><td><input class="inp" style="width:100%;" name="ref_no" maxlength="60"><input type="hidden" name="ref_id" value=""></td><td><button type="button" class="btn" data-del>×</button></td></tr></template>
+<template id="tpl-item"><tr><td><input class="inp" style="width:100%;" name="item_desc" maxlength="255"><input type="hidden" name="item_qty" value="1"></td><td><input class="inp" style="width:100%;" name="item_price" inputmode="decimal"></td><td><button type="button" class="btn" data-del>×</button></td></tr></template>
 <script>
 (function () {
   const $ = id => document.getElementById(id), form = $('vf'), projSel = $('project_id'), partySel = $('party_id');
@@ -105,7 +115,7 @@
     const blank = [...document.querySelectorAll('#items tr')].find(r => !r.dataset.doc && !r.querySelector('[name=item_desc]').value.trim() && !r.querySelector('[name=item_price]').value.trim());
     const it = blank || add('tpl-item', 'items'); it.dataset.doc = key;                  // the empty first row is reused
     it.querySelector('[name=item_desc]').value = d.desc; it.querySelector('[name=item_price]').value = d.amount.toFixed(2);
-    const rf = add('tpl-ref', 'refs'); rf.dataset.doc = key; rf.querySelector('[name=ref_type]').value = d.type; rf.querySelector('[name=ref_no]').value = d.no;
+    const rf = add('tpl-ref', 'refs'); rf.dataset.doc = key; rf.querySelector('[name=ref_type]').value = d.type; rf.querySelector('[name=ref_no]').value = d.no; rf.querySelector('[name=ref_id]').value = d.id || '';
     if (!$('description').value) $('description').value = d.desc;
     recalc();
   }
@@ -115,8 +125,7 @@
   function recalc() {
     let sum = 0;
     document.querySelectorAll('#items tr').forEach(tr => {
-      const q = parseFloat(tr.querySelector('[name=item_qty]').value) || 0, p = parseFloat(tr.querySelector('[name=item_price]').value) || 0;
-      const t = r2(q * p); sum += t; tr.querySelector('.line-total').textContent = t ? fmt(t) : '—';
+      sum += r2(parseFloat(tr.querySelector('[name=item_price]').value) || 0);
     });
     const pct = parseFloat($('vat_pct').value) || 0, incl = $('amount_mode').value === 'incl';
     let sub, vat, tot;
@@ -130,7 +139,9 @@
   $('add-item').addEventListener('click', () => { add('tpl-item', 'items'); });
   projSel.addEventListener('change', () => { const cc = $('cost_center'); if (!cc.value || cc.dataset.auto === '1') { cc.value = projName(); cc.dataset.auto = '1'; } loadParties(''); });
   $('cost_center').addEventListener('input', () => { $('cost_center').dataset.auto = '0'; });
-  form.querySelectorAll('input[name=party_kind]').forEach(r => r.addEventListener('change', () => loadParties('')));
+  const askKind = () => { $('post-q').textContent = 'هل تريد إضافة هذه الدفعة إلى كشف حساب ' + (kind() === 'sup' ? 'المورد' : 'المقاول') + '؟'; };
+  form.querySelectorAll('input[name=party_kind]').forEach(r => r.addEventListener('change', () => { askKind(); loadParties(''); }));
+  askKind();
   partySel.addEventListener('change', loadDocs);
   if (!document.querySelector('#items tr')) add('tpl-item', 'items');
   loadParties(partySel.dataset.selected); recalc();

@@ -7,10 +7,13 @@
 <a class="btn btn-primary" href="{{ url_for('voucher_print', voucher_id=v.VoucherID) }}" target="_blank">طباعة</a>
 <a class="btn" href="{{ url_for('voucher_pdf', voucher_id=v.VoucherID) }}">تصدير PDF</a>
 {% if v.Status == 'مسودة' and can('vouchers.create') %}<a class="btn" href="{{ url_for('voucher_edit', voucher_id=v.VoucherID) }}">تعديل</a>{% endif %}
-{% if v.Status == 'مسودة' and can('vouchers.approve') %}<form method="post" action="{{ url_for('voucher_approve', voucher_id=v.VoucherID) }}" onsubmit="return confirm('اعتماد أمر الصرف؟ لن يمكن تعديله بعد الاعتماد.');" style="display:inline;"><button class="btn" type="submit" style="color:var(--success);">اعتماد</button></form>{% endif %}
+{% if v.Status == 'مسودة' and can('vouchers.approve') %}<form method="post" action="{{ url_for('voucher_approve', voucher_id=v.VoucherID) }}" onsubmit="return confirm('{{ 'اعتماد أمر الصرف؟ ستُسجَّل الدفعة في كشف الحساب «تم التحويل» ولن يمكن تعديل الأمر.' if v.PostChoice == 'نعم' else 'اعتماد أمر الصرف؟ لن يمكن تعديله بعد الاعتماد.' }}');" style="display:inline;"><button class="btn" type="submit" style="color:var(--success);">اعتماد</button></form>{% endif %}
 {% if v.Status != 'ملغي' and can('vouchers.approve') %}<form method="post" action="{{ url_for('voucher_cancel', voucher_id=v.VoucherID) }}" onsubmit="return confirm('إلغاء أمر الصرف؟ يبقى في السجل ولا يُحذف.');" style="display:inline;"><button class="btn" type="submit" style="color:var(--danger);">إلغاء الأمر</button></form>{% endif %}
 {% endblock %}
 {% block content %}
+{% if v.PostedAt %}<div class="flash flash-success" role="status" style="max-width:860px; margin:0 auto 1rem;"><span class="flash-ico">✓</span><span>أُضيفت هذه الدفعة إلى كشف حساب {{ 'المورد' if v.PartyKind == 'مورد' else 'المقاول' }} «تم التحويل» بتاريخ {{ v.PostedAt.strftime('%Y-%m-%d') }}
+  — <a href="{{ url_for('supplier_statement', supplier_id=v.SupplierID) if v.PartyKind == 'مورد' else url_for('statement_view', sub_id=v.SubcontractorID) }}">افتح كشف الحساب</a>. لإلغاء الأمر أزل الدفعة من الكشف أولاً.</span></div>
+{% elif v.PostChoice == 'نعم' and v.Status == 'مسودة' %}<div class="flash flash-notice" role="status" style="max-width:860px; margin:0 auto 1rem;"><span class="flash-ico">!</span><span>اخترتَ إضافة الدفعة إلى كشف حساب {{ 'المورد' if v.PartyKind == 'مورد' else 'المقاول' }}: ستُسجَّل «تم التحويل» عند <b>اعتماد</b> الأمر، ولا يُسجَّل شيء قبله.</span></div>{% endif %}
 <div class="card" style="padding:22px; max-width:860px; margin:0 auto;">{% include "_voucher_paper.html" %}</div>
-<p class="set-hint" style="text-align:center;">أمر الصرف مستند للطباعة والتوقيع؛ لا يُسجَّل به صرف في كشف حساب المقاول أو المورد. سجّل الدفعة نفسها من دورة الصرف أو الدفعة المباشرة أو حساب المورد.</p>
+<p class="set-hint" style="text-align:center;">{% if v.PostChoice == 'نعم' %}هذا الأمر مضبوط على «إضافة الدفعة لكشف الحساب عند الاعتماد».{% else %}هذا الأمر للطباعة فقط ولا يسجّل صرفاً في أي كشف حساب.{% endif %}</p>
 {% endblock %}
