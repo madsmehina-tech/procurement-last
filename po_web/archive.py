@@ -57,6 +57,7 @@ CERT_SUBFOLDER = {"المستخلص المعتمد": "ملف المستخلص", 
                   "خطاب": "الخطابات", "الاتفاقية": "المرفقات", "الفاتورة الضريبية": "المرفقات", "مرفق ثبوتي": "المرفقات"}
 # Payment cycles: إدارة مقاولي الباطن / دورات الصرف / <السنة> / دورة رقم N / { الكشوف | أوامر الصرف | الكشف الموقّع }
 CYCLES_ROOT = "دورات الصرف"
+ROOT_VOUCHERS = "أوامر الصرف العامة"
 CYCLE_DOC_TYPES = ["كشف الدورة (للإدارة)", "الكشف النهائي", "الكشف الموقّع", "أمر الصرف", "مرفق إضافي"]
 CYCLE_SUBFOLDERS = ("الكشوف", "أوامر الصرف", "الكشف الموقّع")
 CYCLE_SUBFOLDER = {"كشف الدورة (للإدارة)": "الكشوف", "الكشف النهائي": "الكشوف", "الكشف الموقّع": "الكشف الموقّع", "أمر الصرف": "أوامر الصرف",
@@ -456,6 +457,11 @@ def promote_entry_files(entry_id):
 
 def cycle_doc_folder_rel(cycle_folder, doc_type):
     return "/".join([cycle_folder, CYCLE_SUBFOLDER.get(doc_type, "الكشوف")])
+
+
+def voucher_folder_rel(voucher_no, when):
+    """أوامر الصرف العامة / <السنة> / PR-0026  - the archive copy of a general payment voucher."""
+    return "/".join([ROOT_VOUCHERS, str((when or datetime.now()).year), safe_name(voucher_no, maxlen=30)])
 
 
 def ensure_cycle_folder(cycle_id):

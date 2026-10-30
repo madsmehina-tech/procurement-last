@@ -14,6 +14,11 @@
 {% if v.PostedAt %}<div class="flash flash-success" role="status" style="max-width:860px; margin:0 auto 1rem;"><span class="flash-ico">✓</span><span>أُضيفت هذه الدفعة إلى كشف حساب {{ 'المورد' if v.PartyKind == 'مورد' else 'المقاول' }} «تم التحويل» بتاريخ {{ v.PostedAt.strftime('%Y-%m-%d') }}
   — <a href="{{ url_for('supplier_statement', supplier_id=v.SupplierID) if v.PartyKind == 'مورد' else url_for('statement_view', sub_id=v.SubcontractorID) }}">افتح كشف الحساب</a>. لإلغاء الأمر أزل الدفعة من الكشف أولاً.</span></div>
 {% elif v.PostChoice == 'نعم' and v.Status == 'مسودة' %}<div class="flash flash-notice" role="status" style="max-width:860px; margin:0 auto 1rem;"><span class="flash-ico">!</span><span>اخترتَ إضافة الدفعة إلى كشف حساب {{ 'المورد' if v.PartyKind == 'مورد' else 'المقاول' }}: ستُسجَّل «تم التحويل» عند <b>اعتماد</b> الأمر، ولا يُسجَّل شيء قبله.</span></div>{% endif %}
+<div class="card" style="padding:12px 18px; max-width:860px; margin:0 auto 1rem; display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
+  <div>{% if copy %}<b>نسخة الأرشيف:</b> <a href="{{ url_for('document_view', doc_id=copy.DocID) }}" target="_blank">{{ copy.StoredName }} ←</a> <small class="set-hint" style="margin:0;">محفوظة في: الأرشيف / {{ folder }}</small>
+    {% else %}<b>نسخة الأرشيف:</b> <span class="set-hint" style="margin:0;">لم تُحفظ بعد. تُحفظ تلقائياً عند اعتماد الأمر، (المسار: الأرشيف / {{ folder }}).</span>{% endif %}</div>
+  {% if v.Status != 'مسودة' and can('vouchers.approve') %}<form method="post" action="{{ url_for('voucher_archive', voucher_id=v.VoucherID) }}"><button class="btn" type="submit">{{ 'تحديث نسخة الأرشيف' if copy else 'حفظ نسخة في الأرشيف' }}</button></form>{% endif %}
+</div>
 <div class="card" style="padding:22px; max-width:860px; margin:0 auto;">{% include "_voucher_paper.html" %}</div>
 <p class="set-hint" style="text-align:center;">{% if v.PostChoice == 'نعم' %}هذا الأمر مضبوط على «إضافة الدفعة لكشف الحساب عند الاعتماد».{% else %}هذا الأمر للطباعة فقط ولا يسجّل صرفاً في أي كشف حساب.{% endif %}</p>
 {% endblock %}

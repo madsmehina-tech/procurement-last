@@ -183,3 +183,43 @@ def test_the_voucher_page_explains_what_will_happen_and_what_happened(client):
     _approve(client, vid)
     after = client.get("/vouchers/%d" % vid).get_data(as_text=True)
     assert "أُضيفت هذه الدفعة إلى كشف حساب المقاول" in after and "افتح كشف الحساب" in after
+
+
+def test_the_company_page_has_the_current_signatories_and_saves_them_into_new_vouchers(client):
+    html = client.get("/settings/company").get_data(as_text=True)
+    for lab in ("مدير العقود والمشتريات", "مدير عام المشاريع", "مدير الحسابات", "المدير المالي", "المدير العام", "القسم (يظهر تحت اسم الشركة"):
+        assert lab in html, lab
+    assert "المحاسب" not in html
+    data = {"legalname": "شركة الهضب", "signcontracts": "م أول", "signprojects": "م ثاني", "signaccounts": "ثالث", "signfinance": "رابع", "signgm": "خامس", "voucherdept": "قسم تجريبي"}
+    client.post("/settings/company", data=data)
+    row = fake_db.query("SELECT * FROM [CompanyProfile] WHERE [ProfileID] = 1")[0]
+    assert (row["SignContracts"], row["SignProjects"], row["SignGM"], row["VoucherDept"]) == ("م أول", "م ثاني", "خامس", "قسم تجريبي")
+    form = client.get("/vouchers/new").get_data(as_text=True)
+    assert 'value="م أول"' in form and 'value="خامس"' in form and 'value="قسم تجريبي"' in form        # a new voucher starts with them
+
+
+def test_approval_saves_a_pdf_copy_in_the_archive_and_the_voucher_page_links_to_it(client, monkeypatch):
+    import cycle_files
+    monkeypatch.setattr(cycle_files, "_pdf_bytes", lambda html: b"%PDF-1.4 fake " + str(len(html)).encode())
+    s = h.add_sub()
+    client.post("/vouchers/new", data=_form("sub", s, 250, choice="no"))
+    vid = _vid()
+    text = _approve(client, vid)
+    assert "حُفظت نسخة PDF في الأرشيف" in text
+    doc = fake_db.query("SELECT * FROM [Documents] WHERE [EntityType] = 'VOUCHER'")[0]
+    assert doc["RelPath"].startswith("أوامر الصرف العامة/2026/") and doc["StoredName"].endswith(".pdf") and doc["IsCurrent"]
+    page = client.get("/vouchers/%d" % vid).get_data(as_text=True)
+    assert "نسخة الأرشيف" in page and doc["StoredName"] in page
+    assert client.get("/documents/%d" % doc["DocID"]).status_code == 200                    # the link works
+    client.post("/vouchers/%d/archive" % vid)                                           # again: replaces the same file, no second record
+    assert fake_db.scalar("SELECT COUNT(*) FROM [Documents] WHERE [EntityType] = 'VOUCHER'") == 1
+
+
+def test_a_pdf_failure_never_breaks_the_approval(client, monkeypatch):
+    import cycle_files
+    monkeypatch.setattr(cycle_files, "_pdf_bytes", lambda html: (_ for _ in ()).throw(RuntimeError("no browser")))
+    s = h.add_sub()
+    client.post("/vouchers/new", data=_form("sub", s, 250))
+    text = _approve(client, _vid())
+    assert _voucher(_vid())["Status"] == "معتمد" and "تعذّر حفظ نسخة PDF" in text and fake_db.scalar("SELECT COUNT(*) FROM [Payments] WHERE 1=1", default=0) == 0
+    assert fake_db.scalar("SELECT COUNT(*) FROM [LedgerEntries] WHERE [Category] = 'دفعة مباشرة'") == 1        # the payment (answer «نعم») was still recorded

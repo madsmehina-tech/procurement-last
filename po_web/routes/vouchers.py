@@ -6,6 +6,7 @@ from datetime import datetime
 
 from flask import flash, jsonify, redirect, render_template, request, send_file, url_for
 
+import archive
 import auth
 import contract_gen as cg
 import cycle_files
@@ -71,7 +72,8 @@ def voucher_new():
         return _form_page(_show_data(d))
     if request.form.get("action") == "approve" and auth.can("vouchers.approve"):          # «حفظ واعتماد»: one click, but the approval can still be refused
         try:
-            flash("تم إنشاء أمر الصرف %s. %s" % (number, vs.approve(vid, _user())))
+            msg = vs.approve(vid, _user())
+            flash("تم إنشاء أمر الصرف %s. %s%s" % (number, msg, _archive_copy(vid)))
         except vs.VoucherError as e:
             flash("حُفظ أمر الصرف %s كمسودة لكن لم يُعتمد: %s" % (number, e))
         return redirect(url_for("voucher_view", voucher_id=vid))
@@ -115,7 +117,8 @@ def voucher_edit(voucher_id):
         return redirect(url_for("voucher_view", voucher_id=voucher_id))
     if request.form.get("action") == "approve" and auth.can("vouchers.approve"):
         try:
-            flash("حُفظ التعديل. %s" % vs.approve(voucher_id, _user()))
+            msg = vs.approve(voucher_id, _user())
+            flash("حُفظ التعديل. %s%s" % (msg, _archive_copy(voucher_id)))
         except vs.VoucherError as e:
             flash("حُفظ التعديل لكن لم يُعتمد: %s" % e)
         return redirect(url_for("voucher_view", voucher_id=voucher_id))
@@ -130,14 +133,44 @@ def voucher_view(voucher_id):
     if not v:
         flash("لم يتم العثور على أمر الصرف.")
         return redirect(url_for("vouchers_list"))
-    return render_template("voucher_view.html", **vs.print_context(v, cg.company()))
+    ctx = vs.print_context(v, cg.company())
+    copies = [d for d in archive.list_documents("VOUCHER", voucher_id) if d.get("IsCurrent")]
+    return render_template("voucher_view.html", copy=copies[0] if copies else None, folder=archive.voucher_folder_rel(v["VoucherNo"], v.get("VoucherDate")), **ctx)
+
+
+def _archive_copy(voucher_id):
+    """Saves the PDF of the voucher in the archive (أوامر الصرف العامة / السنة / PR-xxxx) and lists it in the Documents index.
+    Best effort: when the PDF cannot be made the voucher is NOT affected. Returns a sentence for the person ('' when all went well)."""
+    v = vs.get(voucher_id)
+    html = _print_html(voucher_id)
+    if not v or not html:
+        return ""
+    try:
+        pdf = cycle_files._pdf_bytes(html)
+        archive.store_generated("VOUCHER", voucher_id, archive.voucher_folder_rel(v["VoucherNo"], v.get("VoucherDate")), "أمر صرف", pdf, "%s.pdf" % v["VoucherNo"], user=_user())
+    except Exception as e:                                   # noqa - the voucher itself is already saved
+        logging.getLogger("po.error").exception("voucher archive copy failed")
+        return " تعذّر حفظ نسخة PDF في الأرشيف (%s)؛ اضغط «حفظ نسخة في الأرشيف» لاحقاً." % " ".join(str(e).split())[:90]
+    return " حُفظت نسخة PDF في الأرشيف."
+
+
+@route("/vouchers/<int:voucher_id>/archive", methods=["POST"])
+@auth.login_required
+def voucher_archive(voucher_id):
+    v = vs.get(voucher_id)
+    if not v:
+        flash("لم يتم العثور على أمر الصرف.")
+        return redirect(url_for("vouchers_list"))
+    flash((_archive_copy(voucher_id) or " ").strip() or "تمّ.")
+    return redirect(url_for("voucher_view", voucher_id=voucher_id))
 
 
 @route("/vouchers/<int:voucher_id>/approve", methods=["POST"])
 @auth.login_required
 def voucher_approve(voucher_id):
     try:
-        flash(vs.approve(voucher_id, _user()))
+        msg = vs.approve(voucher_id, _user())
+        flash(msg + _archive_copy(voucher_id))
     except vs.VoucherError as e:
         flash(str(e))
     except Exception as e:                                   # noqa - the approval and the payment are one transaction: nothing was saved
