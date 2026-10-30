@@ -69,6 +69,12 @@ def voucher_new():
         logging.getLogger("po.error").exception("voucher save failed")
         flash("تعذّر حفظ أمر الصرف ولم يتغير شيء. السبب: %s" % " ".join(str(e).split())[:200])
         return _form_page(_show_data(d))
+    if request.form.get("action") == "approve" and auth.can("vouchers.approve"):          # «حفظ واعتماد»: one click, but the approval can still be refused
+        try:
+            flash("تم إنشاء أمر الصرف %s. %s" % (number, vs.approve(vid, _user())))
+        except vs.VoucherError as e:
+            flash("حُفظ أمر الصرف %s كمسودة لكن لم يُعتمد: %s" % (number, e))
+        return redirect(url_for("voucher_view", voucher_id=vid))
     flash("تم إنشاء أمر الصرف %s كمسودة. راجعه ثم اعتمده أو اطبعه." % number)
     return redirect(url_for("voucher_view", voucher_id=vid))
 
@@ -81,7 +87,8 @@ def _stored_to_form(v):
             "party_id": v.get("SupplierID") or v.get("SubcontractorID") or "", "party_name": v.get("PartyName"), "request_type": v.get("RequestType") or "", "department": v.get("Department") or "",
             "cost_center": v.get("CostCenter") or "", "pay_method": v.get("PayMethod"), "pay_statement": v.get("PayStatement") or "", "description": v.get("Description") or "",
             "amount_mode": v.get("AmountMode") or "incl", "vat_pct": "%d" % round(v.get("VatPct") or 0), "discount": v.get("Discount") or "",
-            "items": [{"desc": i["desc"], "qty": i["qty"], "price": i["price"]} for i in items], "refs": json.loads(v.get("RefsJson") or "[]"), "notes": v.get("Notes") or "", "sign": sign}
+            "show_totals": bool(v.get("ShowTotals")), "post_choice": v.get("PostChoice") or vs.NO,
+            "items": [{"desc": i["desc"], "qty": 1, "price": i.get("total", i["price"])} for i in items], "refs": json.loads(v.get("RefsJson") or "[]"), "notes": v.get("Notes") or "", "sign": sign}
 
 
 @route("/vouchers/<int:voucher_id>/edit", methods=["GET", "POST"])
@@ -106,6 +113,12 @@ def voucher_edit(voucher_id):
     except vs.VoucherError as e:
         flash(str(e))
         return redirect(url_for("voucher_view", voucher_id=voucher_id))
+    if request.form.get("action") == "approve" and auth.can("vouchers.approve"):
+        try:
+            flash("حُفظ التعديل. %s" % vs.approve(voucher_id, _user()))
+        except vs.VoucherError as e:
+            flash("حُفظ التعديل لكن لم يُعتمد: %s" % e)
+        return redirect(url_for("voucher_view", voucher_id=voucher_id))
     flash("حُفظ التعديل.")
     return redirect(url_for("voucher_view", voucher_id=voucher_id))
 
@@ -124,10 +137,12 @@ def voucher_view(voucher_id):
 @auth.login_required
 def voucher_approve(voucher_id):
     try:
-        vs.approve(voucher_id, _user())
-        flash("اعتُمد أمر الصرف ولم يعد قابلاً للتعديل.")
+        flash(vs.approve(voucher_id, _user()))
     except vs.VoucherError as e:
         flash(str(e))
+    except Exception as e:                                   # noqa - the approval and the payment are one transaction: nothing was saved
+        logging.getLogger("po.error").exception("voucher approve failed")
+        flash("تعذّر الاعتماد ولم يتغير شيء. السبب: %s" % " ".join(str(e).split())[:200])
     return redirect(url_for("voucher_view", voucher_id=voucher_id))
 
 

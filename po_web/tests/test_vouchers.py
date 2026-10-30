@@ -75,16 +75,29 @@ def test_the_voucher_page_has_the_cascading_form(client):
         assert needle in html, needle
 
 
-def test_creating_a_voucher_stores_the_figures_and_the_print_shows_the_form(client):
+def test_creating_a_voucher_stores_the_figures_and_the_print_shows_the_company_form(client):
     pid, sid = _project(), _supplier()
-    r = client.post("/vouchers/new", data=_form(pid, sid, discount=""), follow_redirects=False)
+    r = client.post("/vouchers/new", data=_form(pid, sid, discount="", sign_contracts="م محمود عدس", sign_projects="م محمد الجداوى", sign_accounts="محمد الفرماوي",
+                                                sign_finance="محمد البشير", sign_gm="صنهات العتيبي", department="إدارة العقود والمشتريات"), follow_redirects=False)
     assert r.status_code == 302
     v = fake_db.query("SELECT * FROM [PaymentVouchers]")[0]
     assert v["Status"] == "مسودة" and v["Net"] == 144293.39 and v["VatAmount"] == 18820.88 and v["PartyName"] == "مؤسسة ملتقى الفنون" and v["CostCenter"] == "الفرسان"
     html = client.get("/vouchers/%d/print" % v["VoucherID"]).get_data(as_text=True)
-    for needle in ("طلب صرف", v["VoucherNo"], "مؤسسة ملتقى الفنون", "أعمال زراعة", "125,472.51", "18,820.88", "144,293.39", "المبلغ بالحروف", "فقط مائة وأربعة وأربعون ألفاً", "لا غير",
-                   "المحاسب", "مدير الحسابات", "المدير المالي", "المدير العام", "تاريخ ووقت الطباعة", "فاتورة", "501"):
+    for needle in ("طلب صرف", v["VoucherNo"], "2026-10-24", "مؤسسة ملتقى الفنون", "أعمال زراعة", "تحويل بنكي", "مركز التكلفة", "بنود الطلب", "144,293.39",
+                   "المبلغ بالحروف", "فقط مائة وأربعة وأربعون ألفاً", "لا غير", "إدارة العقود والمشتريات", "تاريخ ووقت الطباعة",
+                   "مدير العقود والمشتريات", "م محمود عدس", "مدير عام المشاريع", "م محمد الجداوى", "مدير الحسابات", "المدير المالي", "المدير العام"):
         assert needle in html, needle
+    for gone in ("المحاسب", "المستندات المرجعية", "بيان السداد", "القسم الطالب", "الإجمالي قبل الخصم", "الحالة:"):          # the simplified company form
+        assert gone not in html, gone
+    assert html.index("مدير العقود والمشتريات") < html.index("مدير عام المشاريع") < html.index("مدير الحسابات") < html.index("المدير المالي") < html.index("المدير العام")
+
+
+def test_the_totals_box_is_printed_only_when_asked(client):
+    pid, sid = _project(), _supplier()
+    client.post("/vouchers/new", data=_form(pid, sid, show_totals="1"))
+    vid = fake_db.scalar("SELECT [VoucherID] FROM [PaymentVouchers]")
+    html = client.get("/vouchers/%d/print" % vid).get_data(as_text=True)
+    assert "الإجمالي قبل الخصم" in html and "125,472.51" in html and "18,820.88" in html and "صافي قيمة الطلب" in html
 
 
 def test_mistakes_are_reported_and_nothing_typed_is_lost(client):
