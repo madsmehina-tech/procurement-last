@@ -34,6 +34,16 @@
 
 {% if c.Status == ST.ST_CANCELLED %}<section class="cy-card"><b>دورة ملغاة (من نسخة سابقة)</b> — مستخلصاتها عادت «مُدخَل». للعرض والطباعة فقط.</section>{% endif %}
 
+{% if deciding %}
+<section class="cy-card dec-sum" id="decSum" aria-label="ملخص القرار">
+  <div class="dec-sum-h"><h2>ملخص القرار</h2><span class="set-hint" style="margin:0;">يتحدث فوراً مع كل اختيار</span></div>
+  <div class="dec-bar" aria-hidden="true"><span id="bA" class="a"></span><span id="bD" class="d"></span><span id="bU" class="u"></span></div>
+  <div class="dec-legend">
+    <span><i class="a"></i> معتمد للصرف <b id="lA">0</b></span><span><i class="d"></i> مؤجَّل <b id="lD">0</b></span><span><i class="u"></i> لم يُقرَّر بعد <b id="lU">0</b></span>
+  </div>
+  <ul class="dec-checks" id="decChecks"></ul>
+</section>
+{% endif %}
 {% if noting %}<form method="post" action="{{ url_for('cycle_decisions', cycle_id=c.CycleID) }}" id="decForm">
 {% elif deciding %}<form method="post" action="{{ url_for('cycle_decisions', cycle_id=c.CycleID) }}" id="decForm">{% endif %}
 {% set ncols = 12 if stage >= 3 else 11 %}
@@ -180,7 +190,43 @@ function recalc() {
 }
 document.querySelectorAll('.dsel').forEach(s => s.addEventListener('change', recalc));
 document.querySelectorAll('.part').forEach(i => i.addEventListener('input', recalc));
-recalc();
+
+// the decision as three buttons (the <select> stays in the form and stays the source of truth: the buttons only set it)
+const SHORT = {'{{ D_FULL }}': ['صرف كامل', 'f'], '{{ D_PART }}': ['صرف جزئي', 'p'], '{{ D_DEFER }}': ['تأجيل', 'd']};
+document.querySelectorAll('.dsel').forEach(sel => {
+  const seg = document.createElement('div'); seg.className = 'seg'; seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', 'القرار');
+  [...sel.options].filter(o => o.value && SHORT[o.value]).forEach(o => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'sgb ' + SHORT[o.value][1]; b.textContent = SHORT[o.value][0]; b.dataset.v = o.value;
+    b.addEventListener('click', () => { sel.value = o.value; sel.dispatchEvent(new Event('change', {bubbles: true})); sync(); });
+    seg.appendChild(b);
+  });
+  sel.style.display = 'none'; sel.insertAdjacentElement('afterend', seg);
+  sel._seg = seg;
+});
+function sync() { document.querySelectorAll('.dsel').forEach(sel => [...sel._seg.children].forEach(b => { const on = b.dataset.v === sel.value; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); })); }
+
+// the summary: approved / deferred / not yet decided (by amount), and what is still needed before the final stage
+function summary() {
+  let tot = 0, ap = 0, de = 0, un = 0, nUn = 0, nOver = 0;
+  document.querySelectorAll('tr[data-req]').forEach(tr => {
+    const sel = tr.querySelector('.dsel'); if (!sel) return;
+    const req = +tr.dataset.req, v = sel.value, inp = tr.querySelector('.part'); tot += req;
+    if (!v) { un += req; nUn++; }
+    else if (v === '{{ D_FULL }}') ap += req;
+    else if (v === '{{ D_PART }}') { const a = Math.min(req, +inp.value || 0); ap += a; de += req - a; if ((+inp.value || 0) > req) nOver++; }
+    else de += req;
+  });
+  const pc = x => tot ? Math.round(x / tot * 100) : 0;
+  document.getElementById('bA').style.width = pc(ap) + '%'; document.getElementById('bD').style.width = pc(de) + '%'; document.getElementById('bU').style.width = pc(un) + '%';
+  document.getElementById('lA').textContent = fmt(ap) + ' (' + pc(ap) + '%)'; document.getElementById('lD').textContent = fmt(de) + ' (' + pc(de) + '%)'; document.getElementById('lU').textContent = fmt(un) + ' (' + pc(un) + '%)';
+  const checks = [[nUn === 0, nUn === 0 ? 'تم تحديد قرار لكل المستخلصات' : 'بقي ' + nUn + ' بلا قرار'],
+                  [nOver === 0, nOver === 0 ? 'لا يتجاوز مبلغ أي قرار جزئي المتبقي على مستخلصه' : nOver + ' قرار جزئي مبلغه أكبر من المتبقي (يُخفَّض تلقائياً)'],
+                  [ap > 0, 'المبلغ المعتمد للتحويل: ' + fmt(ap) + ' ريال']];
+  document.getElementById('decChecks').innerHTML = checks.map(c => '<li class="' + (c[0] ? 'ok' : 'no') + '"><span aria-hidden="true">' + (c[0] ? '✓' : '!') + '</span>' + c[1] + '</li>').join('');
+  document.querySelectorAll('button[name=intent][value=finalize]').forEach(b => { b.disabled = nUn > 0; b.title = nUn > 0 ? 'سجّل قراراً لكل مستخلص أولاً' : ''; });
+}
+document.querySelectorAll('.dsel, .part').forEach(e => e.addEventListener(e.tagName === 'SELECT' ? 'change' : 'input', summary));
+recalc(); sync(); summary();
 </script>
 {% endif %}
 {% endblock %}

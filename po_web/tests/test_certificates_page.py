@@ -81,3 +81,16 @@ def test_the_home_page_has_the_phone_quick_actions_and_the_filter_toggle_exists(
     assert 'data-toggle=".filters"' in page
     shown = client.get("/certificates?q=x").get_data(as_text=True)
     assert 'class="filters show"' in shown                                  # a search in progress keeps the filter bar open on a phone
+
+
+def test_the_cycle_decision_page_keeps_its_fields_and_has_the_new_summary(client):
+    import cycles_service as cy
+    s = h.add_sub()
+    h.add_cert(s, 5000, no=1)
+    h.add_cert(s, 7000, no=2)
+    cid = cy.create("اختبار", datetime.now(), "t")
+    cy.to_decision_stage(cid, "t")
+    html = client.get("/cycles/%d" % cid).get_data(as_text=True)
+    for needle in ('id="decSum"', 'id="decChecks"', "ملخص القرار", "name=\"decision_", "name=\"partial_", "name=\"note_", 'name="intent" value="finalize"', 'name="intent" value="save"', "dsel"):
+        assert needle in html, needle
+    assert html.count('class="search-box dsel"') == 2                        # the real <select> stays in the form (the buttons only set it)

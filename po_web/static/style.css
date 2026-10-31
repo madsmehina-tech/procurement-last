@@ -702,3 +702,44 @@ td.nw, .nw { white-space: nowrap; font-variant-numeric: tabular-nums; }
   .quick a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 84px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border); font-weight: 600; font-size: 14px; text-decoration: none; color: var(--text); }
   .quick svg { width: 24px; height: 24px; color: var(--accent); }
 }
+
+
+/* ------------------------------------------------------------------ v27.1: payment-cycle page in the approved design (same markup, same fields) */
+.cy-card { border: 1px solid var(--border); border-radius: 18px; box-shadow: var(--shadow); }
+.cy-step.done .cy-bar { background: #2E9E5B; } .cy-step.cur .cy-bar { background: var(--accent); } .cy-step.cur .cy-step-l { color: var(--accent); }
+.cy-chip-st { background: var(--warning-bg); color: #92400E; } .cy-chip-st.ok { background: var(--success-bg); color: #166534; }
+.cy3 { font-size: 13.5px; }
+.cy3 th { background: var(--surface-2); color: var(--text-secondary); border-bottom: 1px solid var(--border); }
+.cy3 td { padding: 12px 8px; border-bottom: 1px solid #EEF1F5; }
+.cy3 tr.gh td { background: #F1F6F6; color: var(--text); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 14px 18px; }
+.cy3 .gh-name { font-size: 16px; }
+.cy3 .gh-n { opacity: 1; color: var(--text-secondary); }
+.cy3 .gh-dist input { background: #fff; border: 1px solid var(--border-strong); } .cy3 .gh-dist .btn { background: #fff; color: var(--accent); border-color: var(--accent); }
+.cy3 tbody.cy3-grp tr[data-req]:nth-child(even) td { background: #fff; }
+.cy3 tbody.cy3-grp tr[data-req]:hover td { background: var(--surface-2); }
+.cy3 tfoot td { background: var(--surface-2); border-top: 2px solid var(--border-strong); }
+.seg { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.sgb { min-height: 38px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--border-strong); background: #fff; color: #475569; font: 600 13px inherit; font-family: inherit; cursor: pointer; white-space: nowrap; }
+.sgb:hover { background: var(--surface-2); }
+.sgb.on.f { background: #DCFCE7; color: #166534; border-color: #86D3A0; }
+.sgb.on.p { background: #FEF3C7; color: #92400E; border-color: #F1CF74; }
+.sgb.on.d { background: #EEF1F5; color: #334155; border-color: #B6C0CC; }
+.dec-sum { padding: 18px 22px; }
+.dec-sum-h { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.dec-sum-h h2 { margin: 0; font-size: 16px; }
+.dec-bar { display: flex; height: 12px; border-radius: 99px; overflow: hidden; background: #E9EEF3; }
+.dec-bar span { display: block; height: 100%; transition: width .25s; }
+.dec-bar .a, .dec-legend i.a { background: #2E9E5B; } .dec-bar .d, .dec-legend i.d { background: #E0B24A; } .dec-bar .u, .dec-legend i.u { background: #B6C0CC; }
+.dec-legend { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 10px; font-size: 13.5px; color: #475569; }
+.dec-legend i { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-inline-end: 4px; }
+.dec-checks { list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 6px 18px; }
+.dec-checks li { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.7; }
+.dec-checks li span { flex: none; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+.dec-checks li.ok span { background: var(--success-bg); color: #166534; } .dec-checks li.no span { background: var(--danger-bg); color: #991B1B; }
+.cy3-bar .btn:disabled { opacity: .45; cursor: not-allowed; }
+@media (max-width: 640px) { .cy-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; } .cy-head h1 { font-size: 22px; } .cy3-wrap { margin-inline: -4px; } }
+
+/* v27.1b — compact decision buttons so the three sit in one row on desktop */
+.cy3 .seg { display: flex; gap: 3px; flex-wrap: nowrap; }
+.cy3 .sgb { min-height: 34px; padding: 0 9px; font-size: 12px; border-radius: 9px; flex: 0 0 auto; min-width: 52px; }
+@media (max-width: 760px) { .cy3 .seg { flex-wrap: wrap; } .cy3 .sgb { min-height: 44px; font-size: 14px; padding: 0 12px; } }
