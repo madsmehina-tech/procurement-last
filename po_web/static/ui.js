@@ -45,6 +45,30 @@
     });
   });
 
+
+  // any [data-toggle="<selector>"] button shows / hides that element (the filter bar on a phone)
+  document.querySelectorAll("[data-toggle]").forEach(function (b) {
+    b.addEventListener("click", function () { var t = document.querySelector(b.dataset.toggle); if (t) t.classList.toggle("show"); });
+  });
+
+  // the bottom bar's «المزيد» opens the same menu as the top button
+  document.querySelectorAll("[data-open-menu]").forEach(function (b) {
+    b.addEventListener("click", function () { if (toggle) toggle.click(); window.scrollTo(0, 0); });
+  });
+
+  // on a phone every plain list table is shown as cards: each cell gets the name of its column (read from the table's own header)
+  document.querySelectorAll("table.list").forEach(function (tb) {
+    if (tb.classList.contains("no-cards")) return;
+    var heads = [].slice.call(tb.querySelectorAll("thead th")).map(function (h) { return (h.textContent || "").trim(); });
+    var rows = [].slice.call(tb.querySelectorAll("tbody tr"));
+    if (!heads.length || !rows.length) return;
+    var ok = rows.every(function (r) { var c = r.children; return c.length === heads.length && ![].some.call(c, function (x) { return x.colSpan > 1; }); });
+    if (!ok) return;
+    rows.forEach(function (r) { [].forEach.call(r.children, function (td, i) { td.setAttribute("data-label", heads[i]); }); });
+    tb.classList.add("cards");
+    var host = tb.closest(".card"); if (host) host.classList.add("cards-host");
+  });
+
   // tabs: <nav class="tabs" data-key="x" data-start="name"> with [data-tab] buttons and .tab-pane[data-pane] sections.
   // The address (#tab-name) and the last choice are remembered; any [data-tab-go] link switches tab.
   document.querySelectorAll(".tabs[data-key]").forEach(function (nav) {

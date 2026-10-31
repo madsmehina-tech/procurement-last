@@ -25,6 +25,12 @@
 {% include "_exec_css.html" %}
 {% include "_exec_extra_css.html" %}
 <div class="exec" id="exec" data-theme="light">
+  <nav class="quick no-print" aria-label="إجراءات سريعة">
+    {% if can('orders.create') %}<a href="{{ url_for('order_new') }}">{{ ico('order_new') }}أمر شراء</a>{% endif %}
+    {% if can('certificates.edit') %}<a href="{{ url_for('certificate_new_any') }}">{{ ico('certificates') }}مستخلص جديد</a>{% endif %}
+    {% if can('vouchers.create') %}<a href="{{ url_for('voucher_new') }}">{{ ico('vouchers') }}أمر صرف</a>{% endif %}
+    <a href="{{ url_for('global_search') }}">{{ ico('search') }}بحث شامل</a>
+  </nav>
   <div class="ex-grid" style="margin-bottom:16px;">
     {% if d %}{% set k = d.kpi %}
     {{ kpi('إجمالي المستخلصات', '{:,.0f}'.format(k.certs_total), 'صافي المستحق للمقاولين', href=url_for('certificates_list') if can('certificates.view') else '') }}

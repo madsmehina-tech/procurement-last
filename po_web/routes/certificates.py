@@ -42,14 +42,14 @@ def _user():
 
 
 # --------------------------------------------------------------------------- the certificates tab (follow-up only)
-def _filtered():
+def _filtered(ignore_status=False):
     a = request.args
     q, f_status, f_sub, f_project = a.get("q", "").strip(), a.get("status", "").strip(), a.get("sub", type=int), a.get("project", "").strip()
     d_from, d_to = a.get("date_from", ""), a.get("date_to", "")
     subs, contracts, certs, _p = cs.load()
     rows = []
     for g in sorted(certs, key=lambda g: (g.get("CreatedAt") or datetime.min, g["CertificateID"]), reverse=True):
-        if f_status and g["Status"] != f_status:
+        if f_status and not ignore_status and g["Status"] != f_status:
             continue
         if f_sub and g["SubcontractorID"] != f_sub:
             continue
@@ -69,13 +69,19 @@ def _filtered():
 @route("/certificates")
 @auth.login_required
 def certificates_list():
-    rows, subs, contracts, f = _filtered()
+    every, subs, contracts, f = _filtered(ignore_status=True)          # the counts above the table ignore the status chosen, so every chip keeps its own number
+    rows = [g for g in every if not f["status"] or g["Status"] == f["status"]]
     by_status = {s: {"n": 0, "total": 0.0} for s in CERT_STATUSES}
-    for g in rows:
+    for g in every:
         slot = by_status.setdefault(g["Status"], {"n": 0, "total": 0.0})        # never a KeyError on an odd value
         slot["n"] += 1
         slot["total"] += g["Total"]
-    return render_template("certificates_list.html", rows=rows, by_status=by_status, statuses=CERT_STATUSES, badge=STATUS_BADGE, f=f,
+    live = [g for g in every if g["Status"] != ST_REJECTED]
+    kpi = {"total": round(sum(g["Total"] for g in live), 2), "paid": round(sum(g["Paid"] for g in live), 2), "remaining": round(sum(g["Remaining"] for g in live), 2),
+           "entered": round(sum(g["Remaining"] for g in every if g["Status"] == ST_ENTERED), 2), "entered_n": sum(1 for g in every if g["Status"] == ST_ENTERED)}
+    for g in rows:
+        g["PaidPct"] = 0 if (g["Status"] == ST_REJECTED or not g["Total"]) else max(0, min(100, round(g["Paid"] / g["Total"] * 100)))
+    return render_template("certificates_list.html", rows=rows, by_status=by_status, n_all=len(every), kpi=kpi, statuses=CERT_STATUSES, badge=STATUS_BADGE, f=f,
                            subs=sorted(subs.values(), key=lambda s: s["Name"]), projects=sorted({g.get("Project") for g in cs.load()[2] if g.get("Project")}))
 
 
