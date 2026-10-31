@@ -174,7 +174,7 @@ ENDPOINT_PERMS = {
     # payment cycle (three stages)
     "cycles_list": "cycles.view", "cycles_history": "cycles.view", "cycle_detail": "cycles.view", "cycle_export": "cycles.view", "cycle_print": "cycles.view",
     "cycle_xlsx": "cycles.view", "cycle_pdf_download": "cycles.view", "cycle_order": "cycles.view", "cycle_orders_print": "cycles.view",
-    "cycle_new": "cycles.manage", "cycle_refresh": "cycles.manage", "cycle_decisions": "cycles.manage", "cycle_reopen": "cycles.manage", "cycle_delete": "cycles.manage",
+    "cycle_new": "cycles.manage", "cycle_refresh": "cycles.manage", "cycle_decisions": "cycles.manage", "cycle_reopen": "cycles.manage", "cycle_close": "cycles.manage", "cycle_delete": "cycles.manage",
     "cycle_pdf": "cycles.manage", "cycle_signed": "cycles.manage", "cycle_order_pdf": "cycles.manage",
     "cycle_transfer": "certificates.pay", "cycle_transfer_undo": "certificates.pay", "cycle_transfer_files": "certificates.pay",
     # archive of payment transactions
