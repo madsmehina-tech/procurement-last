@@ -1,3 +1,11 @@
+/* Cairo (SIL Open Font License, see fonts/Cairo-OFL-License.txt): shipped with the system, so no internet is needed. */
+@font-face { font-family: 'Cairo'; font-style: normal; font-weight: 400; font-display: swap; src: url('fonts/cairo-arabic-400.woff2') format('woff2'); unicode-range: U+0600-06FF,U+0750-077F,U+0870-088E,U+0890-0891,U+0898-08E1,U+08E3-08FF,U+200C-200E,U+2010-2011,U+204F,U+2E41,U+FB50-FDFF,U+FE70-FE74,U+FE76-FEFC; }
+@font-face { font-family: 'Cairo'; font-style: normal; font-weight: 400; font-display: swap; src: url('fonts/cairo-latin-400.woff2') format('woff2'); unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: 'Cairo'; font-style: normal; font-weight: 600; font-display: swap; src: url('fonts/cairo-arabic-600.woff2') format('woff2'); unicode-range: U+0600-06FF,U+0750-077F,U+0870-088E,U+0890-0891,U+0898-08E1,U+08E3-08FF,U+200C-200E,U+2010-2011,U+204F,U+2E41,U+FB50-FDFF,U+FE70-FE74,U+FE76-FEFC; }
+@font-face { font-family: 'Cairo'; font-style: normal; font-weight: 600; font-display: swap; src: url('fonts/cairo-latin-600.woff2') format('woff2'); unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: 'Cairo'; font-style: normal; font-weight: 700; font-display: swap; src: url('fonts/cairo-arabic-700.woff2') format('woff2'); unicode-range: U+0600-06FF,U+0750-077F,U+0870-088E,U+0890-0891,U+0898-08E1,U+08E3-08FF,U+200C-200E,U+2010-2011,U+204F,U+2E41,U+FB50-FDFF,U+FE70-FE74,U+FE76-FEFC; }
+@font-face { font-family: 'Cairo'; font-style: normal; font-weight: 700; font-display: swap; src: url('fonts/cairo-latin-700.woff2') format('woff2'); unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+
 /* =====================================================================================
    Unified design system  -  applied to every page that extends base.html
    Palette / metrics follow the approved spec:
@@ -40,7 +48,7 @@
 
 body { letter-spacing: 0;
   margin: 0;
-  font-family: "Segoe UI", Tahoma, "Noto Naskh Arabic", "Noto Sans Arabic", Arial, sans-serif;
+  font-family: "Cairo", "Segoe UI", Tahoma, "Noto Naskh Arabic", "Noto Sans Arabic", Arial, sans-serif;
   font-size: 14.5px;
   font-weight: 400;
   background: var(--bg);
@@ -627,3 +635,70 @@ button[disabled], .btn[disabled] { opacity: .55; cursor: wait; }
 .next-it.info { background: var(--accent-bg); color: var(--accent); border-color: #C5DADB; }
 .sum-more { margin-top: 10px; }
 .sum-more summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 13.5px; padding: 6px 0; }
+
+
+/* ------------------------------------------------------------------ v27: phone layer (bottom bar, cards instead of tables) */
+.tabbar { display: none; }
+@media (max-width: 880px) {
+  .tabbar { display: flex; position: fixed; bottom: 0; inset-inline: 0; z-index: 60; background: #fff; border-top: 1px solid var(--border); padding: 6px 6px calc(8px + env(safe-area-inset-bottom)); box-shadow: 0 -6px 20px -12px rgba(15,23,42,.25); }
+  .tabbar a, .tabbar button { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 52px; background: none; border: 0; font: 600 11.5px/1.2 inherit; font-family: inherit; color: var(--text-secondary); cursor: pointer; border-radius: 12px; }
+  .tabbar svg { width: 22px; height: 22px; }
+  .tabbar .on { color: var(--accent); }
+  .tabbar .on svg { stroke-width: 2.2; }
+  .main { padding-bottom: 92px; }
+  .nav-toggle { display: none; }
+  .sidebar { display: none; position: fixed; inset: 0 0 64px 0; z-index: 55; overflow-y: auto; }
+  .sidebar.open { display: flex; }
+}
+@media (max-width: 640px) {
+  .cards-host { background: none !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; overflow: visible; }
+  .cards-host .tbl-wrap { overflow: visible; }
+  table.list.cards, table.list.cards tbody, table.list.cards tr, table.list.cards td { display: block; width: 100% !important; min-width: 0 !important; box-sizing: border-box; }
+  table.list.cards thead { display: none; }
+  table.list.cards tr { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 6px 16px; margin: 0 0 12px; box-shadow: var(--shadow); }
+  table.list.cards td { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 9px 0; border: 0; border-bottom: 1px dashed #E8EDF3; text-align: start; }
+  table.list.cards td:last-child { border-bottom: 0; }
+  table.list.cards td::before { content: attr(data-label); flex: none; font-size: 12.5px; color: var(--text-secondary); font-weight: 600; max-width: 42%; }
+  table.list.cards td > * { max-width: 58%; }
+  .page-head { flex-direction: column; align-items: stretch; }
+  .page-actions { width: 100%; }
+  .global-search { min-width: 0; width: 100%; }
+  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
+  .kpi-card { padding: 14px 14px !important; min-width: 0; }
+  .kpi-value { font-size: 21px !important; overflow-wrap: anywhere; }
+  .main { min-width: 0; overflow-x: hidden; }
+  .tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: -16px; padding-inline: 8px; }
+  .tabs button { flex: none; white-space: nowrap; }
+  .next-bar { flex-wrap: nowrap; overflow-x: auto; }
+  .next-it { white-space: nowrap; flex: none; }
+}
+
+/* ------------------------------------------------------------------ v27: filter bar, status chips, small progress bar */
+.chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.chip { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--border-strong); background: #fff; color: var(--text); font-weight: 600; font-size: 14px; text-decoration: none; }
+.chip:hover { background: var(--surface-2); }
+.chip.on { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(41,89,94,.14); background: var(--accent-bg); }
+.chip i { font-style: normal; font-size: 12px; background: rgba(15,23,42,.07); border-radius: 99px; padding: 0 8px; }
+.chip small { color: var(--text-secondary); font-weight: 400; }
+.filters { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.filters .fld { display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
+.filters .fld.grow { flex: 1 1 260px; }
+.filters .fld.act { flex-direction: row; gap: 8px; min-width: 0; }
+.filters label { font-size: 12.5px; color: var(--text-secondary); font-weight: 600; }
+.filters .search-box { width: 100%; box-sizing: border-box; }
+.pbar2 { height: 7px; border-radius: 99px; background: #E9EEF3; overflow: hidden; margin-bottom: 4px; }
+.pbar2 span { display: block; height: 100%; background: #2E9E5B; }
+td.nw, .nw { white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) { .filters .fld { min-width: 100%; } .filters .fld.act { width: 100%; } }
+
+/* v27: phone details */
+.filters-toggle, .quick { display: none; }
+@media (max-width: 640px) {
+  table.list.cards .pbar2 { flex: 1; min-width: 50px; margin: 0; }
+  .filters { display: none; }
+  .filters.show { display: flex; }
+  .filters-toggle { display: inline-flex; width: 100%; justify-content: center; margin-bottom: 4px; }
+  .quick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 1.25rem; }
+  .quick a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 84px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border); font-weight: 600; font-size: 14px; text-decoration: none; color: var(--text); }
+  .quick svg { width: 24px; height: 24px; color: var(--accent); }
+}

@@ -1,38 +1,50 @@
 {% extends "base.html" %}
 {% set active = "certificates" %}
 {% block title %}المستخلصات{% endblock %}
-{% block subtitle %}شاشة متابعة لكل مستخلصات كل المقاولين — تُضاف المستخلصات من صفحة المقاول · Certificates{% endblock %}
-{% block page_actions %}<a class="btn" href="{{ url_for('certificates_export', **f) }}">تصدير Excel</a>{% endblock %}
+{% block subtitle %}كل مستخلصات المقاولين، وما ينتظر الصرف منها{% endblock %}
+{% block page_actions %}<a class="btn" href="{{ url_for('certificates_export', **f) }}">تصدير Excel</a>{% if can('certificates.edit') %}<a class="btn btn-primary" href="{{ url_for('certificate_new_any') }}">+ مستخلص جديد</a>{% endif %}{% endblock %}
 {% block content %}
 <div class="kpi-grid">
-  {% for s in statuses %}
-  <a class="kpi-card {{ 'kpi-on' if f.status == s else '' }}" href="{{ url_for('certificates_list', status=s if f.status != s else '', sub=f.sub, project=f.project, q=f.q) }}" style="text-decoration:none; color:inherit;">
-    <p class="kpi-label"><span class="badge {{ badge[s] }}">{{ s }}</span></p><p class="kpi-value">{{ by_status[s].n }}</p>
-    <p class="set-hint" style="margin:0;">{{ '{:,.0f}'.format(by_status[s].total) }} ريال</p></a>
-  {% endfor %}
+  <div class="kpi-card"><p class="kpi-label">إجمالي المستخلصات</p><p class="kpi-value">{{ '{:,.0f}'.format(kpi.total) }}</p><p class="set-hint" style="margin:0;">ريال · صافي المستحق بعد الخصومات</p></div>
+  <div class="kpi-card"><p class="kpi-label">المصروف</p><p class="kpi-value" style="color:var(--success);">{{ '{:,.0f}'.format(kpi.paid) }}</p><p class="set-hint" style="margin:0;">ريال</p></div>
+  <div class="kpi-card warning"><p class="kpi-label">المتبقي</p><p class="kpi-value">{{ '{:,.0f}'.format(kpi.remaining) }}</p><p class="set-hint" style="margin:0;">ريال</p></div>
+  <div class="kpi-card"><p class="kpi-label">مُدخَل ولم يدخل دورة</p><p class="kpi-value">{{ '{:,.0f}'.format(kpi.entered) }}</p><p class="set-hint" style="margin:0;">ريال · {{ kpi.entered_n }} مستخلص</p></div>
 </div>
-<form method="get" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:1rem;">
-  <input class="search-box sb-search" type="text" name="q" value="{{ f.q }}" placeholder="رقم المستخلص أو المقاول أو المشروع أو الموقع" style="width:280px;">
-  <select class="search-box" name="status" style="width:150px;"><option value="">كل الحالات</option>{% for s in statuses %}<option {{ 'selected' if f.status == s else '' }}>{{ s }}</option>{% endfor %}</select>
-  <select class="search-box" name="sub" style="width:200px;"><option value="">كل المقاولين</option>{% for s in subs %}<option value="{{ s.SubcontractorID }}" {{ 'selected' if f.sub == s.SubcontractorID else '' }}>{{ s.Name }}</option>{% endfor %}</select>
-  <select class="search-box" name="project" style="width:180px;"><option value="">كل المشاريع</option>{% for p in projects %}<option {{ 'selected' if f.project == p else '' }}>{{ p }}</option>{% endfor %}</select>
-  <label style="font-size:13px; color:var(--text-secondary);">من <input class="search-box" type="date" name="date_from" value="{{ f.date_from }}" style="width:145px;"></label>
-  <label style="font-size:13px; color:var(--text-secondary);">إلى <input class="search-box" type="date" name="date_to" value="{{ f.date_to }}" style="width:145px;"></label>
-  <button class="btn btn-primary" type="submit">تطبيق</button>{% if f.q or f.status or f.sub or f.project or f.date_from or f.date_to %}<a class="btn" href="{{ url_for('certificates_list') }}">مسح</a>{% endif %}
-</form>
+
+<div class="card" style="padding:16px 18px; margin-bottom:1rem;">
+  <div class="chips" role="group" aria-label="تصفية بالحالة">
+    <a class="chip {{ '' if f.status else 'on' }}" href="{{ url_for('certificates_list', sub=f.sub, project=f.project, q=f.q, date_from=f.date_from, date_to=f.date_to) }}">الكل <i>{{ n_all }}</i></a>
+    {% for s in statuses %}<a class="chip {{ 'on' if f.status == s else '' }}" href="{{ url_for('certificates_list', status=s, sub=f.sub, project=f.project, q=f.q, date_from=f.date_from, date_to=f.date_to) }}"><span class="badge {{ badge[s] }}">{{ s }}</span> <i>{{ by_status[s].n }}</i> <small>{{ '{:,.0f}'.format(by_status[s].total) }}</small></a>{% endfor %}
+  </div>
+  <button class="btn filters-toggle" type="button" data-toggle=".filters">تصفية وبحث</button>
+  <form method="get" class="filters {{ 'show' if (f.q or f.sub or f.project or f.date_from or f.date_to) else '' }}">
+    <input type="hidden" name="status" value="{{ f.status }}">
+    <div class="fld grow"><label for="fq">بحث</label><input id="fq" class="search-box" type="search" name="q" value="{{ f.q }}" placeholder="رقم المستخلص أو المقاول أو المشروع أو الموقع"></div>
+    <div class="fld"><label for="fsub">المقاول</label><select id="fsub" class="search-box" name="sub"><option value="">كل المقاولين</option>{% for s in subs %}<option value="{{ s.SubcontractorID }}" {{ 'selected' if f.sub == s.SubcontractorID else '' }}>{{ s.Name }}</option>{% endfor %}</select></div>
+    <div class="fld"><label for="fproj">المشروع</label><select id="fproj" class="search-box" name="project"><option value="">كل المشاريع</option>{% for p in projects %}<option {{ 'selected' if f.project == p else '' }}>{{ p }}</option>{% endfor %}</select></div>
+    <div class="fld"><label for="fdf">من تاريخ</label><input id="fdf" class="search-box" type="date" name="date_from" value="{{ f.date_from }}"></div>
+    <div class="fld"><label for="fdt">إلى تاريخ</label><input id="fdt" class="search-box" type="date" name="date_to" value="{{ f.date_to }}"></div>
+    <div class="fld act"><button class="btn btn-primary" type="submit">تطبيق</button>{% if f.q or f.status or f.sub or f.project or f.date_from or f.date_to %}<a class="btn" href="{{ url_for('certificates_list') }}">مسح</a>{% endif %}</div>
+  </form>
+</div>
+
 <div class="card"><div class="tbl-wrap">
   <table class="list">
-    <thead><tr><th>مسلسل</th><th>رقم المستخلص</th><th>اسم المقاول</th><th>المشروع</th><th>الموقع</th><th>تاريخ الإدخال للنظام</th><th>قيمة المستخلص شامل الضريبة</th><th>خصومات المواد</th><th>صافي المستحق</th><th>المصروف</th><th>رقم دورة الصرف</th><th>تاريخ الصرف</th><th>المتبقي</th><th>الحالة</th><th>إجراء</th></tr></thead>
+    <thead><tr><th>المقاول</th><th>المشروع / الموقع</th><th>المستخلص</th><th>القيمة (شامل الضريبة)</th><th>الصافي المستحق</th><th>المصروف</th><th>المتبقي</th><th>الحالة</th><th></th></tr></thead>
     <tbody>
     {% for g in rows %}
-      <tr>
-        <td style="color:var(--text-secondary);">{{ loop.index }}</td><td><b style="color:var(--accent);">{{ g.CertificateNo }}</b></td><td>{{ g.SubcontractorName }}</td><td>{{ g.Project }}</td><td>{{ g.SiteName or '—' }}</td>
-        <td>{{ g.CreatedAt.strftime('%Y-%m-%d') if g.CreatedAt else '—' }}</td><td>{{ '{:,.2f}'.format(g.Value) }}</td><td>{{ '{:,.2f}'.format(g.SuppliedMaterials or 0) }}</td>
-        <td><b>{{ '{:,.2f}'.format(g.Total) }}</b></td><td>{{ '{:,.2f}'.format(g.Paid) }}</td><td>{{ g.CycleNo or '—' }}</td>
-        <td>{{ g.LastPayDate.strftime('%Y-%m-%d') if g.LastPayDate else '—' }}</td><td>{{ '{:,.2f}'.format(g.Remaining) }}</td><td><span class="badge {{ badge[g.Status] }}">{{ g.Status }}</span></td>
-        <td><a class="btn" href="{{ url_for('subcontractor_detail', sub_id=g.SubcontractorID, cert=g.CertificateID) }}">عرض</a></td>
+      <tr onclick="location.href='{{ url_for('subcontractor_detail', sub_id=g.SubcontractorID, cert=g.CertificateID) }}'" style="cursor:pointer;">
+        <td><b>{{ g.SubcontractorName }}</b></td>
+        <td>{{ g.Project }}{% if g.SiteName %}<br><small style="color:var(--text-secondary);">{{ g.SiteName }}</small>{% endif %}</td>
+        <td><b style="color:var(--accent);">رقم {{ g.CertificateNo }}</b><br><small class="nw" style="color:var(--text-secondary);">{{ g.CreatedAt.strftime('%Y-%m-%d') if g.CreatedAt else '—' }}</small></td>
+        <td class="nw">{{ '{:,.2f}'.format(g.Value) }}{% if g.SuppliedMaterials %}<br><small style="color:var(--text-secondary);">خصومات {{ '{:,.2f}'.format(g.SuppliedMaterials) }}</small>{% endif %}</td>
+        <td class="nw"><b>{{ '{:,.2f}'.format(g.Total) }}</b></td>
+        <td style="min-width:150px;"><div class="pbar2"><span style="width:{{ g.PaidPct }}%;"></span></div><small class="nw" style="color:var(--text-secondary);">{{ '{:,.2f}'.format(g.Paid) }} · {{ g.PaidPct }}%{% if g.LastPayDate %} · {{ g.LastPayDate.strftime('%Y-%m-%d') }}{% endif %}</small></td>
+        <td class="nw"><b>{{ '{:,.2f}'.format(g.Remaining) }}</b></td>
+        <td><span class="badge {{ badge[g.Status] }}">{{ g.Status }}</span>{% if g.CycleNo %}<br><small style="color:var(--text-secondary);">دورة {{ g.CycleNo }}</small>{% endif %}</td>
+        <td><a class="btn" href="{{ url_for('subcontractor_detail', sub_id=g.SubcontractorID, cert=g.CertificateID) }}" onclick="event.stopPropagation();">عرض</a></td>
       </tr>
-    {% else %}<tr><td colspan="15" style="text-align:center; color:var(--text-secondary); padding:28px;">لا توجد مستخلصات مطابقة.</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="9" style="text-align:center; color:var(--text-secondary); padding:28px;">لا توجد مستخلصات مطابقة.</td></tr>{% endfor %}
     </tbody>
   </table>
 </div></div>

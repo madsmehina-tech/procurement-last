@@ -76,6 +76,13 @@
       {% block content %}{% endblock %}
     </main>
   </div>
+  <nav class="tabbar no-print" aria-label="التنقل السريع">
+    <a href="{{ url_for('dashboard') }}" class="{{ 'on' if active in ('dashboard', '') else '' }}">{{ ico('dashboard') }}<span>الرئيسية</span></a>
+    {% if can('subcontractors.view') %}<a href="{{ url_for('subcontractors_list') }}" class="{{ 'on' if active == 'subcontractors' else '' }}">{{ ico('subcontractors') }}<span>المقاولون</span></a>{% endif %}
+    {% if can('cycles.view') %}<a href="{{ url_for('cycles_list') }}" class="{{ 'on' if active == 'cycles' else '' }}">{{ ico('cycles') }}<span>الصرف</span></a>{% endif %}
+    {% if can('orders.view') %}<a href="{{ url_for('orders_list') }}" class="{{ 'on' if active in ('orders', 'order_new') else '' }}">{{ ico('orders') }}<span>الأوامر</span></a>{% endif %}
+    <button type="button" data-open-menu aria-controls="sidebar">{{ ico('settings_archive') }}<span>المزيد</span></button>
+  </nav>
   <script src="{{ url_for('static', filename='ui.js') }}" defer></script>
 </body>
 </html>
