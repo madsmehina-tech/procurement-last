@@ -111,3 +111,16 @@ def test_close_cycle_needs_every_outcome_then_closes():
     fake_db.execute("UPDATE [PaymentCycles] SET [Status] = ? WHERE [CycleID] = ?", (cy.ST_APPROVED, cid))
     cy.close_cycle(cid, "t")
     assert fake_db.query("SELECT [Status] FROM [PaymentCycles] WHERE [CycleID] = ?", (cid,))[0]["Status"] == cy.ST_DONE
+
+
+def test_new_order_page_keeps_every_field_and_has_the_three_steps():
+    import re
+    import app as appmod
+    cl = appmod.app.test_client()
+    with cl.session_transaction() as s:
+        s["user_id"] = 1
+    html = cl.get("/orders/new").get_data(as_text=True)
+    for name in ("po_number", "order_date", "quote_no", "location", "supplier", "project", "receiver", "phone", "discount", "extra_notes", "hide_warehouse_note", "item_name", "item_unit", "item_qty", "item_price"):
+        assert 'name="%s"' % name in html or "name=\"%s\"" % name in html, name
+    assert "المورد والمشروع" in html and "المراجعة والإصدار" in html and "po-stepper" in html
+    assert html.count('id="saveBtn"') == 1

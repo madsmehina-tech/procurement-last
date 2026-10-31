@@ -321,5 +321,86 @@ addRow({{ nm|tojson }}, {{ (form.item_unit[loop.index0] if form.item_unit else '
 {% else %}
 for (let i = 0; i < 3; i++) addRow();
 {% endif %}
+
+// ---------------------------------------------------------------- v27.2: three steps (supplier & project / items / review & issue)
+// Only a layer on top: every field stays in the same form with the same names, so saving works exactly as before.
+(function () {
+  const top = form.querySelector('.po-top'), itemsCard = form.querySelector('.items-card');
+  const printCard = form.querySelector('.po-actions').previousElementSibling.matches('label.warn-box') ? form.querySelector('.po-actions').previousElementSibling.previousElementSibling : form.querySelector('.po-actions').previousElementSibling;
+  const actions = form.querySelector('.po-actions'), rbox = document.getElementById('retrieveBox');
+  if (!top || !itemsCard || !printCard || !actions) return;
+  const mk = (cls, attrs) => { const e = document.createElement('div'); e.className = cls; Object.entries(attrs || {}).forEach(([k, v]) => e.setAttribute(k, v)); return e; };
+  const p1 = mk('po-step', {'data-step': '1'}), p2 = mk('po-step', {'data-step': '2'}), p3 = mk('po-step', {'data-step': '3'});
+  top.before(p1); p1.append(top); if (rbox) p1.append(rbox);
+  itemsCard.before(p2); p2.append(itemsCard);
+  printCard.before(p3);
+  const review = mk('card po-card po-review'); review.innerHTML = '<h2 class="po-h">مراجعة قبل الإصدار</h2>';
+  const rbody = mk('rv-grid'), rwarn = mk('rv-warn'); review.append(rbody, rwarn); p3.append(review);
+  Array.from(form.children).forEach(ch => { if (ch === printCard || ch.matches('label.warn-box') || ch === actions) p3.append(ch); });
+  const panels = [p1, p2, p3];
+  form.classList.add('po-wiz');
+
+  const names = ['المورد والمشروع', 'البنود', 'المراجعة والإصدار'];
+  const stepper = mk('po-stepper'); stepper.setAttribute('role', 'tablist');
+  const btns = names.map((n, i) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'po-st'; b.innerHTML = '<i></i><span></span>';
+    b.querySelector('i').textContent = String(i + 1); b.querySelector('span').textContent = n; b.addEventListener('click', () => go(i)); stepper.append(b); return b; });
+  form.prepend(stepper);
+
+  const bar = mk('po-bar');
+  const prev = document.createElement('button'); prev.type = 'button'; prev.className = 'btn btn-lg'; prev.textContent = 'السابق';
+  const next = document.createElement('button'); next.type = 'button'; next.className = 'btn btn-primary btn-lg'; next.textContent = 'التالي';
+  const mid = mk('po-bar-mid'); mid.innerHTML = '<small></small><span><b id="barTotal">0.00</b> ريال</span>'; const msg = mid.querySelector('small');
+  bar.append(prev, mid, next); form.append(bar);
+  const grand = document.getElementById('grandTotal'), barTotal = document.getElementById('barTotal');
+  new MutationObserver(() => { barTotal.textContent = grand.textContent; }).observe(grand, {childList: true, characterData: true, subtree: true});
+  barTotal.textContent = grand.textContent;
+  if (rb) { const r2 = document.createElement('button'); r2.type = 'button'; r2.className = 'btn po-retrieve'; r2.textContent = 'استرداد أمر شراء محفوظ لتعديله'; r2.addEventListener('click', () => rb.click()); p1.prepend(r2); }
+
+  let cur = 0, msgTimer = null;
+  const say = t => { msg.textContent = t; clearTimeout(msgTimer); msgTimer = setTimeout(() => { msg.textContent = ''; }, 4000); };
+  function okStep(i) {
+    if (i === 0) {
+      const bad = Array.from(p1.querySelectorAll('input, select, textarea')).find(el => !el.checkValidity());
+      if (bad) { bad.reportValidity(); say('أكمل بيانات المورد والمشروع أولاً'); return false; }
+    }
+    if (i === 1) {
+      if (!rows().some(tr => tr.querySelector('.it-name').value.trim())) { say('أضف صنفاً واحداً على الأقل'); return false; }
+      const long = rows().filter(tr => !checkLength(tr)); if (long.length) { say('اسم صنف أو وحدة أطول من المسموح'); return false; }
+    }
+    return true;
+  }
+  function fillReview() {
+    const v = n => (form.elements[n] && form.elements[n].value || '').trim() || '—';
+    const filled = rows().filter(tr => tr.querySelector('.it-name').value.trim());
+    const t = id => document.getElementById(id).textContent;
+    const pairs = [['رقم الأمر', v('po_number')], ['التاريخ', v('order_date')], ['المورد', v('supplier')], ['المشروع', v('project')], ['الموقع', v('location')], ['المستلم', v('receiver')],
+      ['عدد الأصناف', String(filled.length)], ['الإجمالي', t('subTotal')], ['الضريبة 15%', t('vatTotal')], ['شامل الضريبة', t('totalWithVat')], ['الخصم', fmt(parseFloat(v('discount')) || 0)], ['المطلوب سداده', t('grandTotal') + ' ريال']];
+    rbody.textContent = '';
+    pairs.forEach(([k, val], i) => { const d = mk('rv' + (i === pairs.length - 1 ? ' big' : '')); const a = document.createElement('small'); a.textContent = k; const b = document.createElement('b'); b.textContent = val; d.append(a, b); rbody.append(d); });
+    const miss = filled.filter(tr => !(parseFloat(tr.querySelector('[name="item_qty"]').value) > 0) || !(parseFloat(tr.querySelector('[name="item_price"]').value) > 0)).length;
+    rwarn.textContent = miss ? ('تنبيه: ' + miss + ' صنف بلا كمية أو سعر.') : '';
+    rwarn.hidden = !miss;
+  }
+  function show(i) {
+    cur = i;
+    panels.forEach((pn, k) => { pn.hidden = k !== i; });
+    btns.forEach((b, k) => { b.classList.toggle('on', k === i); b.classList.toggle('done', k < i); b.setAttribute('aria-selected', k === i ? 'true' : 'false'); });
+    prev.hidden = i === 0; next.hidden = i === 2; bar.classList.toggle('last', i === 2);
+    if (i === 1) document.querySelectorAll('.it-name').forEach(autosize);
+    if (i === 2) fillReview();
+    window.scrollTo({top: 0});
+  }
+  function go(i) {
+    if (i > cur) { for (let k = cur; k < i; k++) if (!okStep(k)) { if (k !== cur) show(k); return; } }
+    show(i);
+  }
+  prev.addEventListener('click', () => go(cur - 1)); next.addEventListener('click', () => go(cur + 1));
+  // saving from any step: if something required is missing, take the user to it instead of failing silently on a hidden field
+  form.addEventListener('submit', e => {
+    const s = e.submitter; if (s && s !== saveBtn) return;
+    for (let k = 0; k < 2; k++) if (!okStep(k)) { e.preventDefault(); e.stopImmediatePropagation(); show(k); okStep(k); return; }
+  }, true);
+  show({{ 1 if form.from_quote else 0 }});
+})();
 </script>
 {% endblock %}
