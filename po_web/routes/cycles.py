@@ -161,6 +161,18 @@ def cycle_refresh(cycle_id):
     return redirect(url_for("cycle_detail", cycle_id=cycle_id))
 
 
+@route("/cycles/<int:cycle_id>/close", methods=["POST"])
+@auth.login_required
+def cycle_close(cycle_id):
+    """Closes the cycle once every approved line has an outcome."""
+    try:
+        cy.close_cycle(cycle_id, _user())
+        flash("تم إغلاق الدورة.")
+    except Exception as e:                                   # noqa
+        return _fail(e, cycle_id)
+    return redirect(url_for("cycle_detail", cycle_id=cycle_id))
+
+
 @route("/cycles/<int:cycle_id>/reopen", methods=["POST"])
 @auth.login_required
 def cycle_reopen(cycle_id):

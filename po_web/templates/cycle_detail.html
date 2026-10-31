@@ -18,6 +18,9 @@
     {% if can('cycles.manage') and c.Status in (ST.ST_WAITING, ST.ST_APPROVED, ST.ST_DONE) %}
     <form method="post" action="{{ url_for('cycle_reopen', cycle_id=c.CycleID) }}" onsubmit="return confirm('{{ 'إعادة فتح الدورة المغلقة لتعديل حالة التنفيذ؟' if c.Status == ST.ST_DONE else ('الرجوع لمرحلة قرار الإدارة؟ لا يتم هذا إلا إذا لم يبقَ أي تحويل مسجَّل.' if c.Status == ST.ST_APPROVED else 'الرجوع لمرحلة الإنشاء؟ القرارات المحفوظة تبقى.') }}');">
       <button class="btn btn-lg" type="submit">{{ 'إعادة فتح الدورة' if c.Status == ST.ST_DONE else ('الرجوع لمرحلة قرار الإدارة' if c.Status == ST.ST_APPROVED else 'الرجوع لمرحلة الإنشاء') }}</button></form>{% endif %}
+    {% if can('cycles.manage') and c.Status == ST.ST_APPROVED %}
+    <form method="post" action="{{ url_for('cycle_close', cycle_id=c.CycleID) }}" onsubmit="return confirm('إغلاق الدورة؟ يلزم أن تكون حالة كل التحويلات محدّدة. يمكنك إعادة فتحها لاحقاً.');">
+      <button class="btn btn-primary btn-lg" type="submit">إغلاق الدورة</button></form>{% endif %}
     {% if can('cycles.manage') and can_delete and c.Status != ST.ST_CANCELLED %}
     <form method="post" action="{{ url_for('cycle_delete', cycle_id=c.CycleID) }}" onsubmit="return confirm('حذف دورة الصرف رقم {{ c.CycleNo }}؟ تعود مستخلصاتها للقائمة المفتوحة، ويبقى سجل الدورة محفوظًا.');">
       <button class="btn btn-lg" type="submit" style="color:var(--danger);">حذف الدورة</button></form>{% endif %}

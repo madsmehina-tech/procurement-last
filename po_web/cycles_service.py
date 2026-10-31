@@ -386,6 +386,19 @@ def _executed_entries(tx, cycle_id):
         return []
 
 
+def close_cycle(cycle_id, user=""):
+    """Explicit «إغلاق الدورة»: closes when every line approved for payment has an outcome; otherwise says which are missing."""
+    with db.transaction() as tx:
+        c = _cycle(tx, cycle_id)
+        _need(c, ST_APPROVED)
+        lines = tx.query("SELECT * FROM [CycleDecisions] WHERE [CycleID] = ?", (cycle_id,))
+        pending = [d for d in lines if _payable(d) and not d.get("ExecStatus")]
+        if pending:
+            raise CycleError("لا يمكن الإغلاق: %d بند معتمد للصرف لم تُحدَّد حالة تنفيذه بعد (تم التحويل / لم يتم التنفيذ)." % len(pending))
+        _sync_cycle_status(tx, cycle_id)
+        _log(tx, c, None, "إغلاق الدورة", "", user)
+
+
 def go_back(cycle_id, user=""):
     """One stage back, at any time: a closed cycle reopens to the execution stage, execution -> decisions, decisions -> creation."""
     with db.transaction() as tx:

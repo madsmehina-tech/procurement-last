@@ -94,3 +94,20 @@ def test_the_cycle_decision_page_keeps_its_fields_and_has_the_new_summary(client
     for needle in ('id="decSum"', 'id="decChecks"', "ملخص القرار", "name=\"decision_", "name=\"partial_", "name=\"note_", 'name="intent" value="finalize"', 'name="intent" value="save"', "dsel"):
         assert needle in html, needle
     assert html.count('class="search-box dsel"') == 2                        # the real <select> stays in the form (the buttons only set it)
+
+
+def test_close_cycle_needs_every_outcome_then_closes():
+    import cycles_service as cy
+    import fake_db
+    import helpers as h
+    from datetime import datetime
+    s = h.add_sub("مقاول الإغلاق")
+    a = h.add_cert(s, 100000, no=1)
+    cid = h.cycle_to_execution({a: (cy.D_FULL, None)})
+    with pytest.raises(cy.CycleError):
+        cy.close_cycle(cid, "t")                         # no outcome yet -> refused, says why
+    cy.set_group_execution(cid, s, cy.EX_DONE, datetime.now(), "R", "", "t")
+    # simulate a cycle that was left open although every outcome exists
+    fake_db.execute("UPDATE [PaymentCycles] SET [Status] = ? WHERE [CycleID] = ?", (cy.ST_APPROVED, cid))
+    cy.close_cycle(cid, "t")
+    assert fake_db.query("SELECT [Status] FROM [PaymentCycles] WHERE [CycleID] = ?", (cid,))[0]["Status"] == cy.ST_DONE
