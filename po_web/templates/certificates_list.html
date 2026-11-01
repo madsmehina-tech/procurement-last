@@ -3,6 +3,7 @@
 {% block title %}المستخلصات{% endblock %}
 {% block subtitle %}كل مستخلصات المقاولين، وما ينتظر الصرف منها{% endblock %}
 {% block page_actions %}<a class="btn" href="{{ url_for('certificates_export', **f) }}">تصدير Excel</a>{% if can('certificates.edit') %}<a class="btn btn-primary" href="{{ url_for('certificate_new_any') }}">+ مستخلص جديد</a>{% endif %}{% endblock %}
+{% from "_pager.html" import pager as pager_nav %}
 {% block content %}
 <div class="kpi-grid">
   <div class="kpi-card"><p class="kpi-label">إجمالي المستخلصات</p><p class="kpi-value">{{ '{:,.0f}'.format(kpi.total) }}</p><p class="set-hint" style="margin:0;">ريال · صافي المستحق بعد الخصومات</p></div>
@@ -47,5 +48,6 @@
     {% else %}<tr><td colspan="9" style="text-align:center; color:var(--text-secondary); padding:28px;">لا توجد مستخلصات مطابقة.</td></tr>{% endfor %}
     </tbody>
   </table>
+  {{ pager_nav(pager) }}
 </div></div>
 {% endblock %}

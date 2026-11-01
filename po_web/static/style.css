@@ -773,3 +773,7 @@ td.nw, .nw { white-space: nowrap; font-variant-numeric: tabular-nums; }
   .po-bar { bottom: 66px; padding: 8px 10px; } .po-bar .btn { min-height: 46px; padding: 0 14px; }
   .po-bar-mid b { font-size: 17px; }
 }
+
+/* v27.5 — page links under long lists */
+.pager { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: center; padding: 14px 0 4px; }
+.pager .btn { min-height: 38px; padding: 0 14px; } .pager-info { color: var(--text-secondary); font-size: 13px; margin-inline-end: 8px; }

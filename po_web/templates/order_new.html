@@ -13,6 +13,8 @@
 
 <form method="post" id="poForm" action="{{ url_for('order_edit', po_number=edit_po) if edit_po else url_for('order_new') }}" enctype="multipart/form-data" autocomplete="off">
 <input type="hidden" name="compare_id" value="{{ form.compare_id or '' }}">
+{% if edit_po %}<input type="hidden" name="loaded_version" value="{{ form.loaded_version or '' }}">{% endif %}
+{% if conflict %}<div class="warn-box"><b>تعارض في التعديل:</b> عدّل زميل هذا الأمر قبل حفظك. <a href="{{ url_for('order_detail', po_number=edit_po) }}" target="_blank">افتح الأمر الحالي</a> وراجعه، ثم اضغط «حفظ التعديل» إن أردت اعتماد تعديلك.</div>{% endif %}
 
   <div class="po-top">
     <section class="card po-card">

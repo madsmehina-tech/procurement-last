@@ -1,0 +1,26 @@
+name: tests
+# Runs the automatic tests and the library-vulnerability check on every push and pull request.
+# (The tests use a stand-in database, so they run on Linux; the real Access checks are done with tools/acceptance_check.py on the company PC.)
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: po_web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install (no Windows-only packages, no Access driver)
+        run: |
+          grep -v -i -E "^(pyodbc|pywin32)" requirements.lock.txt > ci-requirements.txt
+          pip install -r ci-requirements.txt pytest pytest-cov pip-audit
+      - name: Tests
+        run: python -m pytest tests -p no:cacheprovider -q --cov=. --cov-report=term:skip-covered
+      - name: Library vulnerabilities
+        run: pip-audit -r ci-requirements.txt --no-deps --disable-pip

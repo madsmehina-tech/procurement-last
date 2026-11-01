@@ -5,6 +5,7 @@
 
 {% block page_actions %}<a class="btn btn-primary" href="{{ url_for('order_new') }}">+ أمر شراء جديد</a>{% endblock %}
 
+{% from "_pager.html" import pager as pager_nav %}
 {% block content %}
 
 <div class="kpi-grid" style="grid-template-columns: repeat(5, 1fr);">
@@ -92,7 +93,7 @@
     <tbody>
       {% for o in rows %}
       <tr>
-        <td>{{ loop.index }}</td>
+        <td>{{ pager.start + loop.index }}</td>
         <td><a href="{{ url_for('order_detail', po_number=o.PONumber) }}" style="color:var(--accent); font-weight:600;">{{ o.PONumber }}</a></td>
         <td>{{ o.OrderDate.strftime('%Y-%m-%d') if o.OrderDate else '' }}</td>
         <td>{{ o.SupplierName }}</td>
@@ -116,5 +117,6 @@
       {% endfor %}
     </tbody>
   </table>
+  {{ pager_nav(pager) }}
 </div>
 {% endblock %}

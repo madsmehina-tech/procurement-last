@@ -8,6 +8,7 @@ from datetime import datetime
 from flask import abort, flash, redirect, render_template, request, send_file, url_for
 
 import archive
+import audit
 import auth
 import money_guards as mg
 import cycle_files
@@ -370,6 +371,7 @@ def cycle_transfer(cycle_id, sub_id):
     if state == cy.EX_DONE and payment_files.bad_file(files):
         flash("صيغة الملف غير مدعومة: %s - لم يُسجَّل التنفيذ." % payment_files.bad_file(files))
         return redirect(url_for("cycle_detail", cycle_id=cycle_id))
+    audit.detail("نتيجة تحويل المقاول: %s%s" % (state, (" · مرجع " + request.form.get("bank_ref", "").strip()) if request.form.get("bank_ref", "").strip() else ""))
     try:
         status = cy.set_group_execution(cycle_id, sub_id, state, _date("pay_date"), request.form.get("bank_ref", "").strip(), request.form.get("note", ""), _user())
     except Exception as e:                                         # noqa

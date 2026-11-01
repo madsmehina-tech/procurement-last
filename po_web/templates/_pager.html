@@ -1,0 +1,10 @@
+{% macro pager(p) %}
+{% if p and p.pages > 1 %}
+<nav class="pager" aria-label="صفحات القائمة">
+  <span class="pager-info">{{ p['from'] }}–{{ p['to'] }} من {{ p.total }}</span>
+  {% if p.prev %}<a class="btn" href="{{ p.prev }}">السابق</a>{% endif %}
+  {% for n, u in p.numbers %}<a class="btn {{ 'btn-primary' if n == p.page else '' }}" href="{{ u }}" {{ 'aria-current=page' if n == p.page else '' }}>{{ n }}</a>{% endfor %}
+  {% if p.next %}<a class="btn" href="{{ p.next }}">التالي</a>{% endif %}
+</nav>
+{% endif %}
+{% endmacro %}

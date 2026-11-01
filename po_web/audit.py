@@ -13,6 +13,7 @@ import logging
 from flask import g, has_request_context, request, session
 
 import db
+import ui_helpers
 
 _log = logging.getLogger("po.error")
 
@@ -38,7 +39,7 @@ LABELS = {
     "certificate_approve": "اعتماد مستخلص", "certificate_pay": "تسجيل صرف مستخلص", "certificate_unpay": "إلغاء تسجيل صرف",
 }
 # form posts that are not worth an automatic line (they log themselves, or only read data)
-AUTO_SKIP = {"login", "register", "order_parse_quote"}
+AUTO_SKIP = {"login", "register", "order_parse_quote", "order_preview"}
 ENTITY_KEYS = [("po_number", "أمر شراء"), ("cert_id", "مستخلص"), ("contract_id", "عقد"), ("sub_id", "مقاول باطن"),
                ("supplier_id", "مورد"), ("doc_id", "مستند"), ("user_id", "مستخدم")]
 
@@ -59,11 +60,36 @@ def log(action, entity_type="", entity_key="", details="", user=None):
         _log.exception("audit log failed")
 
 
+def detail(text):
+    """A service / route can add what changed («قبل ← بعد») to the line the request will write: audit.detail('الحالة: جديد ← مستلم')."""
+    try:
+        if has_request_context():
+            g._audit_detail = ((g.get("_audit_detail") or "") + (" | " if g.get("_audit_detail") else "") + str(text))[:200]
+    except Exception:                                    # noqa
+        pass
+
+
+def _outcome(response):
+    """«نجحت» / «رُفضت» for a POST. A rejected form is re-shown (HTTP 200 with a page, no redirect), a server error is >= 400, and a redirect
+    that carries an error message (a refused business rule) is also a refusal: HTTP 302 alone never means «done»."""
+    if response.status_code >= 400:
+        return "فشلت (HTTP %d)" % response.status_code
+    if response.status_code == 200 and (response.mimetype or "") == "text/html" and "attachment" not in (response.headers.get("Content-Disposition") or ""):
+        return "لم تُحفظ (أُعيد عرض الصفحة)"
+    try:
+        msgs = [m[1] if isinstance(m, (list, tuple)) else m for m in (session.get("_flashes") or [])]
+        if msgs and ui_helpers.flash_kind(msgs[-1]) == "error":
+            return "رُفضت"
+    except Exception:                                    # noqa
+        pass
+    return "نجحت"
+
+
 def log_request(response):
-    """Called from app.after_request: one line for every successful POST."""
+    """Called from app.after_request: one line for every POST, with its OUTCOME (and what changed, when the code said so)."""
     try:
         ep = request.endpoint
-        if request.method != "POST" or not ep or ep in AUTO_SKIP or response.status_code >= 400:
+        if request.method != "POST" or not ep or ep in AUTO_SKIP:
             return
         if "user_id" not in session:
             return
@@ -74,7 +100,9 @@ def log_request(response):
                 break
         if not etype and request.form.get("entity_key"):
             etype, ekey = request.form.get("entity_type", ""), request.form.get("entity_key")
-        log(ep, etype, ekey, request.form.get("doc_type", ""))
+        outcome = _outcome(response)
+        extra = g.get("_audit_detail") or request.form.get("doc_type", "")
+        log(ep, etype, ekey, ("[%s] %s" % (outcome, extra)).strip())
     except Exception:                                    # noqa
         _log.exception("audit request log failed")
 

@@ -1,0 +1,5 @@
+# What a developer / the automatic check needs on top of requirements.txt
+-r requirements.txt
+pytest>=8
+pytest-cov>=5
+pip-audit>=2.7

@@ -9,7 +9,9 @@ from flask import abort, flash, redirect, render_template, request, send_file, u
 
 import archive
 import attention
+import audit
 import auth
+import ui_helpers
 import money_guards as mg
 import order_math
 import write_lock
@@ -109,8 +111,9 @@ def orders_list():
             payment_pending += 1
 
     all_projects, all_suppliers = filter_choices()
+    rows, pager = ui_helpers.paginate(rows)                          # the counters above were computed on the FULL list
     return render_template(
-        "orders_list.html", rows=rows, orders_count=orders_count, total_amount=total_amount,
+        "orders_list.html", rows=rows, pager=pager, orders_count=orders_count, total_amount=total_amount,
         receipt_pending=receipt_pending, invoice_pending=invoice_pending, payment_pending=payment_pending,
         all_projects=all_projects, all_suppliers=all_suppliers, all_sites=site_choices(), **ctx,
     )
@@ -159,6 +162,8 @@ def update_status(po_number):
 
     column = STATUS_OPTIONS[kind][1]
     now = datetime.now()
+    _old = db.query("SELECT [%s] AS v FROM [PurchaseOrders] WHERE [PONumber] = ?" % column, (po_number,))
+    audit.detail("%s: %s ← %s" % (kind, (_old[0]["v"] if _old else "") or "—", value))
     if kind == "receipt":
         db.execute(
             "UPDATE [PurchaseOrders] SET [ReceiptStatus] = ?, [ReceiptDate] = ?, [ReceiptNote] = ?, "
@@ -489,6 +494,17 @@ def _revision_summary(old, old_items, v, line_items):
     return (" | ".join(changes) or "لا تغيير في البيانات")[:250]
 
 
+def _version(order):
+    """The «version» of an order = when it was last changed (to the second). The edit form carries it, so a save can tell that somebody else saved first."""
+    stamp = (order or {}).get("ModifiedAt")
+    return stamp.strftime("%Y%m%d%H%M%S") if stamp else ""
+
+
+def _last_editor(po_number):
+    rows = db.query("SELECT [ChangedBy], [RevNo] FROM [OrderRevisions] WHERE [PONumber] = ?", (po_number,))
+    return (max(rows, key=lambda r: r["RevNo"]).get("ChangedBy") if rows else "") or ""
+
+
 @route("/orders/<po:po_number>/edit", methods=["GET", "POST"])
 @auth.login_required
 def order_edit(po_number):
@@ -505,10 +521,17 @@ def order_edit(po_number):
                 "hide_warehouse_note": bool(old.get("HideWarehouseNote")),
                 "order_date": old["OrderDate"].strftime("%Y-%m-%d") if old.get("OrderDate") else "",
                 "item_name": [i["ItemName"] for i in old_items], "item_unit": [i["Unit"] or "" for i in old_items],
-                "item_qty": [i["Qty"] for i in old_items], "item_price": [i["UnitPrice"] for i in old_items]}
+                "item_qty": [i["Qty"] for i in old_items], "item_price": [i["UnitPrice"] for i in old_items],
+                "loaded_version": _version(old)}
         return render_template("order_new.html", **_new_context(form, edit_po=po_number))
 
     form = _form_to_dict()
+    if "loaded_version" in form and form["loaded_version"] != _version(old):       # somebody saved this order after this page was opened
+        who = _last_editor(po_number)
+        form["loaded_version"] = _version(old)                                    # the next save (a deliberate second click) passes
+        flash("تنبيه: عُدِّل هذا الأمر%s بعد أن فتحت صفحة التعديل، ولم يُحفظ تعديلك. افتح الأمر الحالي في نافذة أخرى وراجعه ثم اضغط «حفظ التعديل» مرة أخرى "
+              "إن أردت اعتماد تعديلك فوقه." % ((" بواسطة " + who) if who else ""))
+        return render_template("order_new.html", **_new_context(form, edit_po=po_number, conflict=True))
     v, line_items, errors = _read_order(form, editing=po_number)
     if errors:
         for e in errors:
@@ -522,6 +545,8 @@ def order_edit(po_number):
         flash("لم يُحفظ التعديل لأن النسخة الاحتياطية للأمر الحالي تعذّر كتابتها في الأرشيف (%s). لم يتغير شيء." % e)
         return render_template("order_new.html", **_new_context(form, edit_po=po_number))
     try:                                                  # 2. the change itself - all or nothing
+        _summary = _revision_summary(old, old_items, v, line_items)
+        audit.detail("تعديل أمر: " + _summary[:150])
         with db.transaction() as tx:
             sup_id, supplier, sup_new = masterdata.resolve_supplier(v["supplier"], tx)
             proj_id, project, created = masterdata.resolve_project(v["project"], tx)

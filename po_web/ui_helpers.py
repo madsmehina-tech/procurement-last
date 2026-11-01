@@ -65,3 +65,36 @@ def paper_actions(alerts, tab="papers"):
     if alerts["missing"]:
         out.append({"level": "info", "tab": tab, "text": "ينقص %d من الأوراق المطلوبة" % alerts["missing"]})
     return out
+
+
+# ---------------------------------------------------------------------------------------------------------------- pages for long lists
+PER_PAGE = 100
+
+
+def paginate(rows, per=PER_PAGE):
+    """(rows of the current page, pager dict). The page number comes from ?page=N; every other query argument is kept in the links.
+    The pager is None when everything fits on one page. Totals / counters must be computed on the FULL list BEFORE calling this."""
+    from urllib.parse import urlencode
+    from flask import request
+    total = len(rows)
+    pages = max(1, -(-total // per))
+    try:
+        page = int(request.args.get("page", 1))
+    except (TypeError, ValueError):
+        page = 1
+    page = min(max(page, 1), pages)
+    start = (page - 1) * per
+
+    def url(n):
+        args = [(k, v) for k, v in request.args.items(multi=True) if k != "page"]
+        if n > 1:
+            args.append(("page", n))
+        return request.path + ("?" + urlencode(args) if args else "")
+
+    pager = None
+    if pages > 1:
+        near = sorted({1, pages, page - 1, page, page + 1} & set(range(1, pages + 1)))
+        pager = {"page": page, "pages": pages, "total": total, "from": start + 1, "to": min(start + per, total), "start": start,
+                 "prev": url(page - 1) if page > 1 else None, "next": url(page + 1) if page < pages else None,
+                 "numbers": [(n, url(n)) for n in near]}
+    return rows[start:start + per], (pager or {"start": start, "page": 1, "pages": 1})

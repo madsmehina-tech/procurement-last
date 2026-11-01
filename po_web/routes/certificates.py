@@ -12,6 +12,7 @@ from flask import abort, flash, redirect, render_template, request, url_for
 
 import archive
 import auth
+import ui_helpers
 import contracts_service as cs
 import db
 import masterdata
@@ -81,7 +82,8 @@ def certificates_list():
            "entered": round(sum(g["Remaining"] for g in every if g["Status"] == ST_ENTERED), 2), "entered_n": sum(1 for g in every if g["Status"] == ST_ENTERED)}
     for g in rows:
         g["PaidPct"] = 0 if (g["Status"] == ST_REJECTED or not g["Total"]) else max(0, min(100, round(g["Paid"] / g["Total"] * 100)))
-    return render_template("certificates_list.html", rows=rows, by_status=by_status, n_all=len(every), kpi=kpi, statuses=CERT_STATUSES, badge=STATUS_BADGE, f=f,
+    rows, pager = ui_helpers.paginate(rows)
+    return render_template("certificates_list.html", pager=pager, rows=rows, by_status=by_status, n_all=len(every), kpi=kpi, statuses=CERT_STATUSES, badge=STATUS_BADGE, f=f,
                            subs=sorted(subs.values(), key=lambda s: s["Name"]), projects=sorted({g.get("Project") for g in cs.load()[2] if g.get("Project")}))
 
 
