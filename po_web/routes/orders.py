@@ -116,7 +116,7 @@ def orders_list():
     )
 
 
-@route("/orders/<po_number>")
+@route("/orders/<po:po_number>")
 @auth.login_required
 def order_detail(po_number):
     order = db.query("SELECT * FROM [PurchaseOrders] WHERE [PONumber] = ?", (po_number,))
@@ -147,7 +147,7 @@ STATUS_OPTIONS = {
 }
 
 
-@route("/orders/<po_number>/status", methods=["POST"])
+@route("/orders/<po:po_number>/status", methods=["POST"])
 @auth.login_required
 def update_status(po_number):
     kind = request.form.get("kind", "")
@@ -187,7 +187,7 @@ def update_status(po_number):
     return redirect(url_for("order_detail", po_number=po_number))
 
 
-@route("/orders/<po_number>/signed-upload", methods=["POST"])
+@route("/orders/<po:po_number>/signed-upload", methods=["POST"])
 @auth.login_required
 def order_signed_upload(po_number):
     """Shortcut used by the tracking list: uploads the signed copy of the order into its archive folder."""
@@ -203,13 +203,13 @@ def _legacy_file(po_number, column):
     return archive.send(rows[0]["p"])
 
 
-@route("/orders/<po_number>/signed-file")
+@route("/orders/<po:po_number>/signed-file")
 @auth.login_required
 def order_signed_file(po_number):
     return _legacy_file(po_number, "SignedFile")
 
 
-@route("/orders/<po_number>/quote-file")
+@route("/orders/<po:po_number>/quote-file")
 @auth.login_required
 def order_quote_file(po_number):
     return _legacy_file(po_number, "QuoteFile")
@@ -226,7 +226,7 @@ def order_quote_copy(filename):
 
 
 # --------------------------------------------------------------------------- printing, preview, old versions
-@route("/orders/<po_number>/print")
+@route("/orders/<po:po_number>/print")
 @auth.login_required
 def order_print(po_number):
     order, items = po_files.load_order(po_number)
@@ -250,7 +250,7 @@ def order_preview():
     return render_template("order_print.html", **po_files.print_context(order, items, "معاينة — لم يُحفظ بعد"))
 
 
-@route("/orders/<po_number>/revisions/<int:rev_no>/print")
+@route("/orders/<po:po_number>/revisions/<int:rev_no>/print")
 @auth.login_required
 def order_revision_print(po_number, rev_no):
     rows = db.query("SELECT [RevNo], [Snapshot], [DataDocID] FROM [OrderRevisions] WHERE [PONumber] = ?", (po_number,))
@@ -267,7 +267,7 @@ def order_revision_print(po_number, rev_no):
     return render_template("order_print.html", **po_files.print_context(order, items, "نسخة سابقة رقم %d — استُبدلت بتعديل لاحق" % rev_no))
 
 
-@route("/orders/<po_number>/pdf", methods=["POST"])
+@route("/orders/<po:po_number>/pdf", methods=["POST"])
 @auth.login_required
 def order_pdf(po_number):
     """(Re)writes the order's PDF and data copy to its archive folder - for orders saved before this existed, or when
@@ -489,7 +489,7 @@ def _revision_summary(old, old_items, v, line_items):
     return (" | ".join(changes) or "لا تغيير في البيانات")[:250]
 
 
-@route("/orders/<po_number>/edit", methods=["GET", "POST"])
+@route("/orders/<po:po_number>/edit", methods=["GET", "POST"])
 @auth.login_required
 def order_edit(po_number):
     """Retrieves a saved order for correction. It UPDATES that very order (never creates another). The version being

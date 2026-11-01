@@ -14,10 +14,10 @@
       <p class="login-sub">Contracts &amp; Procurement Management · شركة الهضب للتجارة والمقاولات</p>
       {% include "_flashes.html" %}
       <form method="post">
-        <label>اسم المستخدم</label>
-        <input type="text" name="username" required autofocus>
-        <label>كلمة المرور</label>
-        <input type="password" name="password" required>
+        <label for="f-username">اسم المستخدم</label>
+        <input id="f-username" type="text" name="username" required autofocus>
+        <label for="f-password">كلمة المرور</label>
+        <input id="f-password" type="password" name="password" required>
         <button class="btn btn-primary" type="submit">دخول</button>
       </form>
       <div class="login-or"><span>ليس لديك حساب؟</span></div>

@@ -45,6 +45,9 @@ def _setup_logging(app):
 
 def create_app():
     app = Flask(__name__)
+    import xlsx_safe  # noqa: F401  (text typed by a user can never become an Excel formula)
+    from po_converter import PoNumberConverter
+    app.url_map.converters["po"] = PoNumberConverter
     app.secret_key = config.secret_key()
     app.config.update(
         MAX_CONTENT_LENGTH=config.MAX_UPLOAD_MB * 1024 * 1024,

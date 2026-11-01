@@ -111,6 +111,10 @@ def table_exists(name):
     return bool(_conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND lower(name)=lower(?)", (name,)).fetchone())
 
 
+def index_exists(table, name):
+    return bool(_conn.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND lower(name)=lower(?)", (name,)).fetchone())
+
+
 class _Cur:
     def __init__(self):
         self._c = _conn.cursor()

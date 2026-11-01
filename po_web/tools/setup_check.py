@@ -77,6 +77,9 @@ def main():
         import db
         for t in ("PurchaseOrders", "Users", "Documents", "Certificates", "Roles", "AuditLog", "Payments", "Sites", "PaymentCycles", "CycleDecisions", "CycleLog", "LedgerEntries", "ContractTemplates", "CompanyProfile", "Comparisons", "QuoteLines"):
             line(db.table_exists(t), "الجدول %s" % t + ("" if db.table_exists(t) else "  ← نفّذ: python migrate.py"))
+        from migrations import m026_unique_numbers as m26
+        for t, n, label in m26.missing():
+            line(False, "الفهرس الفريد لـ %s غير موجود (يمنع تكرار الأرقام)  ← نفّذ: python migrate.py وصحّح أي تكرار يظهر" % label)
     except Exception as e:                                   # noqa
         line(False, "تعذّر فتح القاعدة: %s" % e)
     try:

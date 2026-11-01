@@ -43,27 +43,51 @@ def test_an_unsafe_po_number_is_refused_and_a_stored_one_cannot_run_code():
 
 
 def _real_db(monkeypatch, fail_with):
+    """The REAL db.py with a pretend driver: the plain connection works, the one that asks for a transaction fails with `fail_with`."""
     import importlib.util
     import sys
     import types
     stub = types.ModuleType("pyodbc")
     stub.SQL_CHAR, stub.SQL_WCHAR, stub.SQL_LONGVARCHAR = 1, -8, -1
     stub.Error = type("Error", (Exception,), {})
+    stub.opened = []
+
+    class Cur:
+        def execute(self, *a):
+            stub.opened.append("executed")
+            return self
+
+    class Conn:
+        def cursor(self):
+            return Cur()
+
+        def commit(self):
+            pass
+
+        def rollback(self):
+            pass
+
+        def close(self):
+            pass
 
     def connect(*a, **k):
         if k.get("autocommit") is False:
             raise stub.Error(*fail_with)
-        raise stub.Error("08001", "the database is locked")
+        return Conn()                                           # a working plain connection: a silent fallback WOULD use it
     stub.connect = connect
     monkeypatch.setitem(sys.modules, "pyodbc", stub)
     spec = importlib.util.spec_from_file_location("real_db_sec", os.path.join(conftest.ROOT, "db.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return mod
+    return mod, stub
 
 
-def test_a_failed_connection_does_not_turn_a_transaction_into_loose_statements(monkeypatch):
-    mod = _real_db(monkeypatch, ("08001", "the database is locked"))
-    with pytest.raises(mod.pyodbc.Error):
-        with mod.transaction():
-            pass                                           # must fail HERE, not fall back to statement-by-statement
+@pytest.mark.parametrize("code", ["08001", "HYC00", "IM001", "HY092", "S1C00"])
+def test_a_transaction_that_cannot_be_opened_stops_the_save_for_every_error_code(monkeypatch, code):
+    mod, stub = _real_db(monkeypatch, (code, "cannot do transactions"))
+    ran = []
+    with pytest.raises(stub.Error):
+        with mod.transaction() as tx:
+            ran.append("body")                                # must never be reached
+            tx.execute("INSERT INTO t VALUES (1)")
+    assert ran == [] and stub.opened == []                    # nothing ran, not even one loose statement

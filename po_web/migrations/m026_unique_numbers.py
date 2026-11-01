@@ -24,7 +24,15 @@ def _duplicates(table, cols):
     return db.query("SELECT %s, COUNT(*) AS N FROM [%s] GROUP BY %s HAVING COUNT(*) > 1" % (cl, table, cl))
 
 
+def missing():
+    """[(table, index name, label)] of the unique indexes that should exist and do not (tables that do not exist are ignored)."""
+    return [(t, n, label) for t, n, _c, label in INDEXES if db.table_exists(t) and not db.index_exists(t, n)]
+
+
 def main():
+    """Returns True when every index exists, False when at least one could not be created (duplicates / error):
+    the runner then does NOT record the migration as applied, so it is retried by the next `python migrate.py`."""
+    complete = True
     for table, name, cols, label in INDEXES:
         if not db.table_exists(table):
             print("- %s: table not found, skipped" % table)
@@ -34,10 +42,15 @@ def main():
             shown = "؛ ".join(" / ".join(str(d[c]) for c in cols) + " (×%d)" % d["N"] for d in dups[:10])
             print("!! %s: يوجد تكرار في %s فلم يُنشأ الفهرس: %s" % (table, label, shown))
             print("   صحّح التكرار ثم أعد تشغيل:  python migrate.py")
+            complete = False
             continue
         try:
             db.execute("CREATE UNIQUE INDEX [%s] ON [%s] (%s)" % (name, table, ", ".join("[%s]" % c for c in cols)))
             print("- %s.%s: unique index created" % (table, ", ".join(cols)))
         except Exception as e:                           # noqa - an index that already exists is fine; any other problem is reported, never fatal
             msg = " ".join(str(e).split())[:140]
-            print("- %s.%s: %s" % (table, ", ".join(cols), "already exists" if "already exists" in msg.lower() or "موجود" in msg else "skipped (%s)" % msg))
+            exists = "already exists" in msg.lower() or "موجود" in msg
+            print("- %s.%s: %s" % (table, ", ".join(cols), "already exists" if exists else "skipped (%s)" % msg))
+            if not exists:
+                complete = False
+    return complete

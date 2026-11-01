@@ -61,7 +61,7 @@ def test_a_second_generation_of_the_same_contract_is_refused_while_the_first_run
     assert started.wait(1)
     with pytest.raises(cg.ContractError):
         cg.generate(7, "b")                                         # the double-click
-    assert cg.generate(8, "c") == {"revision": 1} or True           # another contract is not blocked (returns after the event below)
-    release.set()
+    release.set()                                                   # let the first one finish (the other contract is checked just below)
     first.join()
     assert cg.generate(7, "a") == {"revision": 1}                   # free again afterwards
+    assert cg.generate(8, "c") == {"revision": 1}                   # and another contract was never blocked

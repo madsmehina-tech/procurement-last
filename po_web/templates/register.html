@@ -13,18 +13,18 @@
       <p class="login-sub">يُرسل طلبك إلى مدير النظام، ولا يُفعَّل حسابك إلا بعد موافقته</p>
       {% include "_flashes.html" %}
       <form method="post">
-        <label>الاسم الكامل</label>
-        <input type="text" name="full_name" value="{{ form.get('full_name', '') }}" required autofocus>
-        <label>المسمى الوظيفي</label>
-        <input type="text" name="job_title" value="{{ form.get('job_title', '') }}" placeholder="مثال: مهندس مشتريات">
-        <label>البريد الإلكتروني (اختياري)</label>
-        <input type="email" name="email" value="{{ form.get('email', '') }}" dir="ltr" style="text-align:right;">
-        <label>اسم المستخدم (حروف إنجليزية وأرقام)</label>
-        <input type="text" name="username" value="{{ form.get('username', '') }}" required dir="ltr" style="text-align:right;" autocomplete="off">
-        <label>كلمة المرور (8 أحرف فأكثر، فيها حرف ورقم)</label>
-        <input type="password" name="password" required autocomplete="new-password">
-        <label>أعد كتابة كلمة المرور</label>
-        <input type="password" name="password2" required autocomplete="new-password">
+        <label for="f-full_name">الاسم الكامل</label>
+        <input id="f-full_name" type="text" name="full_name" value="{{ form.get('full_name', '') }}" required autofocus>
+        <label for="f-job_title">المسمى الوظيفي</label>
+        <input id="f-job_title" type="text" name="job_title" value="{{ form.get('job_title', '') }}" placeholder="مثال: مهندس مشتريات">
+        <label for="f-email">البريد الإلكتروني (اختياري)</label>
+        <input id="f-email" type="email" name="email" value="{{ form.get('email', '') }}" dir="ltr" style="text-align:right;">
+        <label for="f-username">اسم المستخدم (حروف إنجليزية وأرقام)</label>
+        <input id="f-username" type="text" name="username" value="{{ form.get('username', '') }}" required dir="ltr" style="text-align:right;" autocomplete="off">
+        <label for="f-password">كلمة المرور (8 أحرف فأكثر، فيها حرف ورقم)</label>
+        <input id="f-password" type="password" name="password" required autocomplete="new-password">
+        <label for="f-password2">أعد كتابة كلمة المرور</label>
+        <input id="f-password2" type="password" name="password2" required autocomplete="new-password">
         <button class="btn btn-primary" type="submit">إرسال الطلب للمدير</button>
       </form>
       <div class="login-or"><span>لديك حساب؟</span></div>

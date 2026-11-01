@@ -111,23 +111,32 @@ ENVIRONMENT = _get("server", "environment", "PO_ENV", "production").lower()   # 
 CSRF_ENABLED = _get("server", "csrf", "PO_CSRF", "1") != "0"          # request-forgery protection; only the automatic tests switch it off
 SESSION_HOURS = int(_get("server", "session_hours", "PO_SESSION_HOURS", "12"))
 
-APP_VERSION = "27.3"
+APP_VERSION = "27.4"
 
 
 def secret_key():
     """A fixed key kept in instance/secret.key, created once - so a server restart never logs the
-    team out (the old behaviour generated a new random key on every start)."""
+    team out (the old behaviour generated a new random key on every start).
+    ROTATION (v27.4): the key of earlier installations may have been exposed (an old package in the repository history contained one),
+    so the FIRST start of this version replaces it with a fresh one and writes a marker file; everybody signs in once more."""
     env = os.environ.get("PO_SECRET_KEY")
     if env:
         return env
     folder = os.path.join(BASE_DIR, "instance")
     path = os.path.join(folder, "secret.key")
+    marker = os.path.join(folder, "key_rotated_v27_4")
     os.makedirs(folder, exist_ok=True)
-    if os.path.isfile(path):
+    if os.path.isfile(path) and os.path.isfile(marker):
         with open(path, "r", encoding="ascii") as f:
             k = f.read().strip()
             if k:
                 return k
+    k = secrets.token_hex(32)
+    with open(path, "w", encoding="ascii") as f:
+        f.write(k)
+    with open(marker, "w", encoding="ascii") as f:
+        f.write("the secret key was replaced by a new random one\n")
+    return k
     k = secrets.token_hex(32)
     with open(path, "w", encoding="ascii") as f:
         f.write(k)

@@ -35,7 +35,12 @@ def parse_money(text, *, allow_zero=True, maximum=MAX_MONEY, label="المبلغ
     else:
         if not re.fullmatch(r"\d+(\.\d+)?", s):
             raise MoneyError("%s غير صالح: اكتب رقمًا فقط (بدون حروف أو علامة سالب)." % label)
-        value = float(Decimal(s).quantize(Decimal(1).scaleb(-decimals), rounding=ROUND_HALF_UP))      # 100.005 -> 100.01 (not banker's rounding)
+        if len(s.split(".")[0].lstrip("0")) > 15 or len(s) > 40:          # far above the maximum: refuse before any arithmetic
+            raise MoneyError("%s كبير جدًا (الحد %s)؛ راجع الأصفار." % (label, "{:,.0f}".format(maximum)))
+        try:
+            value = float(Decimal(s).quantize(Decimal(1).scaleb(-decimals), rounding=ROUND_HALF_UP))
+        except ArithmeticError:                                          # (decimal.InvalidOperation) never a 500 error page
+            raise MoneyError("%s غير صالح." % label)      # 100.005 -> 100.01 (not banker's rounding)
     if not math.isfinite(value):
         raise MoneyError("%s غير صالح." % label)
     if value > maximum:

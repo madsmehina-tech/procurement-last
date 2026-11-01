@@ -564,7 +564,9 @@ def compare_template():
     ws.append(["م", "البيان", "الوحدة", "الكمية", "سعر الوحدة", "الإجمالي"])
     for c in ws[4]:
         c.font, c.fill = Font(bold=True, color="FFFFFF"), PatternFill("solid", start_color="14323A")
-    ws.append([1, "مثال: كابل نحاس 4×16", "متر", 100, 38, "=D5*E5"])
+    import xlsx_safe
+    with xlsx_safe.allow_formulas():                      # the one real formula of the sample row
+        ws.append([1, "مثال: كابل نحاس 4×16", "متر", 100, 38, "=D5*E5"])
     for col, w in zip("ABCDEF", (6, 46, 12, 12, 14, 16)):
         ws.column_dimensions[col].width = w
     buf = io.BytesIO()

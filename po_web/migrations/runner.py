@@ -41,6 +41,7 @@ DESCRIPTIONS = {
     "m024_quote_comparison": "مقارنة عروض الأسعار: المقارنات والبنود الموحدة والعروض وسطورها وأسماء البنود المتعلَّمة",
     "m028_session_version": "رقم نسخة جلسة لكل مستخدم: تغيير كلمة السر أو الدور أو التعطيل يُنهي جلساته المفتوحة فوراً",
     "m027_settlement_link": "ربط «تسوية عند الإقفال» بالمستخلص الذي سُوّي (لإلغائها عند إعادة الفتح)",
+    "m032_ensure_unique_indexes": "استكمال الفهارس الفريدة التي تخطاها m026 بسبب تكرار قديم",
     "m026_unique_numbers": "فهارس فريدة: رقم أمر الشراء ورقم دورة الصرف وسلسلة الترقيم (تمنع التكرار على مستوى القاعدة)",
     "m025_contract_module": "وحدة العقود: عقود من قوالب Word للمقاولين والموردين",
 }
@@ -107,12 +108,20 @@ def run(backup=True):
             return False
         if copy:
             print("نسخة احتياطية قبل التحديث:", copy)
+    incomplete = []
     for name in pending:
         mod = importlib.import_module("migrations." + name)
         desc = getattr(mod, "DESCRIPTION", None) or DESCRIPTIONS.get(name, "")
         print("== %s  %s" % (name, desc))
-        mod.main()
+        result = mod.main()
+        if result is False:                                    # the migration says it could not finish: do not mark it applied
+            incomplete.append(name)
+            print("!! %s لم يكتمل (انظر الأسطر أعلاه) - لن يُسجَّل كمنفَّذ وسيُعاد عند التشغيل القادم." % name)
+            continue
         db.execute("INSERT INTO [SchemaVersion] ([Version], [Description], [AppliedAt]) VALUES (?, ?, Now())",
                    (name, desc))
-    print("تم تطبيق %d ترحيل." % len(pending))
+    print("تم تطبيق %d ترحيل." % (len(pending) - len(incomplete)))
+    if incomplete:
+        print("!! ترحيلات غير مكتملة: %s" % "، ".join(incomplete))
+        return False
     return True

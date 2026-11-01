@@ -160,12 +160,12 @@ document.getElementById('phoneField').addEventListener('input', e => {
 // used to cut itself at the quote and be saved incomplete.
 const ROW_HTML = `
   <td class="c-no"></td>
-  <td class="c-name"><textarea class="inp it-name" name="item_name" rows="1" placeholder="اسم الصنف" spellcheck="false"></textarea><small class="hint it-hint"></small><small class="it-count"></small></td>
-  <td class="c-unit"><input class="inp" type="text" name="item_unit" list="unitList" placeholder="الوحدة"></td>
-  <td class="c-qty"><input class="inp num" type="number" name="item_qty" step="any" min="0" inputmode="decimal" placeholder="0" dir="ltr"></td>
-  <td class="c-price"><input class="inp num" type="number" name="item_price" step="any" min="0" inputmode="decimal" placeholder="0.00" dir="ltr"></td>
+  <td class="c-name"><textarea class="inp it-name" name="item_name" rows="1" placeholder="اسم الصنف" aria-label="اسم الصنف" spellcheck="false"></textarea><small class="hint it-hint"></small><small class="it-count"></small></td>
+  <td class="c-unit"><input class="inp" type="text" name="item_unit" list="unitList" placeholder="الوحدة" aria-label="الوحدة"></td>
+  <td class="c-qty"><input class="inp num" type="number" name="item_qty" step="any" min="0" inputmode="decimal" placeholder="0" aria-label="الكمية" dir="ltr"></td>
+  <td class="c-price"><input class="inp num" type="number" name="item_price" step="any" min="0" inputmode="decimal" placeholder="0.00" aria-label="السعر" dir="ltr"></td>
   <td class="c-total"><output class="line-total">0.00</output></td>
-  <td class="c-act"><button type="button" class="ico" data-act="dup" title="نسخ هذا الصنف">⧉</button><button type="button" class="ico ico-del" data-act="del" title="حذف">×</button></td>`;
+  <td class="c-act"><button type="button" class="ico" data-act="dup" title="نسخ هذا الصنف" aria-label="نسخ هذا الصنف">⧉</button><button type="button" class="ico ico-del" data-act="del" title="حذف" aria-label="حذف الصنف">×</button></td>`;
 
 function autosize(t) { t.style.height = 'auto'; t.style.height = Math.max(44, t.scrollHeight + 2) + 'px'; }
 
@@ -289,7 +289,7 @@ window.addEventListener('resize', () => document.querySelectorAll('.it-name').fo
 const rb = document.getElementById('retrieveBtn');
 if (rb) {
   rb.addEventListener('click', () => document.getElementById('retrieveBox').classList.toggle('show'));
-  document.getElementById('retrieveGo').addEventListener('click', () => { const v = document.getElementById('retrievePo').value.trim(); if (v) location.href = RETRIEVE_URL + encodeURIComponent(v) + '/edit'; });
+  document.getElementById('retrieveGo').addEventListener('click', () => { const v = document.getElementById('retrievePo').value.trim(); if (v) location.href = RETRIEVE_URL + encodeURIComponent(v.replace(/~/g, '~t').replace(/\//g, '~s')) + '/edit'; });
 }
 
 // ---------------------------------------------------------------- saving: checks, and no double click
