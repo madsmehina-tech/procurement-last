@@ -89,6 +89,10 @@ BACKUP_KEEP = int(_get("storage", "backup_keep", "PO_BACKUP_KEEP", "20"))
 BACKUP_AUTO_HOURS = int(_get("storage", "backup_auto_hours", "PO_BACKUP_AUTO_HOURS", "12"))
 _extra = (_get("storage", "backup_extra_dir", "PO_BACKUP_EXTRA_DIR", "") or "").strip().strip('"')
 BACKUP_EXTRA_DIR = _path(_extra) if _extra else ""
+# The ARCHIVE (the PDF files outside the database) in the same backup: a folder on ANOTHER disk / PC. Holds db\ (dated database copies),
+# archive\ (a mirror: only new / changed files are copied, nothing is ever deleted) and manifests\ (what each backup contained).
+_arch = (_get("storage", "backup_archive_dir", "PO_BACKUP_ARCHIVE_DIR", "") or "").strip().strip('"')
+BACKUP_ARCHIVE_DIR = _path(_arch) if _arch else ""
 # PDF of every purchase order (written to the order's archive folder). It is produced by Microsoft Edge or Google Chrome
 # running without a window - both read Arabic perfectly and one of them is on every office PC. browser_path is only
 # needed if neither is found automatically.
@@ -111,7 +115,7 @@ ENVIRONMENT = _get("server", "environment", "PO_ENV", "production").lower()   # 
 CSRF_ENABLED = _get("server", "csrf", "PO_CSRF", "1") != "0"          # request-forgery protection; only the automatic tests switch it off
 SESSION_HOURS = int(_get("server", "session_hours", "PO_SESSION_HOURS", "12"))
 
-APP_VERSION = "27.5"
+APP_VERSION = "27.6"
 
 
 def secret_key():

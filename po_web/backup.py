@@ -29,7 +29,7 @@ from datetime import datetime, timedelta
 import config
 
 log = logging.getLogger("po.error")
-_STATE = {"last_error": None}
+_STATE = {"last_error": None, "archive_error": None, "archive_last": None}
 _DAILY_DAYS = 30
 
 
@@ -56,7 +56,23 @@ def _safe_copy(src, dest):
         raise
 
 
-def backup_database(reason="manual", lock=None):
+def backup_archive_too(lock=None):
+    """The database AND the archive in one backup set (storage_tools.backup_set) in [storage] backup_archive_dir. Never raises: a problem is remembered."""
+    if not getattr(config, "BACKUP_ARCHIVE_DIR", ""):
+        return None
+    try:
+        import storage_tools
+        res = storage_tools.backup_set(config.DB_PATH, config.ARCHIVE_ROOT, config.BACKUP_ARCHIVE_DIR, lock=lock)
+        _STATE["archive_error"] = ("%d ملف لم يُنسخ" % len(res["errors"])) if res["errors"] else None
+        _STATE["archive_last"] = datetime.now()
+        return res
+    except Exception as e:                               # noqa - the database copy is already safe; say that the archive copy failed
+        _STATE["archive_error"] = "فشل نسخ الأرشيف: %s" % " ".join(str(e).split())[:120]
+        log.exception("archive backup failed")
+        return None
+
+
+def backup_database(reason="manual", lock=None, with_archive=False):
     """Returns the path of the copy, or None if the database file does not exist. Raises OSError on failure of the MAIN copy.
     A failure of the second place never stops the main copy (it is remembered: see last_error)."""
     src = config.DB_PATH
@@ -80,6 +96,8 @@ def backup_database(reason="manual", lock=None):
         except OSError as e:                              # the second place is down (disk removed, share offline): say it, do not stop
             _STATE["last_error"] = "تعذّر النسخ للمكان الثاني: %s" % " ".join(str(e).split())[:120]
             log.warning("backup extra copy failed: %s", e)
+    if with_archive:
+        backup_archive_too(lock)
     return dest
 
 
@@ -154,8 +172,13 @@ def status():
         warnings.append(_STATE["last_error"])
     if hours > 0 and not getattr(config, "BACKUP_EXTRA_DIR", ""):
         warnings.append("لا يوجد مكان ثانٍ للنسخ الاحتياطي (backup_extra_dir)")
+    if hours > 0 and not getattr(config, "BACKUP_ARCHIVE_DIR", ""):
+        warnings.append("ملفات الأرشيف غير مشمولة بالنسخ الاحتياطي (backup_archive_dir)")
+    if _STATE.get("archive_error"):
+        warnings.append(_STATE["archive_error"])
     return {"last": when.isoformat(timespec="minutes") if when else None, "age_hours": age, "auto_every_hours": hours,
-            "second_place": bool(getattr(config, "BACKUP_EXTRA_DIR", "")), "second_place_error": None if not _STATE["last_error"] else "تعذّر النسخ للمكان الثاني (راجع logs)", "warnings": warnings}
+            "second_place": bool(getattr(config, "BACKUP_EXTRA_DIR", "")), "archive_in_backup": bool(getattr(config, "BACKUP_ARCHIVE_DIR", "")),
+            "archive_last": _STATE["archive_last"].isoformat(timespec="minutes") if _STATE.get("archive_last") else None, "second_place_error": None if not _STATE["last_error"] else "تعذّر النسخ للمكان الثاني (راجع logs)", "warnings": warnings}
 
 
 def ensure_recent(lock=None):
@@ -166,7 +189,7 @@ def ensure_recent(lock=None):
     _p, when = last_backup(kind="auto")
     if when and (datetime.now() - when).total_seconds() < hours * 3600:
         return None
-    return backup_database("auto", lock=lock)
+    return backup_database("auto", lock=lock, with_archive=True)
 
 
 def start_auto(lock, every_seconds=600):
