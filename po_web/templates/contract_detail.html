@@ -52,7 +52,7 @@
     <thead><tr><th>الموقع</th><th>رقم المستخلص</th><th>التاريخ</th><th>إجمالي الأعمال</th><th>الصافي شامل الضريبة</th><th>المصروف</th><th>الحالة</th></tr></thead>
     <tbody>
     {% for g in fig.certs %}
-      <tr style="cursor:pointer;" onclick="location.href='{{ url_for('certificate_detail', cert_id=g.CertificateID) }}'">
+      <tr style="cursor:pointer;" data-href="{{ url_for('certificate_detail', cert_id=g.CertificateID) }}">
         <td>{{ g.SiteName or contract.SiteName }}</td><td><b>{{ g.CertificateNo }}</b></td>
         <td>{{ g.CertificateDate.strftime('%Y-%m-%d') if g.CertificateDate else '' }}</td>
         <td>{{ '{:,.2f}'.format(g.GrossAmount or 0) }}</td><td>{{ '{:,.2f}'.format(g.Total) }}</td><td>{{ '{:,.2f}'.format(g.Paid) }}</td>

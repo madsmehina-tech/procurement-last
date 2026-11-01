@@ -38,7 +38,7 @@
     <thead><tr><th>التاريخ</th><th>أمر الشراء</th><th>المورد</th><th>المشروع</th><th>الموقع</th><th>الكمية</th><th>السعر</th><th>التغيّر عن السابق</th><th>الإجمالي</th></tr></thead>
     <tbody>
     {% for h in item.history %}
-      <tr style="cursor:pointer;" onclick="location.href='{{ url_for('order_detail', po_number=h.po) }}'">
+      <tr style="cursor:pointer;" data-href="{{ url_for('order_detail', po_number=h.po) }}">
         <td>{{ h.date.strftime('%Y-%m-%d') if h.date else '' }}</td>
         <td><b style="color:var(--accent);">{{ h.po }}</b></td>
         <td>{{ h.supplier }}</td><td>{{ h.project }}</td><td>{{ h.site }}</td>

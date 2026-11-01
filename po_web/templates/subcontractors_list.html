@@ -24,7 +24,7 @@
     <thead><tr><th style="width:70px;">مسلسل</th><th>المقاول</th><th>العقود</th><th>المستخلصات</th><th>المستحق</th><th>المصروف</th><th>المتبقي</th><th>الأوراق</th><th>جوال المسؤول</th></tr></thead>
     <tbody>
     {% for r in rows %}
-      <tr style="cursor:pointer;" onclick="location.href='{{ url_for('subcontractor_detail', sub_id=r.SubcontractorID) }}'">
+      <tr style="cursor:pointer;" data-href="{{ url_for('subcontractor_detail', sub_id=r.SubcontractorID) }}">
         <td style="color:var(--text-secondary); font-weight:600;">{{ r.serial }}</td>
         <td><b>{{ r.Name }}</b>{% if r.CR %}<br><small style="color:var(--text-secondary);">س.ت {{ r.CR }}</small>{% endif %}</td>
         <td>{{ r.contracts }}</td><td>{{ r.certs }}</td><td>{{ '{:,.0f}'.format(r.due) }}</td><td>{{ '{:,.0f}'.format(r.paid) }}</td><td><b>{{ '{:,.0f}'.format(r.remaining) }}</b></td>

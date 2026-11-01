@@ -11,16 +11,36 @@
     });
   }
 
-  // rows with onclick="location.href='...'" -> real keyboard-reachable links
-  document.querySelectorAll("tr[onclick]").forEach(function (tr) {
-    var m = /location\.href\s*=\s*'([^']+)'/.exec(tr.getAttribute("onclick") || "");
-    if (!m) return;
-    tr.setAttribute("data-href", m[1]);
+  // v27.3 - rows that open a page: the address lives in data-href (plain text, never inside JavaScript), a click or Enter follows it.
+  // Only same-site addresses ("/...") are followed, so a value typed by a user can never become a script or an outside link.
+  function safeGo(h) { if (h && h.charAt(0) === "/" && h.charAt(1) !== "/" && h.charAt(1) !== "\\") { location.href = h; } }
+  document.querySelectorAll("tr[data-href]").forEach(function (tr) {
+    tr.style.cursor = "pointer";
     tr.setAttribute("tabindex", "0");
     tr.setAttribute("role", "link");
     tr.addEventListener("keydown", function (e) {
-      if (e.key === "Enter" && e.target === tr) { location.href = m[1]; }
+      if (e.key === "Enter" && e.target === tr) { safeGo(tr.getAttribute("data-href")); }
     });
+  });
+  document.addEventListener("click", function (e) {
+    var tr = e.target.closest ? e.target.closest("tr[data-href]") : null;
+    if (!tr || e.target.closest("a, button, input, select, textarea, label, form")) return;
+    safeGo(tr.getAttribute("data-href"));
+  });
+
+  // v27.3 - every label gets tied to its field (screen readers, and a tap on the label focuses the field)
+  var autoId = 0;
+  document.querySelectorAll("label:not([for])").forEach(function (lb) {
+    if (lb.querySelector("input, select, textarea")) return;                    // already wrapping its field
+    var f = lb.nextElementSibling;
+    while (f && !/^(INPUT|SELECT|TEXTAREA)$/.test(f.tagName)) {
+      var inner = f.querySelector && f.querySelector("input:not([type=hidden]), select, textarea");
+      if (inner) { f = inner; break; }
+      f = null;
+    }
+    if (!f) return;
+    if (!f.id) { f.id = "fld-auto-" + (++autoId); }
+    lb.setAttribute("for", f.id);
   });
 
   // double-submit protection: after a form is really sent, its buttons are disabled for 8 seconds

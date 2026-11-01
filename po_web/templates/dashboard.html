@@ -58,7 +58,7 @@
       <thead><tr><th>رقم الأمر</th><th>المورد</th><th>المشروع</th><th class="n">الإجمالي</th><th>الاستلام</th><th>الفاتورة</th><th>السداد</th></tr></thead>
       <tbody>
         {% for o in recent %}
-        <tr onclick="location.href='{{ url_for('order_detail', po_number=o.PONumber) }}'" style="cursor:pointer;">
+        <tr data-href="{{ url_for('order_detail', po_number=o.PONumber) }}" style="cursor:pointer;">
           <td><b>{{ o.PONumber }}</b></td><td>{{ o.SupplierName }}</td><td>{{ o.Project }}</td><td class="n">{{ '{:,.0f}'.format(o.TotalAmount or 0) }}</td>
           <td><span class="badge {{ status_cls(o.ReceiptStatus) }}">{{ o.ReceiptStatus }}</span></td>
           <td><span class="badge {{ status_cls(o.InvoiceStatus) }}">{{ o.InvoiceStatus }}</span></td>

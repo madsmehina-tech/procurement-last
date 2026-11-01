@@ -33,7 +33,7 @@
     <thead><tr><th>المقاول</th><th>المشروع / الموقع</th><th>المستخلص</th><th>القيمة (شامل الضريبة)</th><th>الصافي المستحق</th><th>المصروف</th><th>المتبقي</th><th>الحالة</th><th></th></tr></thead>
     <tbody>
     {% for g in rows %}
-      <tr onclick="location.href='{{ url_for('subcontractor_detail', sub_id=g.SubcontractorID, cert=g.CertificateID) }}'" style="cursor:pointer;">
+      <tr data-href="{{ url_for('subcontractor_detail', sub_id=g.SubcontractorID, cert=g.CertificateID) }}" style="cursor:pointer;">
         <td><b>{{ g.SubcontractorName }}</b></td>
         <td>{{ g.Project }}{% if g.SiteName %}<br><small style="color:var(--text-secondary);">{{ g.SiteName }}</small>{% endif %}</td>
         <td><b style="color:var(--accent);">رقم {{ g.CertificateNo }}</b><br><small class="nw" style="color:var(--text-secondary);">{{ g.CreatedAt.strftime('%Y-%m-%d') if g.CreatedAt else '—' }}</small></td>

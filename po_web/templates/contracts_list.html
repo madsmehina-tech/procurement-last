@@ -30,7 +30,7 @@
     <thead><tr><th>رقم العقد</th><th>النوع / المصدر</th><th>الطرف</th><th>المشروع / الموقع</th><th>قيمة العقد</th><th>المنفّذ</th><th style="width:170px;">نسبة التنفيذ</th><th>المتبقي للصرف</th><th>الحالة</th></tr></thead>
     <tbody>
     {% for r in rows %}
-      <tr style="cursor:pointer;" onclick="location.href='{{ url_for('contract_detail', contract_id=r.ContractID) }}'">
+      <tr style="cursor:pointer;" data-href="{{ url_for('contract_detail', contract_id=r.ContractID) }}">
         <td><b style="color:var(--accent);">{{ r.ContractNo or ('#' ~ r.ContractID) }}</b></td>
         <td>{{ r.ContractType or 'عقد مقاول باطن' }}<br><span class="badge {{ 'success' if r.Origin == 'مولَّد' else 'neutral' }}">{{ r.Origin or 'مؤرشف' }}</span></td>
         <td>{{ r.SubName }}<br><small style="color:var(--text-secondary);">{{ r.Kind }}</small></td>

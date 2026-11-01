@@ -296,8 +296,13 @@ def transaction():
     close_request_conn()
     try:
         conn = get_conn(autocommit=False)
-    except pyodbc.Error:                               # a driver without transactions: statements run one by one, as before
-        conn, real = get_conn(), False
+    except pyodbc.Error as e:
+        # ONLY a driver that really has no transactions may run statement by statement. Any other failure (locked file, network
+        # drop, ...) must stop the save: silently running the steps one by one could leave half an operation behind.
+        if getattr(e, "args", None) and str(e.args[0]) in ("IM001", "HYC00", "HY092", "S1C00"):
+            conn, real = get_conn(), False
+        else:
+            raise
     try:
         yield Transaction(conn)
         if real:

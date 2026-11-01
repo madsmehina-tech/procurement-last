@@ -36,7 +36,7 @@
     <thead><tr><th>المورد</th><th>المندوب</th><th>أوامر الشراء</th><th>إجمالي المشتريات</th><th>آخر أمر</th><th>الأوراق</th><th>السجل التجاري</th></tr></thead>
     <tbody>
     {% for r in rows %}
-      <tr style="cursor:pointer;" onclick="location.href='{{ url_for('supplier_detail', supplier_id=r.SupplierID) }}'">
+      <tr style="cursor:pointer;" data-href="{{ url_for('supplier_detail', supplier_id=r.SupplierID) }}">
         <td><b>{{ r.Name }}</b></td>
         <td>{{ r.RepName or '—' }}{% if r.Phone %}<br><small dir="ltr" style="color:var(--text-secondary);">{{ r.Phone }}</small>{% endif %}</td>
         <td>{{ r.orders }}</td>

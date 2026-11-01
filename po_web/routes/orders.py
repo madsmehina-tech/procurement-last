@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Purchasing: dashboard, order tracking, order creation (with quote reading), status updates, printing."""
+import re
 import logging
 import os
 from datetime import datetime, timedelta
@@ -344,6 +345,8 @@ def _read_order(form, editing=None, create_project=True):
     }
     if not po_number:
         errors.append("رقم أمر الشراء مطلوب.")
+    elif not editing and not re.fullmatch(r"[\w\-./ ]{1,40}", po_number):          # letters, digits, - _ . / and space only (a quote or < > could be used to attack a page)
+        errors.append("رقم أمر الشراء يقبل الحروف والأرقام و - _ . / فقط، وبحد أقصى 40 خانة.")
     elif not editing and db.query("SELECT [PONumber] FROM [PurchaseOrders] WHERE [PONumber] = ?", (po_number,)):
         errors.append("رقم أمر الشراء هذا مستخدم بالفعل - اختر رقمًا آخر.")
     if not v["supplier"]:

@@ -74,7 +74,7 @@
     <thead><tr><th>أمر الشراء</th><th>التاريخ</th><th>المشروع</th><th>الموقع</th><th>الإجمالي</th></tr></thead>
     <tbody>
     {% for o in orders %}
-      <tr style="cursor:pointer;" onclick="location.href='{{ url_for('order_detail', po_number=o.PONumber) }}'">
+      <tr style="cursor:pointer;" data-href="{{ url_for('order_detail', po_number=o.PONumber) }}">
         <td><b style="color:var(--accent);">{{ o.PONumber }}</b></td>
         <td>{{ o.OrderDate.strftime('%Y-%m-%d') if o.OrderDate else '' }}</td>
         <td>{{ o.Project }}</td>
