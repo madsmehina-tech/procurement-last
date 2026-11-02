@@ -20,7 +20,8 @@ def main():
         print("[!!] حدّد --dest أو ضع backup_archive_dir في config.ini (يجب أن يكون على قرص آخر).")
         return 2
     try:
-        res = st.backup_set(arg("--db", config.DB_PATH), arg("--archive", config.ARCHIVE_ROOT), dest, progress=lambda n: print("  ... %d ملف" % n, flush=True))
+        res = st.backup_set(arg("--db", config.DB_PATH), arg("--archive", config.ARCHIVE_ROOT), dest, progress=lambda n: print("  ... %d ملف" % n, flush=True),
+                            link_reader=st.read_document_paths)
     except (st.ProductionGuard, OSError) as e:
         print("[!!] فشل:", e)
         return 1
@@ -29,9 +30,15 @@ def main():
     if not res["db_stable"]:
         print("[!!] تغيّر ملف القاعدة أثناء نسخه؛ كرّر النسخ والنظام متوقف عن الحفظ.")
     if res["errors"]:
-        print("[!!] ملفات لم تُنسخ (%d) مثل: %s" % (len(res["errors"]), res["errors"][0]))
+        print("[!!] ملفات/عناصر لم تُنسخ (%d) مثل: %s" % (res["failed"], res["errors"][0]))
+    lk = res["links"]
+    if lk["checked"]:
+        print("     روابط المستندات: %d رابطاً فُحصت، المفقود منها %d%s" % (lk["paths"], lk["missing"], (" مثل " + lk["examples"][0]) if lk["examples"] else ""))
+    else:
+        print("[!!] لم يُتحقق من روابط المستندات في نسخة القاعدة (%s)" % lk.get("error", "غير متاح"))
     print("     القائمة:", res["manifest"])
-    return 0 if not res["errors"] and res["db_stable"] else 1
+    print("     الحكم:", "نسخة مكتملة ومثبتة" if res["ok"] and lk["checked"] else ("نسخة مكتملة لكن روابط المستندات لم تُفحص" if res["ok"] else "[!!] نسخة غير مكتملة - لا تعتمد عليها"))
+    return 0 if res["ok"] and lk["checked"] else 1
 
 
 if __name__ == "__main__":

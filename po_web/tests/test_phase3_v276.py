@@ -99,7 +99,7 @@ def test_the_second_backup_copies_only_what_is_new_and_nothing_is_deleted(tmp_pa
     dest = str(tmp_path / "bk")
     st.backup_set(db, arch, dest, now=datetime.now() - timedelta(minutes=5))
     again = st.backup_set(db, arch, dest)
-    assert again["copied"] == 0 and again["skipped"] == 10
+    assert again["copied"] == 0 and again["skipped"] >= 10
     new = os.path.join(arch, "الموردين", "مشروع 0", "2026", "جديد.pdf")
     open(new, "wb").write(b"%PDF-1.4 new")
     os.remove(os.path.join(arch, "المقاولين", "مشروع 0", "2026", "ملف 0.pdf"))               # deleted from the live archive (moved / removed)
@@ -159,7 +159,7 @@ def test_a_database_that_changes_while_it_is_copied_is_flagged(tmp_path, monkeyp
     assert b["db_stable"] is False
 
 
-def test_the_database_is_copied_before_the_archive(tmp_path, monkeypatch):
+def test_the_archive_is_copied_before_and_after_the_database(tmp_path, monkeypatch):
     arch = make_archive(str(tmp_path / "a"), 2)
     db = make_db(str(tmp_path / "p.accdb"))
     order = []
@@ -167,7 +167,7 @@ def test_the_database_is_copied_before_the_archive(tmp_path, monkeypatch):
     monkeypatch.setattr(st, "_stable_copy_of_db", lambda *a, **k: (order.append("db"), real_db(*a, **k))[1])
     monkeypatch.setattr(st, "mirror_archive", lambda *a, **k: (order.append("archive"), real_mirror(*a, **k))[1])
     st.backup_set(db, arch, str(tmp_path / "bk"))
-    assert order == ["db", "archive"]
+    assert order == ["archive", "db", "archive"]                         # old names first, then the database, then whatever appeared / moved meanwhile
 
 
 def test_old_sets_are_pruned_but_the_mirror_stays(tmp_path):
@@ -279,7 +279,8 @@ def test_the_backup_restore_check_end_to_end(world, tmp_path):
     arch = make_archive(str(tmp_path / "a"), 12)
     dbfile = make_db(str(tmp_path / "copy.accdb"))
     counts = lambda path, tables: {t: int(fake_db.scalar("SELECT COUNT(*) FROM [%s]" % t, default=0) or 0) for t in tables}   # the restored file is not a real Access file here
-    r = ac.check_backup_restore(db, cfg, dbfile, arch, str(tmp_path / "work"), counter=counts)
+    docs = lambda f: ["الموردين/مشروع 1/2026/ملف 1.pdf", "المقاولين/مشروع 0/2026/ملف 0.pdf"]            # what the copied database points at
+    r = ac.check_backup_restore(db, cfg, dbfile, arch, str(tmp_path / "work"), counter=counts, link_reader=docs)
     assert r.status == ac.PASS, r.detail
     assert r.data["second_backup_copied"] == 0 and r.data["restore"]["ok"]
 

@@ -19,12 +19,14 @@ def main():
         print(__doc__)
         return 2
     try:
-        r = st.restore_set(s, d, a, verify=arg("--verify", "sample"), progress=lambda n: print("  ... %d ملف" % n, flush=True))
+        r = st.restore_set(s, d, a, verify=arg("--verify", "sample"), progress=lambda n: print("  ... %d ملف" % n, flush=True),
+                           link_reader=st.read_document_paths, allow_incomplete="--allow-incomplete" in sys.argv)
     except (st.ProductionGuard, OSError) as e:
         print("[!!] توقّف:", e)
         return 1
     print("القاعدة مطابقة للبصمة: %s" % ("نعم" if r["db_ok"] else "لا"))
     print("الملفات: استُرجع %d من %d · مفقود في النسخة %d · فُحصت بصمة %d ملفاً (اختلاف %d) · %s ثانية" % (r["restored"], r["archive_expected"], r["missing_in_backup_count"], r["hash_checked"], r["hash_mismatch_count"], r["seconds"]))
+    print("روابط المستندات: " + ("فُحصت %d رابطاً، المفقود %d" % (r["links_paths"], r["links_missing_count"]) if r["links_checked"] else "[!!] لم تُفحص (%s)" % r.get("links_error", "غير متاح")))
     print("النتيجة:", "[OK]" if r["ok"] else "[!!] لم تتطابق")
     return 0 if r["ok"] else 1
 

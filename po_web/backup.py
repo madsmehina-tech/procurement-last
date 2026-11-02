@@ -56,15 +56,30 @@ def _safe_copy(src, dest):
         raise
 
 
+def archive_problem(res):
+    """None when the backup set is complete and proven; otherwise the plain-words problem (shown in /health and the start banner)."""
+    problems = []
+    if res.get("failed"):
+        problems.append("%d ملف/عنصر لم يُنسخ" % res["failed"])
+    if res["links"]["missing"]:
+        problems.append("%d مستند في القاعدة بلا ملف في النسخة" % res["links"]["missing"])
+    if not res.get("db_stable"):
+        problems.append("تغيّرت القاعدة أثناء نسخها")
+    if not res["links"]["checked"] and not problems:
+        problems.append("نُسخ الأرشيف لكن لم يُتحقق من روابط المستندات")
+    return ("نسخة الأرشيف غير مكتملة: " + "؛ ".join(problems)) if problems else None
+
+
 def backup_archive_too(lock=None):
     """The database AND the archive in one backup set (storage_tools.backup_set) in [storage] backup_archive_dir. Never raises: a problem is remembered."""
     if not getattr(config, "BACKUP_ARCHIVE_DIR", ""):
         return None
     try:
         import storage_tools
-        res = storage_tools.backup_set(config.DB_PATH, config.ARCHIVE_ROOT, config.BACKUP_ARCHIVE_DIR, lock=lock)
-        _STATE["archive_error"] = ("%d ملف لم يُنسخ" % len(res["errors"])) if res["errors"] else None
-        _STATE["archive_last"] = datetime.now()
+        res = storage_tools.backup_set(config.DB_PATH, config.ARCHIVE_ROOT, config.BACKUP_ARCHIVE_DIR, lock=lock, link_reader=storage_tools.read_document_paths)
+        _STATE["archive_error"] = archive_problem(res)
+        if res["ok"]:
+            _STATE["archive_last"] = datetime.now()                 # «last archive backup» means a COMPLETE one only
         return res
     except Exception as e:                               # noqa - the database copy is already safe; say that the archive copy failed
         _STATE["archive_error"] = "فشل نسخ الأرشيف: %s" % " ".join(str(e).split())[:120]

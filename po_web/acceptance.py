@@ -354,22 +354,23 @@ def count_tables_file(path, tables):
 
 
 @timed
-def check_backup_restore(db, config, db_copy, archive_root, work, full_hash=False, counter=count_tables_file):
+def check_backup_restore(db, config, db_copy, archive_root, work, full_hash=False, counter=count_tables_file, link_reader=st.read_document_paths):
     """النسخ الاحتياطي ثم الاسترجاع على مكان مستقل: القاعدة والأرشيف معاً، مع المقارنة"""
     dest = os.path.join(work, "backup_set")
     out_db = os.path.join(work, "restored", "restored.accdb")
     out_arch = os.path.join(work, "restored", "archive")
     st.guard_outputs([dest, out_db, out_arch])
-    b = st.backup_set(db_copy, archive_root, dest)
-    b2 = st.backup_set(db_copy, archive_root, dest)                      # a second run must copy (almost) nothing: the incremental mirror works
-    r = st.restore_set(dest, out_db, out_arch, verify="full" if full_hash else "sample")
+    b = st.backup_set(db_copy, archive_root, dest, link_reader=link_reader)
+    b2 = st.backup_set(db_copy, archive_root, dest, link_reader=link_reader)                      # a second run must copy (almost) nothing: the incremental mirror works
+    r = st.restore_set(dest, out_db, out_arch, verify="full" if full_hash else "sample", link_reader=link_reader)
     tables = [t for t in ("PurchaseOrders", "OrderItems", "Suppliers", "Contracts", "Certificates", "Payments", "Documents", "LedgerEntries", "Users") if db.table_exists(t)]
     live = {t: int(db.scalar("SELECT COUNT(*) FROM [%s]" % t, default=0) or 0) for t in tables}
     restored = counter(out_db, tables)
     diffs = {t: (live[t], restored.get(t)) for t in tables if live[t] != restored.get(t)}
     scan_a, scan_b = st.scan_archive(archive_root), st.scan_archive(out_arch)
     data = {"first_backup": {k: b[k] for k in ("archive_files", "archive_bytes", "copied", "seconds", "mb_per_second", "db_stable")},
-            "second_backup_copied": b2["copied"], "restore": {k: r[k] for k in ("restored", "hash_checked", "hash_mismatch_count", "missing_in_backup_count", "size_mismatch_count", "seconds", "db_ok", "ok")},
+            "second_backup_copied": b2["copied"], "restore": {k: r[k] for k in ("restored", "hash_checked", "hash_mismatch_count", "missing_in_backup_count", "size_mismatch_count", "seconds", "db_ok", "ok", "links_checked", "links_paths", "links_missing_count")},
+            "backup_links": b["links"], "backup_ok": b["ok"],
             "table_count_differences": diffs, "archive_files_original": scan_a["files"], "archive_files_restored": scan_b["files"],
             "archive_bytes_original": scan_a["bytes"], "archive_bytes_restored": scan_b["bytes"], "full_hash": full_hash}
     problems = []
@@ -381,8 +382,14 @@ def check_backup_restore(db, config, db_copy, archive_root, work, full_hash=Fals
         problems.append("الأرشيف المسترجع يختلف عن الأصلي (%d/%d ملف)" % (scan_b["files"], scan_a["files"]))
     if b2["copied"] > max(5, b["archive_files"] * 0.01):
         problems.append("النسخة الثانية أعادت نسخ %d ملفاً (النسخ التراكمي لا يعمل كما يجب)" % b2["copied"])
-    if b["errors"]:
-        problems.append("ملفات لم تُنسخ: %d" % len(b["errors"]))
+    if b["errors"] or b["failed"]:
+        problems.append("ملفات/عناصر لم تُنسخ: %d" % b["failed"])
+    if not b["ok"]:
+        problems.append("النسخة الاحتياطية نفسها غير مكتملة")
+    if not r["links_checked"]:
+        problems.append("لم تُفحص روابط المستندات في القاعدة المسترجعة (%s)" % r.get("links_error", "غير متاح") + ": الاسترجاع غير مثبت")
+    elif r["links_missing_count"]:
+        problems.append("%d مستنداً في القاعدة المسترجعة بلا ملف في الأرشيف المسترجع" % r["links_missing_count"])
     if not b["db_stable"]:
         problems.append("ملف القاعدة تغيّر أثناء نسخه (هل النظام يعمل على هذه النسخة؟)")
     if problems:

@@ -9,8 +9,8 @@ Acceptance test of the system on the REAL Microsoft Access engine, using COPIES 
 
 PROTECTION: the tool refuses to start if the database or archive you give is the production one (or inside it), or if --work is inside
 production. The checks run in a SEPARATE process whose configuration is generated in the work folder and points ONLY at the copies, and
-that process refuses to continue if its configuration does not. Before and after, the tool records the size and time of the production
-database file and the production archive folder and tells you whether they changed (they must not).
+that process refuses to continue if its configuration does not. Before and after, the tool takes a fingerprint of the production database (SHA-256) and of the whole production archive tree (files, size,
+newest modification) and tells you whether anything changed (it must not).
 Nothing is sent anywhere. The report (acceptance_report.json / .md) is written in the work folder; you may send me those two files.
 """
 import argparse
@@ -25,12 +25,14 @@ sys.path.insert(0, ROOT)
 
 
 def _fingerprint(paths):
+    """What each production path looks like (a database FILE: size, time and SHA-256; a FOLDER: files, bytes, newest and summed times of every
+    file at every depth). Compared before and after: a change in any of them is reported. This is a strong DESCRIPTION, not a lock: for real
+    protection run the test from a Windows account that has no write permission on the production folders."""
+    import storage_tools as st
     out = {}
     for p in paths:
         try:
-            st = os.stat(p)
-            n = len(os.listdir(p)) if os.path.isdir(p) else None
-            out[p] = {"size": st.st_size, "mtime_ns": st.st_mtime_ns, "entries": n}
+            out[p] = st.fingerprint_path(p)
         except OSError:
             out[p] = None
     return out
@@ -39,7 +41,11 @@ def _fingerprint(paths):
 def launcher(args):
     import config
     import storage_tools as st
-    prod = st.production_paths()
+    try:
+        prod = st.production_paths()
+    except st.ProductionGuard as e:
+        print("[ممنوع]", e)
+        return 2
     db_copy, arch, work = os.path.abspath(args.db_copy), os.path.abspath(args.archive_copy), os.path.abspath(args.work)
     try:
         st.guard_sources_are_copies([db_copy, arch], prod)
@@ -72,7 +78,7 @@ def launcher(args):
     code = subprocess.call(cmd, env=env)
     after = _fingerprint(watch)
     untouched = before == after
-    print("\nهل تغيّرت بيانات التشغيل الحقيقية أثناء الاختبار؟ " + ("لا (سليمة)" if untouched else "[!!] نعم - راجع الأمر فوراً"))
+    print("\nمقارنة بيانات التشغيل قبل الاختبار وبعده (بصمة SHA-256 للقاعدة؛ وعدد وحجم وأحدث تعديل لكل ملفات الأرشيف): " + ("لم يتغيّر شيء" if untouched else "[!!] تغيّر شيء - راجع الأمر فوراً"))
     rp = os.path.join(work, "acceptance_report.json")
     if os.path.isfile(rp):
         data = json.load(open(rp, encoding="utf-8"))

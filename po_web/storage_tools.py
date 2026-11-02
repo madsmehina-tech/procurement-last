@@ -53,26 +53,64 @@ def env_protected():
     return [x for x in (os.environ.get("PO_PROTECT", "") or "").split(";") if x.strip()]
 
 
-def production_paths():
-    """The REAL data paths as written in config.ini (read from the file itself, so an environment override that points a tool at a
-    copy can never hide them), plus anything listed in PO_PROTECT (separated by ; ) and the paths the running configuration uses."""
-    found = []
-    cp = configparser.ConfigParser()
-    try:
-        cp.read(config.CONFIG_FILE, encoding="utf-8")
-    except (configparser.Error, OSError):
-        pass
-    base = os.path.dirname(config.CONFIG_FILE)
-    for section, key in (("database", "path"), ("storage", "archive_root"), ("storage", "legacy_uploads"), ("storage", "backup_dir"),
-                         ("storage", "backup_extra_dir"), ("storage", "backup_archive_dir")):
+_INI_KEYS = (("database", "path"), ("storage", "archive_root"), ("storage", "legacy_uploads"), ("storage", "backup_dir"),
+             ("storage", "backup_extra_dir"), ("storage", "backup_archive_dir"))
+
+
+def _read_ini(path):
+    """The settings file read the way Windows tools may have saved it (UTF-8 with or without BOM, UTF-16, the Arabic / Western code pages).
+    If it EXISTS but cannot be read, production paths are unknown: refuse (ProductionGuard) rather than guess."""
+    raw = open(path, "rb").read()
+    for enc in ("utf-8-sig", "utf-16", "cp1256", "cp1252"):
         try:
-            v = cp.get(section, key).strip().strip('"')
-        except (configparser.Error, AttributeError):
+            text = raw.decode(enc)
+            cp = configparser.RawConfigParser()
+            cp.read_string(text)
+            return cp
+        except (UnicodeError, configparser.Error):
             continue
-        if v:
-            found.append(v if os.path.isabs(v) else os.path.join(base, v))
-    found += [x for x in (os.environ.get("PO_PROTECT", "") or "").split(";") if x.strip()]
-    return [p for p in found if p]
+    raise ProductionGuard("تعذّرت قراءة ملف الإعداد (%s) فلا يمكن تحديد مسارات التشغيل الحقيقية؛ توقّف احتياطاً. احفظه بترميز UTF-8 وأعد المحاولة." % path)
+
+
+def production_paths():
+    """The REAL data paths: what the running configuration resolved (config.ini + environment overrides + relative paths), what config.ini
+    says on its own (every way of measuring a relative path), and anything in PO_PROTECT (separated by ; ). Raises ProductionGuard when
+    config.ini exists but cannot be read, and when no production path can be found at all."""
+    found = [getattr(config, k, "") for k in ("DB_PATH", "ARCHIVE_ROOT", "LEGACY_UPLOADS", "BACKUP_DIR", "BACKUP_EXTRA_DIR", "BACKUP_ARCHIVE_DIR")]
+    if os.path.isfile(config.CONFIG_FILE):
+        cp = _read_ini(config.CONFIG_FILE)
+        bases = {os.path.dirname(os.path.abspath(config.CONFIG_FILE)), config.BASE_DIR}
+        for section, key in _INI_KEYS:
+            try:
+                v = os.path.expandvars(cp.get(section, key).strip().strip('"'))
+            except (configparser.Error, AttributeError):
+                continue
+            if v:
+                found += [v] if os.path.isabs(v) else [os.path.join(b, v) for b in bases]
+    found += env_protected()
+    found = [p for p in found if p]
+    if not found:
+        raise ProductionGuard("لا يمكن تحديد مسارات التشغيل الحقيقية؛ توقّف احتياطاً.")
+    return found
+
+
+def fingerprint_path(path):
+    """A description of a file or a whole folder tree, to see afterwards whether anything changed: for a FILE its size, time and SHA-256; for a
+    FOLDER the number of files and folders, the total size, the newest and the summed modification times of EVERY file at every depth."""
+    if os.path.isfile(path):
+        st_ = os.stat(path)
+        return {"kind": "file", "size": st_.st_size, "mtime_ns": st_.st_mtime_ns, "sha256": sha256_file(path)}
+    if os.path.isdir(path):
+        n = total = newest = msum = 0
+        for rel, size, mtime in walk_files(path):
+            if rel is None:
+                continue
+            n += 1
+            total += size
+            newest = max(newest, mtime)
+            msum += mtime
+        return {"kind": "folder", "files": n, "bytes": total, "newest_mtime": newest, "sum_mtime": msum}
+    return None
 
 
 def guard_outputs(outputs, protected=None):
@@ -221,8 +259,9 @@ def _copy_keep_time(src, dest, mtime):
 
 def mirror_archive(src_root, dest_root, progress=None, known=None):
     """Copies new / changed files of the archive into the mirror. NEVER deletes anything in the mirror. Returns stats + the file list
-    [path, size, time, sha256]. `known` = {path: (size, time, sha256)} from the previous backup: an unchanged file keeps its recorded hash
-    (so only new files are read again); a copied file is hashed from the COPY, which proves what is now stored in the mirror."""
+    [path, size, time, sha256]. `known` = {path: (size, time, sha256)} from the previous pass / backup: an unchanged file keeps its recorded hash
+    (so only new files are read again); a copied file is hashed from the COPY, which proves what is now stored in the mirror.
+    An item that cannot be read or copied is COUNTED (failed) and NAMED (errors): a backup with any failure is never reported as complete."""
     src_root, dest_root = os.path.abspath(src_root), os.path.abspath(dest_root)
     guard_outputs([dest_root], protected=[src_root])
     os.makedirs(dest_root, exist_ok=True)
@@ -232,12 +271,13 @@ def mirror_archive(src_root, dest_root, progress=None, known=None):
     for rel, size, mtime in walk_files(src_root):
         if rel is None:
             failed += 1
+            errors.append("عنصر (مجلد أو ملف) تعذّرت قراءته في الأرشيف")
             continue
         target = os.path.join(dest_root, *rel.split("/"))
         prev = (known or {}).get(rel)
         try:
-            st = os.stat(target)
-            if st.st_size == size and int(st.st_mtime) >= mtime:
+            st_ = os.stat(target)
+            if st_.st_size == size and int(st_.st_mtime) >= mtime:
                 skipped += 1
                 entries.append([rel, size, mtime, prev[2] if prev and prev[0] == size and prev[1] == mtime else None])
                 continue
@@ -287,8 +327,38 @@ def _stable_copy_of_db(db_path, dest, lock=None):
     return 0                                              # kept, but not proven stable: the report says so
 
 
-def backup_set(db_path, archive_root, dest_root, keep=None, progress=None, now=None, lock=None):
-    """The whole job (see the module text). Returns a result dict; raises OSError if the DATABASE copy fails, never for single archive files."""
+# ------------------------------------------------------------------------------------------------------------- links: database -> files
+def read_document_paths(db_file):
+    """Every file path the DATABASE FILE points at (Documents.RelPath), read straight from the given file (a backup copy or a restored copy).
+    Needs the Access driver (Windows); raises if it cannot read - the caller reports «links not checked», never «checked»."""
+    import pyodbc
+    conn = pyodbc.connect(r"DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=%s;" % db_file, autocommit=True)
+    try:
+        cur = conn.cursor()
+        return [r[0] for r in cur.execute("SELECT [RelPath] FROM [Documents]").fetchall() if r[0]]
+    finally:
+        conn.close()
+
+
+def missing_links(paths, archive_root, legacy_root=None):
+    """The paths (as recorded in the database) that exist neither in the archive folder nor, for very old records, in the old uploads folder."""
+    out = []
+    for rel in paths:
+        parts = [x for x in str(rel).replace("\\", "/").split("/") if x and x != ".."]
+        if os.path.isfile(os.path.join(archive_root, *parts)):
+            continue
+        if legacy_root and os.path.isfile(os.path.join(legacy_root, *parts)):
+            continue
+        out.append(rel)
+    return out
+
+
+def backup_set(db_path, archive_root, dest_root, keep=None, progress=None, now=None, lock=None, link_reader=None, legacy_root=None, rounds=3):
+    """The whole job (see the module text). Returns a result dict; raises OSError if the DATABASE copy fails, never for single archive files.
+    CONSISTENCY: archive -> database -> archive again. A file that is moved or created while the backup runs is therefore in the mirror under
+    the name the database copy points at (the first pass holds the old names, the second the new ones), and `link_reader(db_copy)` proves it
+    by checking every path of the database copy against the mirror; if something is missing the round is repeated, up to `rounds` times.
+    `ok` is True only when nothing failed, the database copy was stable and (when it could be checked) every link resolves."""
     now = now or datetime.now()
     keep = keep or config.BACKUP_KEEP
     dest_root = os.path.abspath(dest_root)
@@ -299,8 +369,7 @@ def backup_set(db_path, archive_root, dest_root, keep=None, progress=None, now=N
     base, ext = os.path.splitext(os.path.basename(db_path))
     db_name = "%s_%s_set%s" % (base, stamp, ext)
     db_dest = os.path.join(dest_root, "db", db_name)
-    attempts = _stable_copy_of_db(db_path, db_dest, lock)                       # 1. the database first
-    db_hash, db_size = sha256_file(db_dest), os.path.getsize(db_dest)
+    mirror_dir = os.path.join(dest_root, "archive")
     known = {}
     previous = list_sets(dest_root)
     if previous:
@@ -308,16 +377,52 @@ def backup_set(db_path, archive_root, dest_root, keep=None, progress=None, now=N
             known = {e[0]: (e[1], e[2], e[3] if len(e) > 3 else None) for e in read_manifest(previous[-1])["archive"]["entries"]}
         except (OSError, ValueError, KeyError):
             known = {}
-    m = mirror_archive(archive_root, os.path.join(dest_root, "archive"), progress=progress, known=known)          # 2. the archive after it
-    manifest = {"version": MANIFEST_VERSION, "created": now.isoformat(timespec="seconds"), "app_version": config.APP_VERSION,
+    legacy_root = legacy_root if legacy_root is not None else getattr(config, "LEGACY_UPLOADS", None)
+    totals = {"copied": 0, "skipped": 0, "failed": 0, "bytes_copied": 0}
+    errors, links = [], {"checked": False, "paths": 0, "missing": 0, "examples": []}
+    attempts = 0
+    started = time.time()
+    for rnd in range(max(1, rounds)):
+        m1 = mirror_archive(archive_root, mirror_dir, progress=progress, known=known)                  # 1. the archive: every name that exists NOW
+        known = {e[0]: (e[1], e[2], e[3]) for e in m1["entries"]}
+        attempts = _stable_copy_of_db(db_path, db_dest, lock)                                          # 2. the database
+        m2 = mirror_archive(archive_root, mirror_dir, progress=progress, known=known)                  # 3. the archive again: what appeared / moved meanwhile
+        for k in ("copied", "skipped", "failed", "bytes_copied"):
+            totals[k] += m1[k] + m2[k]
+        errors = (m1["errors"] + m2["errors"])[:20]
+        entries = m2["entries"]
+        links = {"checked": False, "paths": 0, "missing": 0, "examples": []}
+        if link_reader is not None:
+            try:
+                paths = link_reader(db_dest)
+                have = {e[0] for e in entries}
+                for rel in paths:                                       # a file the database points at that is in the mirror but no longer at the source
+                    norm_rel = "/".join(x for x in str(rel).replace("\\", "/").split("/") if x and x != "..")
+                    mp = os.path.join(mirror_dir, *norm_rel.split("/")) if norm_rel else None
+                    if norm_rel and norm_rel not in have and os.path.isfile(mp):
+                        entries.append([norm_rel, os.path.getsize(mp), int(os.path.getmtime(mp)), sha256_file(mp)])      # (it must be restored too)
+                        have.add(norm_rel)
+                gone = missing_links(paths, mirror_dir, legacy_root)
+                links = {"checked": True, "paths": len(paths), "missing": len(gone), "examples": gone[:5]}
+            except Exception as e:                                                                       # noqa - unreadable = NOT checked (never «OK»)
+                links["error"] = " ".join(str(e).split())[:120]
+        if not links["missing"]:
+            break
+        known = {e[0]: (e[1], e[2], e[3]) for e in entries}
+    seconds = max(time.time() - started, 0.001)
+    db_hash, db_size = sha256_file(db_dest), os.path.getsize(db_dest)
+    ok = bool(attempts) and totals["failed"] == 0 and not links["missing"]
+    manifest = {"version": MANIFEST_VERSION, "created": now.isoformat(timespec="seconds"), "app_version": config.APP_VERSION, "complete": ok,
                 "db": {"file": db_name, "size": db_size, "sha256": db_hash, "stable_copy": bool(attempts), "attempts": attempts},
-                "archive": {"files": len(m["entries"]), "bytes": sum(e[1] for e in m["entries"]), "entries": m["entries"]},
-                "copy_stats": {k: m[k] for k in ("copied", "skipped", "failed", "bytes_copied", "seconds", "mb_per_second")}}
+                "archive": {"files": len(entries), "bytes": sum(e[1] for e in entries), "entries": entries},
+                "links": links, "copy_stats": {"copied": totals["copied"], "skipped": totals["skipped"], "failed": totals["failed"],
+                                               "bytes_copied": totals["bytes_copied"], "seconds": round(seconds, 1),
+                                               "mb_per_second": round(totals["bytes_copied"] / 1048576.0 / seconds, 1)}}
     mpath = os.path.join(dest_root, "manifests", "set_%s.manifest.json.gz" % stamp)
     _write_manifest(mpath, manifest)
     _prune_sets(dest_root, keep)
     return {"manifest": mpath, "db_copy": db_dest, "db_sha256": db_hash, "db_stable": bool(attempts), "archive_files": manifest["archive"]["files"],
-            "archive_bytes": manifest["archive"]["bytes"], **manifest["copy_stats"], "errors": m["errors"]}
+            "archive_bytes": manifest["archive"]["bytes"], **manifest["copy_stats"], "errors": errors, "links": links, "ok": ok, "complete": ok}
 
 
 def _prune_sets(dest_root, keep):
@@ -342,9 +447,11 @@ def list_sets(dest_root):
 
 
 # ------------------------------------------------------------------------------------------------------------- restore into NEW places
-def restore_set(set_root, db_out, archive_out, manifest=None, verify="sample", sample=200, progress=None):
+def restore_set(set_root, db_out, archive_out, manifest=None, verify="sample", sample=200, progress=None, link_reader=None, legacy_root=None, allow_incomplete=False):
     """Rebuilds the database file at `db_out` and the archive folder at `archive_out` from a backup set. Both must be NEW places,
-    never production. verify: 'none' | 'sample' (SHA-256 of `sample` random files) | 'full' (SHA-256 of every file)."""
+    never production. verify: 'none' | 'sample' (SHA-256 of `sample` random files) | 'full' (SHA-256 of every file).
+    A set marked incomplete (a file failed to copy, a link was missing) is refused unless allow_incomplete. With `link_reader` every path of the
+    RESTORED database is checked against the RESTORED archive; `ok` needs that to pass (and says `links_checked` honestly)."""
     guard_outputs([db_out, archive_out])
     if os.path.exists(db_out):                                                     # a restore never overwrites anything that already exists
         raise OSError("ملف الاسترجاع موجود مسبقاً: %s - اختر اسماً جديداً (لا يُكتب فوق ملف موجود)." % db_out)
@@ -354,6 +461,8 @@ def restore_set(set_root, db_out, archive_out, manifest=None, verify="sample", s
     if not mpath:
         raise OSError("لا توجد نسخة (manifest) في %s" % set_root)
     man = read_manifest(mpath)
+    if man.get("complete") is False and not allow_incomplete:
+        raise OSError("هذه النسخة غير مكتملة (فشل نسخ ملف أو وُجد رابط مفقود). لا تُستعمل للاسترجاع دون موافقة صريحة (allow_incomplete).")
     need = man["archive"]["bytes"] + man["db"]["size"]
     os.makedirs(archive_out, exist_ok=True)
     free = shutil.disk_usage(archive_out).free
@@ -366,7 +475,8 @@ def restore_set(set_root, db_out, archive_out, manifest=None, verify="sample", s
     os.makedirs(os.path.dirname(os.path.abspath(db_out)) or ".", exist_ok=True)
     _backup._safe_copy(db_src, db_out)
     result = {"manifest": os.path.basename(mpath), "created": man["created"], "db_ok": sha256_file(db_out) == man["db"]["sha256"],
-              "archive_expected": man["archive"]["files"], "restored": 0, "missing_in_backup": [], "size_mismatch": [], "hash_checked": 0, "hash_mismatch": []}
+              "archive_expected": man["archive"]["files"], "restored": 0, "missing_in_backup": [], "size_mismatch": [], "hash_checked": 0, "hash_mismatch": [],
+              "links_checked": False, "links_missing": [], "links_paths": 0}
     mirror = os.path.join(set_root, "archive")
     for entry in man["archive"]["entries"]:
         rel, size, mtime = entry[0], entry[1], entry[2]
@@ -391,9 +501,18 @@ def restore_set(set_root, db_out, archive_out, manifest=None, verify="sample", s
             # the hash recorded when the file was backed up (catches damage to the mirror itself); else mirror vs restored copy
             if sha256_file(b) != (recorded or sha256_file(a)):
                 result["hash_mismatch"].append(rel)
+    if link_reader is not None:
+        try:
+            paths = link_reader(db_out)
+            legacy = legacy_root if legacy_root is not None else getattr(config, "LEGACY_UPLOADS", None)
+            result["links_missing"] = missing_links(paths, archive_out, legacy)
+            result["links_paths"], result["links_checked"] = len(paths), True
+        except Exception as e:                                                                          # noqa
+            result["links_error"] = " ".join(str(e).split())[:120]
     result["seconds"] = round(time.time() - started, 1)
-    result["ok"] = bool(result["db_ok"] and not result["missing_in_backup"] and not result["hash_mismatch"] and result["restored"] == result["archive_expected"])
-    for k in ("missing_in_backup", "size_mismatch", "hash_mismatch"):
+    result["ok"] = bool(result["db_ok"] and not result["missing_in_backup"] and not result["hash_mismatch"] and not result["links_missing"]
+                        and result["restored"] == result["archive_expected"] and (link_reader is None or result["links_checked"]))
+    for k in ("missing_in_backup", "size_mismatch", "hash_mismatch", "links_missing"):
         result[k + "_count"] = len(result[k])
         result[k] = result[k][:20]
     return result
