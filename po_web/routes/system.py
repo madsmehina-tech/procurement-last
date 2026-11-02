@@ -25,6 +25,8 @@ def health():
     storage.pop("error", None)
     ok = db_state["ok"] and storage["ok"]
     bk = backup.status()
+    key_note = ["مفتاح الجلسات يأتي من متغير البيئة PO_SECRET_KEY ولا يُستبدل تلقائياً: غيّر قيمته يدوياً إن كان قد كُشف سابقاً"] if config.secret_key_source() == "env" else []
+    bk["warnings"] = list(bk["warnings"]) + key_note
     state = "degraded" if not ok else ("warning" if bk["warnings"] else "ok")      # «warning»: working, but the safety net needs attention (HTTP 200)
     return jsonify(status=state, version=config.APP_VERSION, environment=config.ENVIRONMENT, database=db_state,
-                   storage=storage, backup=bk, time=datetime.now().isoformat(timespec="seconds")), (200 if ok else 503)
+                   storage=storage, backup=bk, session_key_source=config.secret_key_source(), time=datetime.now().isoformat(timespec="seconds")), (200 if ok else 503)

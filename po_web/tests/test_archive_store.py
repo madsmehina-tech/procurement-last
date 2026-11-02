@@ -19,7 +19,7 @@ def _docs(key="1"):
 
 
 def _store(folder, name="x.pdf", doc_type="سجل تجاري"):
-    return archive.store_document("SUB", "1", folder, doc_type, b"%PDF-1", name, user="t")
+    return archive.store_document("SUB", "1", folder, doc_type, b"%PDF-1\n%%EOF", name, user="t")
 
 
 def test_a_long_folder_gets_a_shorter_file_name_that_still_fits():

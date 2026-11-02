@@ -23,7 +23,7 @@ def _seed():
     c = h.add_cert(s, 1000)
     fake_db.execute_insert("INSERT INTO [Payments] ([CertificateID], [Amount], [PaidAt]) VALUES (?, ?, ?)", (c, 400, datetime.now()))
     fake_db.execute("INSERT INTO [PurchaseOrders] ([PONumber], [CreatedAt]) VALUES ('PO-1', ?)", (datetime.now(),))
-    archive.store_document("SUB", str(s), "سجلات", "سجل تجاري", b"%PDF-1", "a.pdf", user="t")
+    archive.store_document("SUB", str(s), "سجلات", "سجل تجاري", b"%PDF-1\n%%EOF", "a.pdf", user="t")
     return s
 
 

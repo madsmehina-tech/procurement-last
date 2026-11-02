@@ -23,4 +23,5 @@ jobs:
       - name: Tests
         run: python -m pytest tests -p no:cacheprovider -q --cov=. --cov-report=term:skip-covered
       - name: Library vulnerabilities
+        if: always()
         run: pip-audit -r ci-requirements.txt --no-deps --disable-pip

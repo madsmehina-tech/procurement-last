@@ -69,6 +69,11 @@ def main():
             line(False, "تحويل عقود Word إلى PDF غير متاح (يلزم Word + pip install pywin32). العقد يُنشأ Word دائمًا؛ راجع docs\\قوالب_العقود.md", fatal=False)
     except Exception:                                            # noqa - never blocks
         pass
+    if config.secret_key_source() == "env":
+        line(False, "مفتاح الجلسات يأتي من متغير البيئة PO_SECRET_KEY: النظام لا يستبدله تلقائياً. إن كان قد كُشف سابقاً فغيّر قيمته يدوياً (وكل المستخدمين سيدخلون من جديد).", fatal=False)
+    else:
+        marker = os.path.join(config.BASE_DIR, "instance", "key_rotated_v27_4")
+        line(os.path.isfile(marker), "مفتاح الجلسات: " + ("استُبدل بمفتاح جديد (v27.4)" if os.path.isfile(marker) else "لم يُستبدل بعد: شغّل النظام مرة واحدة ليُستبدل تلقائياً"), fatal=False)
     line(os.path.isfile(config.CONFIG_FILE), "ملف الإعداد: %s" % config.CONFIG_FILE, fatal=False)
     if not os.path.isfile(config.CONFIG_FILE):
         print("      (انسخ config.ini.example إلى config.ini وعدّل المسارات)")

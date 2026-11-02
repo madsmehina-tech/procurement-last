@@ -115,7 +115,13 @@ ENVIRONMENT = _get("server", "environment", "PO_ENV", "production").lower()   # 
 CSRF_ENABLED = _get("server", "csrf", "PO_CSRF", "1") != "0"          # request-forgery protection; only the automatic tests switch it off
 SESSION_HOURS = int(_get("server", "session_hours", "PO_SESSION_HOURS", "12"))
 
-APP_VERSION = "27.6"
+APP_VERSION = "27.7"
+
+
+def secret_key_source():
+    """«env» when the session key comes from the PO_SECRET_KEY environment variable (it is NEVER replaced automatically), else «file»
+    (instance\\secret.key, replaced once by v27.4). Only the source is reported, never the key."""
+    return "env" if os.environ.get("PO_SECRET_KEY") else "file"
 
 
 def secret_key():

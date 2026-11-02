@@ -212,7 +212,27 @@ def test_approval_saves_a_pdf_copy_in_the_archive_and_the_voucher_page_links_to_
     assert "نسخة الأرشيف" in page and doc["StoredName"] in page
     assert client.get("/documents/%d" % doc["DocID"]).status_code == 200                    # the link works
     client.post("/vouchers/%d/archive" % vid)                                           # again: replaces the same file, no second record
-    assert fake_db.scalar("SELECT COUNT(*) FROM [Documents] WHERE [EntityType] = 'VOUCHER'") == 1
+    docs = fake_db.query("SELECT [DocID], [StoredName], [RelPath], [IsCurrent] FROM [Documents] WHERE [EntityType] = 'VOUCHER'")
+    assert len(docs) == 1, docs                                                       # (the list is in the message if this ever fails on another machine)
+
+
+def test_printing_again_replaces_the_copy_even_when_a_same_named_file_already_sits_in_the_folder(client, monkeypatch, tmp_path):
+    """A file left on disk with the same name (a restore, a second system) makes the first copy «PR-0001 (2).pdf»; printing again must still REPLACE it."""
+    import archive
+    import cycle_files
+    monkeypatch.setattr(cycle_files, "_pdf_bytes", lambda html: b"%PDF-1.4 fake\n%%EOF")
+    monkeypatch.setattr(archive.config, "ARCHIVE_ROOT", str(tmp_path))
+    s = h.add_sub()
+    client.post("/vouchers/new", data=_form("sub", s, 250, choice="no"))
+    vid = _vid()
+    folder = tmp_path / "أوامر الصرف العامة" / str(__import__("datetime").datetime.now().year) / "PR-0001"
+    folder.mkdir(parents=True)
+    (folder / "PR-0001.pdf").write_bytes(b"old file that was already there")
+    _approve(client, vid)
+    client.post("/vouchers/%d/archive" % vid)
+    client.post("/vouchers/%d/archive" % vid)
+    docs = fake_db.query("SELECT [StoredName] FROM [Documents] WHERE [EntityType] = 'VOUCHER'")
+    assert len(docs) == 1 and "(2)" in docs[0]["StoredName"]
 
 
 def test_a_pdf_failure_never_breaks_the_approval(client, monkeypatch):
