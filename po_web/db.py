@@ -295,7 +295,10 @@ class Transaction:
         return [{c: _clean(v) for c, v in zip(cols, row)} for row in cur.fetchall()]
 
     def execute(self, sql, params=()):
-        _run(self._conn.cursor(), sql, params)
+        """Runs the statement; returns how many rows it changed (an UPDATE that matched nothing returns 0)."""
+        cur = self._conn.cursor()
+        _run(cur, sql, params)
+        return cur.rowcount
 
     def execute_insert(self, sql, params=()):
         cur = self._conn.cursor()

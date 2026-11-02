@@ -20,6 +20,10 @@ class _Cur:
     def __init__(self):
         self._c = _SHARED.cursor()
 
+    @property
+    def rowcount(self):                                   # a real pyodbc cursor has it (rows changed by the last statement)
+        return self._c.rowcount
+
     def execute(self, sql, params=()):
         self._c.execute(sql, params)
         return self

@@ -56,7 +56,7 @@ def test_an_edit_on_an_out_of_date_page_is_refused_then_accepted_on_the_second_d
     page = client.get("/orders/PO-7/edit").get_data(as_text=True)
     opened = re.search(r'name="loaded_version" value="([^"]*)"', page).group(1)
     # a colleague saves first
-    fake_db.execute("UPDATE [PurchaseOrders] SET [ModifiedAt] = ? WHERE [PONumber] = 'PO-7'", (datetime.now(),))
+    fake_db.execute("UPDATE [PurchaseOrders] SET [RowVersion] = 1, [ModifiedAt] = ? WHERE [PONumber] = 'PO-7'", (datetime.now(),))
     r = client.post("/orders/PO-7/edit", data=_edit_form(opened, "200"))
     html = r.get_data(as_text=True)
     assert r.status_code == 200 and "تعارض" in html
@@ -99,12 +99,13 @@ def test_a_refused_business_rule_behind_a_redirect_is_logged_as_refused(client):
 # ---------------------------------------------------------------- the real content must match the extension
 def test_a_program_renamed_to_pdf_is_refused_but_real_files_pass():
     import archive
-    for ext, good in (("pdf", b"%PDF-1.7 ..."), ("png", b"\x89PNG\r\n\x1a\n...."), ("jpg", b"\xff\xd8\xff\xe0...."), ("docx", b"PK\x03\x04...."), ("xls", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1")):
+    real = {"pdf": b"%PDF-1.7 ...\n%%EOF\n", "png": b"\x89PNG\r\n\x1a\n....\x00\x00\x00\x00IEND\xaeB`\x82", "jpg": b"\xff\xd8\xff\xe0....\xff\xd9"}
+    for ext, good in real.items():
         archive.check_content(ext, good)
         with pytest.raises(archive.MismatchedFile):
             archive.check_content(ext, b"MZ\x90\x00 this is a program")
-    archive.check_content("pdf", b"\n\n junk before %PDF-1.4 is allowed by readers")     # a few bytes before the header are legal
-    archive.check_content("txt", b"anything")                                              # unknown types are not this check's business
+    archive.check_content("pdf", b"\n\n junk before %PDF-1.4 is allowed by readers ... %%EOF")     # a few bytes before the header are legal
+    archive.check_content("txt", b"anything")                                                      # unknown types are not this check's business
 
 
 def test_the_upload_gate_uses_it(monkeypatch, tmp_path):

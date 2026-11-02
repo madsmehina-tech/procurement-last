@@ -494,10 +494,25 @@ def _revision_summary(old, old_items, v, line_items):
     return (" | ".join(changes) or "لا تغيير في البيانات")[:250]
 
 
+class EditConflict(Exception):
+    """Somebody saved this order after the edit page was opened."""
+
+
 def _version(order):
-    """The «version» of an order = when it was last changed (to the second). The edit form carries it, so a save can tell that somebody else saved first."""
-    stamp = (order or {}).get("ModifiedAt")
-    return stamp.strftime("%Y%m%d%H%M%S") if stamp else ""
+    """The order's version number: a whole number raised by every edit (PurchaseOrders.RowVersion; an order never edited is 0)."""
+    try:
+        return int((order or {}).get("RowVersion") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _conflict_page(form, po_number, current):
+    """The edit page again with the person's own entries, the CURRENT version number and a clear warning. Their next deliberate save passes."""
+    who = _last_editor(po_number)
+    form["loaded_version"] = str(_version(current))
+    flash("تنبيه: عُدِّل هذا الأمر%s بعد أن فتحت صفحة التعديل، ولم يُحفظ تعديلك. افتح الأمر الحالي في نافذة أخرى وراجعه ثم اضغط «حفظ التعديل» مرة أخرى "
+          "إن أردت اعتماد تعديلك فوقه." % ((" بواسطة " + who) if who else ""))
+    return render_template("order_new.html", **_new_context(form, edit_po=po_number, conflict=True))
 
 
 def _last_editor(po_number):
@@ -522,16 +537,16 @@ def order_edit(po_number):
                 "order_date": old["OrderDate"].strftime("%Y-%m-%d") if old.get("OrderDate") else "",
                 "item_name": [i["ItemName"] for i in old_items], "item_unit": [i["Unit"] or "" for i in old_items],
                 "item_qty": [i["Qty"] for i in old_items], "item_price": [i["UnitPrice"] for i in old_items],
-                "loaded_version": _version(old)}
+                "loaded_version": str(_version(old))}
         return render_template("order_new.html", **_new_context(form, edit_po=po_number))
 
     form = _form_to_dict()
-    if "loaded_version" in form and form["loaded_version"] != _version(old):       # somebody saved this order after this page was opened
-        who = _last_editor(po_number)
-        form["loaded_version"] = _version(old)                                    # the next save (a deliberate second click) passes
-        flash("تنبيه: عُدِّل هذا الأمر%s بعد أن فتحت صفحة التعديل، ولم يُحفظ تعديلك. افتح الأمر الحالي في نافذة أخرى وراجعه ثم اضغط «حفظ التعديل» مرة أخرى "
-              "إن أردت اعتماد تعديلك فوقه." % ((" بواسطة " + who) if who else ""))
-        return render_template("order_new.html", **_new_context(form, edit_po=po_number, conflict=True))
+    sent = (form.get("loaded_version") or "").strip()
+    if not sent.isdigit():                                                          # a page without a version number is never saved silently
+        flash("لم يُحفظ التعديل: صفحة التعديل لا تحمل رقم إصدار الأمر (صفحة قديمة محفوظة في المتصفح). افتح «تعديل الأمر» من جديد ثم أعد المحاولة.")
+        return redirect(url_for("order_edit", po_number=po_number))
+    if int(sent) != _version(old):                                                  # quick check (the real one is inside the transaction below)
+        return _conflict_page(form, po_number, old)
     v, line_items, errors = _read_order(form, editing=po_number)
     if errors:
         for e in errors:
@@ -555,15 +570,22 @@ def order_edit(po_number):
             tx.execute("INSERT INTO [OrderRevisions] ([PONumber], [RevNo], [ChangedAt], [ChangedBy], [Summary], [SnapshotFile], [DataDocID]) "
                        "VALUES (?, ?, Now(), ?, ?, ?, ?)",
                        (po_number, rev_no, user, _revision_summary(old, old_items, v, line_items), snap["RelPath"], snap["DocID"]))
-            tx.execute(
+            changed = tx.execute(
                 "UPDATE [PurchaseOrders] SET [OrderDate] = ?, [HijriDate] = ?, [SupplierName] = ?, [QuoteNo] = ?, [Project] = ?, "
                 "[Location] = ?, [Receiver] = ?, [ReceiverPhone] = ?, [TotalAmount] = ?, [Discount] = ?, [ExtraNotes] = ?, "
-                "[HideWarehouseNote] = ?, [ModifiedAt] = ?, [SupplierID] = ?, [ProjectID] = ?, [SiteID] = ? WHERE [PONumber] = ?",
+                "[HideWarehouseNote] = ?, [ModifiedAt] = ?, [SupplierID] = ?, [ProjectID] = ?, [SiteID] = ?, "
+                "[RowVersion] = IIF([RowVersion] IS NULL, 1, [RowVersion] + 1) "
+                "WHERE [PONumber] = ? AND IIF([RowVersion] IS NULL, 0, [RowVersion]) = ?",
                 (v["order_date"], hijri_display(v["order_date"]), supplier, v["quote_no"], project, v["location"], v["receiver"],
-                 v["phone"], v["total"], v["discount"], v["extra_notes"], v["hide_warehouse_note"], datetime.now(), sup_id, proj_id, site_id, po_number),
+                 v["phone"], v["total"], v["discount"], v["extra_notes"], v["hide_warehouse_note"], datetime.now(), sup_id, proj_id, site_id, po_number, int(sent)),
             )
+            if changed != 1:                                                         # nothing matched: another save got in between -> undo everything above
+                raise EditConflict()
             tx.execute("DELETE FROM [OrderItems] WHERE [PONumber] = ?", (po_number,))
             _save_items(po_number, line_items, tx)
+    except EditConflict:                                  # rolled back: the order is exactly as the other person saved it
+        archive.discard_document(snap["DocID"])
+        return _conflict_page(form, po_number, po_files.load_order(po_number)[0])
     except Exception as e:                                # noqa - rolled back: the order is exactly as it was
         archive.discard_document(snap["DocID"])
         flash(_db_failure(e))

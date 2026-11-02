@@ -98,7 +98,9 @@ def scalar(sql, params=(), default=None):
 
 
 def execute(sql, params=()):
-    _run(_conn.cursor(), sql, params)
+    cur = _conn.cursor()
+    _run(cur, sql, params)
+    return cur.rowcount
 
 
 def execute_insert(sql, params=()):
@@ -167,7 +169,7 @@ class Transaction:
         return query(sql, params)
 
     def execute(self, sql, params=()):
-        execute(sql, params)
+        return execute(sql, params)
 
     def execute_insert(self, sql, params=()):
         return execute_insert(sql, params)
