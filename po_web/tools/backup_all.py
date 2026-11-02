@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-r"""python tools\backup_all.py [--dest D:\PO_BackupSet] [--db file.accdb] [--archive D:\PO_Archive]
+r"""python tools\backup_all.py [--dest D:\PO_BackupSet] [--db file.accdb] [--archive D:\PO_Archive] [--legacy D:\old_uploads]
 ONE backup of the database AND the archive together (default: the paths in config.ini; destination: [storage] backup_archive_dir).
 The first run copies the whole archive (slow); later runs copy only new / changed files. Nothing is ever deleted in the destination."""
 import os
@@ -21,11 +21,13 @@ def main():
         return 2
     try:
         res = st.backup_set(arg("--db", config.DB_PATH), arg("--archive", config.ARCHIVE_ROOT), dest, progress=lambda n: print("  ... %d ملف" % n, flush=True),
-                            link_reader=st.read_document_paths)
+                            link_reader=st.read_document_paths, legacy_root=arg("--legacy", config.LEGACY_UPLOADS))
     except (st.ProductionGuard, OSError) as e:
         print("[!!] فشل:", e)
         return 1
     print("[OK] نسخة القاعدة:", res["db_copy"])
+    if res.get("legacy_files"):
+        print("     مجلد المرفقات القديمة (LEGACY_UPLOADS) مشمول: %d ملف (%s)" % (res["legacy_files"], st._human(res["legacy_bytes"])))
     print("     الأرشيف: %d ملف (%s) · نُسخ الآن %d ملفاً بسرعة %s م.ب/ث" % (res["archive_files"], st._human(res["archive_bytes"]), res["copied"], res["mb_per_second"]))
     if not res["db_stable"]:
         print("[!!] تغيّر ملف القاعدة أثناء نسخه؛ كرّر النسخ والنظام متوقف عن الحفظ.")

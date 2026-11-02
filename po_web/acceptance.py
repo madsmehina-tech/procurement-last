@@ -288,20 +288,21 @@ def check_pages(db, config, pages=PAGES, runs=3, slow_ms=3000):
 
 # ------------------------------------------------------------------------------------------------------------- 8. the archive copy
 @timed
-def check_archive(db, config, archive_root, sample=3000, reads=200):
+def check_archive(db, config, archive_root, sample=3000, reads=200, legacy_root=None):
     """الأرشيف (نسخة): الحجم والنمو، والمسارات الطويلة، وأن كل مستند في القاعدة له ملف، وسرعة القراءة"""
     scan = st.scan_archive(archive_root)
     data = {"scan": {k: scan[k] for k in ("files", "bytes", "human", "max_path_length", "zero_byte_files", "unreadable_entries", "growth", "free_disk_bytes", "scan_seconds", "oldest", "newest")},
             "by_extension": dict(list(scan["by_extension"].items())[:8])}
-    missing, checked = [], 0
+    missing, checked, legacy_only = [], 0, 0
     if db.table_exists("Documents"):
-        docs = [r["RelPath"] for r in db.query("SELECT [RelPath], [IsCurrent] FROM [Documents]") if r.get("RelPath")]
+        docs = [r["RelPath"] for r in db.query("SELECT [RelPath] FROM [Documents]") if r.get("RelPath")]
         random.Random(7).shuffle(docs)
-        for rel in docs[:sample]:
-            checked += 1
-            if not os.path.isfile(os.path.join(archive_root, *rel.replace("\\", "/").split("/"))):
-                missing.append(rel)
-    data["documents_checked"], data["documents_missing"] = checked, len(missing)
+        cls = st.classify_links(docs[:sample], archive_root, legacy_root)
+        checked, legacy_only = cls["paths"], cls["legacy_only"]
+        missing = cls["missing_examples"] if cls["missing"] <= 5 else cls["missing_examples"]
+        data["documents_missing"] = cls["missing"]
+    data["documents_checked"], data["documents_legacy_only"] = checked, legacy_only
+    data["documents_missing"] = data.get("documents_missing", 0)
     data["missing_examples"] = missing[:5]
     files = [os.path.join(archive_root, *r.split("/")) for r in list(_sample_paths(archive_root, reads))]
     t0, nbytes = time.time(), 0
@@ -315,8 +316,10 @@ def check_archive(db, config, archive_root, sample=3000, reads=200):
     data["read_ms_per_file"] = round(el / max(len(files), 1) * 1000, 1)
     data["read_mb_per_second"] = round(nbytes / 1048576.0 / el, 1)
     notes = []
-    if missing:
-        notes.append("%d من %d مستنداً في القاعدة بلا ملف في الأرشيف (%.1f%%)" % (len(missing), checked, len(missing) * 100.0 / max(checked, 1)))
+    if data["documents_missing"]:
+        notes.append("%d من %d مستنداً في القاعدة بلا ملف في الأرشيف ولا في المرفقات القديمة (%.1f%%)" % (data["documents_missing"], checked, data["documents_missing"] * 100.0 / max(checked, 1)))
+    if legacy_only:
+        notes.append("%d مستنداً موجود في مجلد المرفقات القديمة فقط (يشمله النسخ الاحتياطي ويُسترجع مستقلاً)" % legacy_only)
     over = [k for k in scan if k.startswith("paths_over_")]
     if over and scan[over[0]]:
         notes.append("مسارات تتجاوز 240 حرفاً: %d" % len(scan[over[0]]))
@@ -325,7 +328,7 @@ def check_archive(db, config, archive_root, sample=3000, reads=200):
     free = scan.get("free_disk_bytes")
     if free is not None and free < scan["growth"]["after_1_year"] * 1.5:
         notes.append("المساحة الحرة (%s) قد لا تكفي لنمو سنة مع النسخ الاحتياطي" % st._human(free))
-    status = FAIL if (checked and len(missing) / checked > 0.01) else (WARN if notes else PASS)
+    status = FAIL if (checked and data["documents_missing"] / checked > 0.01) else (WARN if (notes and not (legacy_only and len(notes) == 1)) else PASS)
     return Result("archive", check_archive.__doc__, status, "؛ ".join(notes) or ("%s في %d ملف، القراءة %.1f م.ب/ث" % (scan["human"], scan["files"], data["read_mb_per_second"])), data)
 
 
@@ -354,23 +357,44 @@ def count_tables_file(path, tables):
 
 
 @timed
-def check_backup_restore(db, config, db_copy, archive_root, work, full_hash=False, counter=count_tables_file, link_reader=st.read_document_paths):
+def check_backup_restore(db, config, db_copy, archive_root, work, full_hash=False, counter=count_tables_file, link_reader=st.read_document_paths, legacy_root=None, hide_originals=True):
     """النسخ الاحتياطي ثم الاسترجاع على مكان مستقل: القاعدة والأرشيف معاً، مع المقارنة"""
     dest = os.path.join(work, "backup_set")
     out_db = os.path.join(work, "restored", "restored.accdb")
     out_arch = os.path.join(work, "restored", "archive")
-    st.guard_outputs([dest, out_db, out_arch])
-    b = st.backup_set(db_copy, archive_root, dest, link_reader=link_reader)
-    b2 = st.backup_set(db_copy, archive_root, dest, link_reader=link_reader)                      # a second run must copy (almost) nothing: the incremental mirror works
-    r = st.restore_set(dest, out_db, out_arch, verify="full" if full_hash else "sample", link_reader=link_reader)
+    out_legacy = os.path.join(work, "restored", "legacy")
+    st.guard_outputs([dest, out_db, out_arch, out_legacy])
+    b = st.backup_set(db_copy, archive_root, dest, link_reader=link_reader, legacy_root=legacy_root or "")
+    b2 = st.backup_set(db_copy, archive_root, dest, link_reader=link_reader, legacy_root=legacy_root or "")      # a second run must copy (almost) nothing: the incremental mirror works
+    scan_a = st.scan_archive(archive_root)
+    # the restore must stand on its own: while it runs, the COPIES of the archive and of the old uploads are put out of reach (renamed), so a link that
+    # is only «found» in an original folder cannot pass. (They are copies, never production; they are renamed back in all cases.)
+    hidden = []
+    try:
+        if hide_originals:
+            for folder in [archive_root] + ([legacy_root] if legacy_root and os.path.isdir(legacy_root) else []):
+                new = folder.rstrip("\\/") + ".__hidden_for_restore_test__"
+                try:
+                    os.rename(folder, new)
+                    hidden.append((folder, new))
+                except OSError:
+                    pass
+        data_hidden = len(hidden)
+        r = st.restore_set(dest, out_db, out_arch, verify="full" if full_hash else "sample", link_reader=link_reader, legacy_out=out_legacy if b.get("legacy_files") else None)
+    finally:
+        for folder, new in hidden:
+            try:
+                os.rename(new, folder)
+            except OSError:
+                pass
     tables = [t for t in ("PurchaseOrders", "OrderItems", "Suppliers", "Contracts", "Certificates", "Payments", "Documents", "LedgerEntries", "Users") if db.table_exists(t)]
     live = {t: int(db.scalar("SELECT COUNT(*) FROM [%s]" % t, default=0) or 0) for t in tables}
     restored = counter(out_db, tables)
     diffs = {t: (live[t], restored.get(t)) for t in tables if live[t] != restored.get(t)}
-    scan_a, scan_b = st.scan_archive(archive_root), st.scan_archive(out_arch)
+    scan_b = st.scan_archive(out_arch)
     data = {"first_backup": {k: b[k] for k in ("archive_files", "archive_bytes", "copied", "seconds", "mb_per_second", "db_stable")},
             "second_backup_copied": b2["copied"], "restore": {k: r[k] for k in ("restored", "hash_checked", "hash_mismatch_count", "missing_in_backup_count", "size_mismatch_count", "seconds", "db_ok", "ok", "links_checked", "links_paths", "links_missing_count")},
-            "backup_links": b["links"], "backup_ok": b["ok"],
+            "backup_links": b["links"], "backup_ok": b["ok"], "legacy_files_in_backup": b.get("legacy_files", 0), "originals_hidden_during_restore": data_hidden,
             "table_count_differences": diffs, "archive_files_original": scan_a["files"], "archive_files_restored": scan_b["files"],
             "archive_bytes_original": scan_a["bytes"], "archive_bytes_restored": scan_b["bytes"], "full_hash": full_hash}
     problems = []
@@ -382,6 +406,8 @@ def check_backup_restore(db, config, db_copy, archive_root, work, full_hash=Fals
         problems.append("الأرشيف المسترجع يختلف عن الأصلي (%d/%d ملف)" % (scan_b["files"], scan_a["files"]))
     if b2["copied"] > max(5, b["archive_files"] * 0.01):
         problems.append("النسخة الثانية أعادت نسخ %d ملفاً (النسخ التراكمي لا يعمل كما يجب)" % b2["copied"])
+    if hide_originals and not data_hidden:
+        problems.append("تعذّر عزل مجلدات النسخة الأصلية أثناء الاسترجاع (ربما مفتوحة في برنامج آخر): لم يُثبت استقلال الاسترجاع")
     if b["errors"] or b["failed"]:
         problems.append("ملفات/عناصر لم تُنسخ: %d" % b["failed"])
     if not b["ok"]:
@@ -420,13 +446,13 @@ def report_markdown(results, meta, final):
     return "\n".join(lines) + "\n"
 
 
-def run_all(db, config, db_copy, archive_root, work, script=None, migrate=True, full_hash=False):
+def run_all(db, config, db_copy, archive_root, work, script=None, migrate=True, full_hash=False, legacy_root=None):
     """Runs every check in order. Returns (results, verdict)."""
     results = [check_environment(db, config), check_database(db, config, migrate=migrate)]
     if results[-1].status == FAIL and results[-1].data.get("pending_after") is None:
         return results, verdict(results)                       # the copy cannot even be read: nothing else is meaningful
     results += [check_transactions(db, config), check_concurrency(db, config, script=script), check_text(db, config), check_integrity(db, config)]
     results.append(check_pages(db, config))
-    results.append(check_archive(db, config, archive_root))
-    results.append(check_backup_restore(db, config, db_copy, archive_root, work, full_hash=full_hash))
+    results.append(check_archive(db, config, archive_root, legacy_root=legacy_root))
+    results.append(check_backup_restore(db, config, db_copy, archive_root, work, full_hash=full_hash, legacy_root=legacy_root))
     return results, verdict(results)

@@ -328,16 +328,67 @@ def _stable_copy_of_db(db_path, dest, lock=None):
 
 
 # ------------------------------------------------------------------------------------------------------------- links: database -> files
-def read_document_paths(db_file):
-    """Every file path the DATABASE FILE points at (Documents.RelPath), read straight from the given file (a backup copy or a restored copy).
-    Needs the Access driver (Windows); raises if it cannot read - the caller reports «links not checked», never «checked»."""
+# the columns that hold a file path relative to the archive folder (or, for very old records, to the old uploads folder)
+LINK_COLUMNS = [("Documents", "RelPath"),
+                ("PurchaseOrders", "SignedFile"), ("PurchaseOrders", "QuoteFile"), ("Certificates", "CertificateFile"), ("Certificates", "PaymentProofFile"),
+                ("Subcontractors", "CRFile"), ("Subcontractors", "TaxCertFile"), ("Subcontractors", "BankCertFile"), ("Subcontractors", "QualificationFile"),
+                ("Contracts", "ContractFile"), ("Suppliers", "CRFile"), ("Suppliers", "TaxCertFile"), ("Suppliers", "CatalogFile"), ("Suppliers", "QualificationFile"),
+                ("Users", "AvatarFile"), ("OrderRevisions", "SnapshotFile")]
+
+
+def read_linked_paths(db_file, columns=None):
+    """{ "Table.Column": [paths] } of every file the DATABASE FILE points at, read straight from the given file (a copy, a backup or a restored
+    copy), READ-ONLY. A column that does not exist in an older database is skipped; the Documents table must be readable (else this raises -
+    the caller then reports «links not checked», never «checked»). Needs the Access driver (Windows)."""
     import pyodbc
-    conn = pyodbc.connect(r"DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=%s;" % db_file, autocommit=True)
+    conn = pyodbc.connect(r"DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=%s;ReadOnly=1;" % db_file, autocommit=True)
+    out = {}
     try:
         cur = conn.cursor()
-        return [r[0] for r in cur.execute("SELECT [RelPath] FROM [Documents]").fetchall() if r[0]]
+        for table, col in (columns or LINK_COLUMNS):
+            try:
+                rows = cur.execute("SELECT [%s] FROM [%s]" % (col, table)).fetchall()
+            except pyodbc.Error:
+                if table == "Documents":
+                    raise
+                continue
+            vals = [str(r[0]).strip() for r in rows if r[0] and str(r[0]).strip()]
+            if vals:
+                out["%s.%s" % (table, col)] = vals
+        return out
     finally:
         conn.close()
+
+
+def read_document_paths(db_file):
+    """The distinct paths (see read_linked_paths) as one list: what a backup / restore must be able to find."""
+    seen, out = set(), []
+    for paths in read_linked_paths(db_file).values():
+        for p in paths:
+            key = "/".join(x for x in p.replace("\\", "/").split("/") if x and x != "..")
+            if key and key not in seen:
+                seen.add(key)
+                out.append(p)
+    return out
+
+
+def classify_links(paths, archive_root, legacy_root=None):
+    """Counts how the database's paths resolve: in the archive folder / ONLY in the old uploads folder / nowhere. Read-only."""
+    in_archive = legacy_only = 0
+    gone, legacy_examples = [], []
+    for rel in paths:
+        parts = [x for x in str(rel).replace("\\", "/").split("/") if x and x != ".."]
+        if not parts:
+            continue
+        if os.path.isfile(os.path.join(archive_root, *parts)):
+            in_archive += 1
+        elif legacy_root and os.path.isfile(os.path.join(legacy_root, *parts)):
+            legacy_only += 1
+            if len(legacy_examples) < 5:
+                legacy_examples.append(rel)
+        else:
+            gone.append(rel)
+    return {"paths": len(paths), "in_archive": in_archive, "legacy_only": legacy_only, "missing": len(gone), "missing_examples": gone[:5], "legacy_examples": legacy_examples}
 
 
 def missing_links(paths, archive_root, legacy_root=None):
@@ -354,6 +405,8 @@ def missing_links(paths, archive_root, legacy_root=None):
 
 
 def backup_set(db_path, archive_root, dest_root, keep=None, progress=None, now=None, lock=None, link_reader=None, legacy_root=None, rounds=3):
+    # legacy_root = the OLD uploads folder (LEGACY_UPLOADS). Files that only exist there are part of the backup too (mirror «legacy\\»), so a restore
+    # is complete without the original folders.
     """The whole job (see the module text). Returns a result dict; raises OSError if the DATABASE copy fails, never for single archive files.
     CONSISTENCY: archive -> database -> archive again. A file that is moved or created while the backup runs is therefore in the mirror under
     the name the database copy points at (the first pass holds the old names, the second the new ones), and `link_reader(db_copy)` proves it
@@ -362,22 +415,26 @@ def backup_set(db_path, archive_root, dest_root, keep=None, progress=None, now=N
     now = now or datetime.now()
     keep = keep or config.BACKUP_KEEP
     dest_root = os.path.abspath(dest_root)
-    guard_outputs([dest_root], protected=[db_path, archive_root])
-    for sub in ("db", "archive", "manifests"):
+    legacy_root = legacy_root if legacy_root is not None else getattr(config, "LEGACY_UPLOADS", None)
+    has_legacy = bool(legacy_root) and os.path.isdir(legacy_root) and os.path.normcase(os.path.abspath(legacy_root)) != os.path.normcase(os.path.abspath(archive_root))
+    guard_outputs([dest_root], protected=[db_path, archive_root] + ([legacy_root] if has_legacy else []))
+    for sub in ("db", "archive", "manifests") + (("legacy",) if has_legacy else ()):
         os.makedirs(os.path.join(dest_root, sub), exist_ok=True)
     stamp = now.strftime("%Y%m%d_%H%M%S")
     base, ext = os.path.splitext(os.path.basename(db_path))
     db_name = "%s_%s_set%s" % (base, stamp, ext)
     db_dest = os.path.join(dest_root, "db", db_name)
     mirror_dir = os.path.join(dest_root, "archive")
-    known = {}
+    legacy_mirror = os.path.join(dest_root, "legacy")
+    known, known_legacy = {}, {}
     previous = list_sets(dest_root)
     if previous:
         try:
-            known = {e[0]: (e[1], e[2], e[3] if len(e) > 3 else None) for e in read_manifest(previous[-1])["archive"]["entries"]}
+            prev = read_manifest(previous[-1])
+            known = {e[0]: (e[1], e[2], e[3] if len(e) > 3 else None) for e in prev["archive"]["entries"]}
+            known_legacy = {e[0]: (e[1], e[2], e[3] if len(e) > 3 else None) for e in (prev.get("legacy") or {}).get("entries", [])}
         except (OSError, ValueError, KeyError):
-            known = {}
-    legacy_root = legacy_root if legacy_root is not None else getattr(config, "LEGACY_UPLOADS", None)
+            known, known_legacy = {}, {}
     totals = {"copied": 0, "skipped": 0, "failed": 0, "bytes_copied": 0}
     errors, links = [], {"checked": False, "paths": 0, "missing": 0, "examples": []}
     attempts = 0
@@ -385,36 +442,51 @@ def backup_set(db_path, archive_root, dest_root, keep=None, progress=None, now=N
     for rnd in range(max(1, rounds)):
         m1 = mirror_archive(archive_root, mirror_dir, progress=progress, known=known)                  # 1. the archive: every name that exists NOW
         known = {e[0]: (e[1], e[2], e[3]) for e in m1["entries"]}
+        l1 = mirror_archive(legacy_root, legacy_mirror, known=known_legacy) if has_legacy else None   #    (and the old uploads folder)
+        if l1:
+            known_legacy = {e[0]: (e[1], e[2], e[3]) for e in l1["entries"]}
         attempts = _stable_copy_of_db(db_path, db_dest, lock)                                          # 2. the database
         m2 = mirror_archive(archive_root, mirror_dir, progress=progress, known=known)                  # 3. the archive again: what appeared / moved meanwhile
+        l2 = mirror_archive(legacy_root, legacy_mirror, known=known_legacy) if has_legacy else None
+        parts = [x for x in (m1, m2, l1, l2) if x]
         for k in ("copied", "skipped", "failed", "bytes_copied"):
-            totals[k] += m1[k] + m2[k]
-        errors = (m1["errors"] + m2["errors"])[:20]
+            totals[k] += sum(x[k] for x in parts)
+        errors = [e for x in parts for e in x["errors"]][:20]
         entries = m2["entries"]
+        legacy_entries = l2["entries"] if l2 else []
         links = {"checked": False, "paths": 0, "missing": 0, "examples": []}
         if link_reader is not None:
             try:
                 paths = link_reader(db_dest)
                 have = {e[0] for e in entries}
-                for rel in paths:                                       # a file the database points at that is in the mirror but no longer at the source
+                have_legacy = {e[0] for e in legacy_entries}
+                for rel in paths:                                       # a file the database points at that is in a mirror but no longer at the source
                     norm_rel = "/".join(x for x in str(rel).replace("\\", "/").split("/") if x and x != "..")
-                    mp = os.path.join(mirror_dir, *norm_rel.split("/")) if norm_rel else None
-                    if norm_rel and norm_rel not in have and os.path.isfile(mp):
+                    if not norm_rel:
+                        continue
+                    mp = os.path.join(mirror_dir, *norm_rel.split("/"))
+                    lp = os.path.join(legacy_mirror, *norm_rel.split("/"))
+                    if norm_rel not in have and os.path.isfile(mp):
                         entries.append([norm_rel, os.path.getsize(mp), int(os.path.getmtime(mp)), sha256_file(mp)])      # (it must be restored too)
                         have.add(norm_rel)
-                gone = missing_links(paths, mirror_dir, legacy_root)
+                    elif norm_rel not in have and norm_rel not in have_legacy and os.path.isfile(lp):
+                        legacy_entries.append([norm_rel, os.path.getsize(lp), int(os.path.getmtime(lp)), sha256_file(lp)])
+                        have_legacy.add(norm_rel)
+                gone = missing_links(paths, mirror_dir, legacy_mirror if has_legacy else None)         # resolved against the BACKUP's own copies only
                 links = {"checked": True, "paths": len(paths), "missing": len(gone), "examples": gone[:5]}
             except Exception as e:                                                                       # noqa - unreadable = NOT checked (never «OK»)
                 links["error"] = " ".join(str(e).split())[:120]
         if not links["missing"]:
             break
         known = {e[0]: (e[1], e[2], e[3]) for e in entries}
+        known_legacy = {e[0]: (e[1], e[2], e[3]) for e in legacy_entries}
     seconds = max(time.time() - started, 0.001)
     db_hash, db_size = sha256_file(db_dest), os.path.getsize(db_dest)
     ok = bool(attempts) and totals["failed"] == 0 and not links["missing"]
     manifest = {"version": MANIFEST_VERSION, "created": now.isoformat(timespec="seconds"), "app_version": config.APP_VERSION, "complete": ok,
                 "db": {"file": db_name, "size": db_size, "sha256": db_hash, "stable_copy": bool(attempts), "attempts": attempts},
                 "archive": {"files": len(entries), "bytes": sum(e[1] for e in entries), "entries": entries},
+                "legacy": {"files": len(legacy_entries), "bytes": sum(e[1] for e in legacy_entries), "entries": legacy_entries},
                 "links": links, "copy_stats": {"copied": totals["copied"], "skipped": totals["skipped"], "failed": totals["failed"],
                                                "bytes_copied": totals["bytes_copied"], "seconds": round(seconds, 1),
                                                "mb_per_second": round(totals["bytes_copied"] / 1048576.0 / seconds, 1)}}
@@ -422,7 +494,8 @@ def backup_set(db_path, archive_root, dest_root, keep=None, progress=None, now=N
     _write_manifest(mpath, manifest)
     _prune_sets(dest_root, keep)
     return {"manifest": mpath, "db_copy": db_dest, "db_sha256": db_hash, "db_stable": bool(attempts), "archive_files": manifest["archive"]["files"],
-            "archive_bytes": manifest["archive"]["bytes"], **manifest["copy_stats"], "errors": errors, "links": links, "ok": ok, "complete": ok}
+            "archive_bytes": manifest["archive"]["bytes"], "legacy_files": manifest["legacy"]["files"], "legacy_bytes": manifest["legacy"]["bytes"],
+            **manifest["copy_stats"], "errors": errors, "links": links, "ok": ok, "complete": ok}
 
 
 def _prune_sets(dest_root, keep):
@@ -447,23 +520,33 @@ def list_sets(dest_root):
 
 
 # ------------------------------------------------------------------------------------------------------------- restore into NEW places
-def restore_set(set_root, db_out, archive_out, manifest=None, verify="sample", sample=200, progress=None, link_reader=None, legacy_root=None, allow_incomplete=False):
+def recorded_hash_differs(entry, path):
+    """True when the file at `path` does not match the SHA-256 recorded in the backup list (an entry without a recorded hash is not judged)."""
+    recorded = entry[3] if len(entry) > 3 else None
+    return bool(recorded) and sha256_file(path) != recorded
+
+
+def restore_set(set_root, db_out, archive_out, manifest=None, verify="sample", sample=200, progress=None, link_reader=None, legacy_out=None, allow_incomplete=False):
     """Rebuilds the database file at `db_out` and the archive folder at `archive_out` from a backup set. Both must be NEW places,
     never production. verify: 'none' | 'sample' (SHA-256 of `sample` random files) | 'full' (SHA-256 of every file).
     A set marked incomplete (a file failed to copy, a link was missing) is refused unless allow_incomplete. With `link_reader` every path of the
     RESTORED database is checked against the RESTORED archive; `ok` needs that to pass (and says `links_checked` honestly)."""
-    guard_outputs([db_out, archive_out])
+    guard_outputs([db_out, archive_out] + ([legacy_out] if legacy_out else []))
     if os.path.exists(db_out):                                                     # a restore never overwrites anything that already exists
         raise OSError("ملف الاسترجاع موجود مسبقاً: %s - اختر اسماً جديداً (لا يُكتب فوق ملف موجود)." % db_out)
-    if os.path.isdir(archive_out) and os.listdir(archive_out):
-        raise OSError("مجلد الاسترجاع ليس فارغاً: %s - اختر مجلداً جديداً أو فارغاً." % archive_out)
+    for folder in [archive_out] + ([legacy_out] if legacy_out else []):
+        if os.path.isdir(folder) and os.listdir(folder):
+            raise OSError("مجلد الاسترجاع ليس فارغاً: %s - اختر مجلداً جديداً أو فارغاً." % folder)
     mpath = manifest or (list_sets(set_root) or [None])[-1]
     if not mpath:
         raise OSError("لا توجد نسخة (manifest) في %s" % set_root)
     man = read_manifest(mpath)
     if man.get("complete") is False and not allow_incomplete:
         raise OSError("هذه النسخة غير مكتملة (فشل نسخ ملف أو وُجد رابط مفقود). لا تُستعمل للاسترجاع دون موافقة صريحة (allow_incomplete).")
-    need = man["archive"]["bytes"] + man["db"]["size"]
+    legacy_entries = (man.get("legacy") or {}).get("entries", [])
+    if legacy_entries and not legacy_out:
+        raise OSError("هذه النسخة تحوي %d ملفاً من مجلد المرفقات القديمة (LEGACY_UPLOADS): حدّد مجلداً جديداً لاسترجاعها (legacy_out) ليكون الاسترجاع مكتفياً بنفسه." % len(legacy_entries))
+    need = man["archive"]["bytes"] + man["db"]["size"] + (man.get("legacy") or {}).get("bytes", 0)
     os.makedirs(archive_out, exist_ok=True)
     free = shutil.disk_usage(archive_out).free
     if free < need * 1.05:
@@ -491,6 +574,19 @@ def restore_set(set_root, db_out, archive_out, manifest=None, verify="sample", s
         result["restored"] += 1
         if progress and result["restored"] % 500 == 0:
             progress(result["restored"])
+    result["legacy_expected"], result["legacy_restored"] = len(legacy_entries), 0
+    lmirror = os.path.join(set_root, "legacy")
+    for entry in legacy_entries:
+        rel, size, mtime = entry[0], entry[1], entry[2]
+        src, dst = os.path.join(lmirror, *rel.split("/")), os.path.join(legacy_out, *rel.split("/"))
+        if not os.path.isfile(src):
+            result["missing_in_backup"].append("legacy/" + rel)
+            continue
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        _copy_keep_time(src, dst, mtime)
+        result["legacy_restored"] += 1
+        if recorded_hash_differs(entry, dst):
+            result["hash_mismatch"].append("legacy/" + rel)
     entries = man["archive"]["entries"]
     pick = entries if verify == "full" else (random.Random(1).sample(entries, min(sample, len(entries))) if verify == "sample" else [])
     for entry in pick:
@@ -504,14 +600,13 @@ def restore_set(set_root, db_out, archive_out, manifest=None, verify="sample", s
     if link_reader is not None:
         try:
             paths = link_reader(db_out)
-            legacy = legacy_root if legacy_root is not None else getattr(config, "LEGACY_UPLOADS", None)
-            result["links_missing"] = missing_links(paths, archive_out, legacy)
+            result["links_missing"] = missing_links(paths, archive_out, legacy_out)          # ONLY the restored places: never the original folders
             result["links_paths"], result["links_checked"] = len(paths), True
         except Exception as e:                                                                          # noqa
             result["links_error"] = " ".join(str(e).split())[:120]
     result["seconds"] = round(time.time() - started, 1)
     result["ok"] = bool(result["db_ok"] and not result["missing_in_backup"] and not result["hash_mismatch"] and not result["links_missing"]
-                        and result["restored"] == result["archive_expected"] and (link_reader is None or result["links_checked"]))
+                        and result["restored"] == result["archive_expected"] and result["legacy_restored"] == result["legacy_expected"] and (link_reader is None or result["links_checked"]))
     for k in ("missing_in_backup", "size_mismatch", "hash_mismatch", "links_missing"):
         result[k + "_count"] = len(result[k])
         result[k] = result[k][:20]

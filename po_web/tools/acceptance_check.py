@@ -2,7 +2,10 @@
 r"""
 Acceptance test of the system on the REAL Microsoft Access engine, using COPIES only.
 
-    python tools\acceptance_check.py --db-copy "D:\PO_TEST\PurchaseSystem.accdb" --archive-copy "D:\PO_TEST\archive" --work "D:\PO_TEST\work"
+    python tools\acceptance_check.py --db-copy "D:\PO_TEST\PurchaseSystem.accdb" --archive-copy "D:\PO_TEST\archive" --work "D:\PO_TEST\work" [--legacy-copy "D:\PO_TEST\uploads"]
+
+  --legacy-copy a COPY of the old uploads folder (LEGACY_UPLOADS), if there are documents that live only there (see tools\legacy_check.py);
+                it is then part of the backup and restored on its own. Without it the old uploads folder is treated as ABSENT during the test.
 
   --full-hash   compares the SHA-256 of EVERY restored file (slow for a big archive; the default checks a random sample of 200)
   --no-migrate  does not run the migrations on the copy first
@@ -48,7 +51,8 @@ def launcher(args):
         return 2
     db_copy, arch, work = os.path.abspath(args.db_copy), os.path.abspath(args.archive_copy), os.path.abspath(args.work)
     try:
-        st.guard_sources_are_copies([db_copy, arch], prod)
+        legacy = os.path.abspath(args.legacy_copy) if args.legacy_copy else None
+        st.guard_sources_are_copies([db_copy, arch] + ([legacy] if legacy else []), prod)
         st.guard_outputs([work], prod)
     except st.ProductionGuard as e:
         print("[ممنوع]", e)
@@ -59,21 +63,24 @@ def launcher(args):
     if not os.path.isdir(arch):
         print("[خطأ] مجلد نسخة الأرشيف غير موجود:", arch)
         return 2
-    if st.is_inside(work, db_copy) or st.is_inside(work, arch):
+    if legacy and not os.path.isdir(legacy):
+        print("[خطأ] مجلد نسخة المرفقات القديمة غير موجود:", legacy)
+        return 2
+    if st.is_inside(work, db_copy) or st.is_inside(work, arch) or (legacy and st.is_inside(work, legacy)):
         print("[خطأ] مجلد العمل يجب أن يكون خارج نسخة القاعدة ونسخة الأرشيف.")
         return 2
     os.makedirs(work, exist_ok=True)
     ini = os.path.join(work, "acceptance.ini")
     with open(ini, "w", encoding="utf-8") as f:
-        f.write("[database]\npath = %s\n[storage]\narchive_root = %s\nbackup_dir = %s\nbackup_auto_hours = 0\n[server]\nlog_dir = %s\nenvironment = staging\n"
-                % (db_copy, arch, os.path.join(work, "own_backups"), os.path.join(work, "logs")))
+        f.write("[database]\npath = %s\n[storage]\narchive_root = %s\nlegacy_uploads = %s\nbackup_dir = %s\nbackup_auto_hours = 0\n[server]\nlog_dir = %s\nenvironment = staging\n"
+                % (db_copy, arch, legacy or os.path.join(work, "no_legacy_uploads"), os.path.join(work, "own_backups"), os.path.join(work, "logs")))
     env = dict(os.environ, PO_CONFIG=ini, PO_PROTECT=";".join(prod))
     for k in ("PO_DB_PATH", "PO_ARCHIVE_ROOT", "PO_BACKUP_DIR", "PO_BACKUP_EXTRA_DIR", "PO_BACKUP_ARCHIVE_DIR", "PO_UPLOADS_PATH", "PO_LOG_DIR"):
         env.pop(k, None)
     watch = [p for p in prod if p]
     before = _fingerprint(watch)
     print("بدأ اختبار القبول على النسخ فقط. مسارات التشغيل الحقيقية محمية: %d" % len(prod))
-    cmd = [sys.executable, os.path.abspath(__file__), "--child", "--db-copy", db_copy, "--archive-copy", arch, "--work", work]
+    cmd = [sys.executable, os.path.abspath(__file__), "--child", "--db-copy", db_copy, "--archive-copy", arch, "--work", work] + (["--legacy-copy", legacy] if legacy else [])
     cmd += (["--full-hash"] if args.full_hash else []) + (["--no-migrate"] if args.no_migrate else [])
     code = subprocess.call(cmd, env=env)
     after = _fingerprint(watch)
@@ -90,7 +97,9 @@ def launcher(args):
 def child(args):
     import config
     import storage_tools as st
+    expected_legacy = args.legacy_copy or os.path.join(args.work, "no_legacy_uploads")
     ok = (st.norm(config.DB_PATH) == st.norm(args.db_copy) and st.norm(config.ARCHIVE_ROOT) == st.norm(args.archive_copy)
+          and st.norm(config.LEGACY_UPLOADS) == st.norm(expected_legacy)
           and st.is_inside(config.BACKUP_DIR, args.work) and not config.BACKUP_EXTRA_DIR and not config.BACKUP_ARCHIVE_DIR)
     if not ok:
         print("[توقّف] إعدادات الاختبار لا تشير إلى النسخ فقط؛ لن يُنفَّذ شيء.")
@@ -102,7 +111,7 @@ def child(args):
     except ImportError as e:
         print("[توقّف] مكتبة ناقصة (%s). ثبّت المتطلبات: pip install -r requirements.txt" % e)
         return 2
-    results, final = acceptance.run_all(db, config, args.db_copy, args.archive_copy, args.work, script=os.path.abspath(__file__), migrate=not args.no_migrate, full_hash=args.full_hash)
+    results, final = acceptance.run_all(db, config, args.db_copy, args.archive_copy, args.work, script=os.path.abspath(__file__), migrate=not args.no_migrate, full_hash=args.full_hash, legacy_root=args.legacy_copy)
     meta = {"when": datetime.now().isoformat(timespec="seconds"), "app_version": config.APP_VERSION}
     icon = {"PASS": "[ OK ]", "FAIL": "[FAIL]", "WARN": "[ !! ]", "SKIP": "[skip]"}
     for r in results:
@@ -131,6 +140,7 @@ if __name__ == "__main__":
     ap.add_argument("--db-copy", required=True)
     ap.add_argument("--archive-copy", required=True)
     ap.add_argument("--work", required=True)
+    ap.add_argument("--legacy-copy", default=None)
     ap.add_argument("--full-hash", action="store_true")
     ap.add_argument("--no-migrate", action="store_true")
     ap.add_argument("--child", action="store_true")
