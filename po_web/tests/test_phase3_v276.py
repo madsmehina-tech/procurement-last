@@ -402,3 +402,19 @@ def test_restore_never_overwrites_an_existing_file_or_a_non_empty_folder(tmp_pat
     with pytest.raises(OSError):
         st.restore_set(dest, str(tmp_path / "new.accdb"), str(tmp_path / "full"))
     assert (tmp_path / "full" / "x.txt").read_text() == "keep me"
+
+
+def test_a_database_that_stays_locked_cannot_hang_the_writer():
+    import acceptance as ac
+    import time as _t
+
+    class Locked:
+        def execute(self, sql, params=()):
+            raise RuntimeError("locked")
+    real_sleep = _t.sleep
+    _t.sleep = lambda s: None
+    try:
+        r = ac.writer_main(Locked(), 50, "t", retries=0, budget=-1)                # the budget is already spent
+    finally:
+        _t.sleep = real_sleep
+    assert r["failed"] == 50 and "budget" in r["sample"]

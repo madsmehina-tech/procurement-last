@@ -145,12 +145,18 @@ def check_transactions(db, config):
 
 
 # ------------------------------------------------------------------------------------------------------------- 4. concurrency
-def writer_main(db, rows, tag, retries=5):
-    """Writes `rows` rows, one connection each. A write refused by a lock is retried (0.2 s, 0.4 s ...) up to `retries` times.
+def writer_main(db, rows, tag, retries=3, budget=45.0):
+    """Writes `rows` rows, one connection each. A write refused by a lock is retried (0.2 s, 0.4 s ...) up to `retries` times, and the whole job
+    stops after `budget` seconds (rows not written by then count as refused: a database that stays locked must not hang the test).
     Returns {"failed": rows never written, "retried": writes that needed a retry, "sample": the first error text}."""
     failed = retried = 0
     sample = ""
+    started = time.time()
     for i in range(rows):
+        if time.time() - started > budget:
+            failed += rows - i
+            sample = sample or "time budget of %d s exceeded" % budget
+            break
         for attempt in range(retries + 1):
             try:
                 db.execute("INSERT INTO [%s] ([V]) VALUES (?)" % PROBE, ("%s-%d" % (tag, i),))
@@ -167,7 +173,7 @@ def writer_main(db, rows, tag, retries=5):
 
 
 @timed
-def check_concurrency(db, config, threads=4, per_thread=25, processes=2, per_process=25, script=None):
+def check_concurrency(db, config, threads=4, per_thread=25, processes=2, per_process=15, script=None):
     """الكتابة المتزامنة: عدة خيوط وعمليتان معاً، دون فقد سجل (مع إعادة المحاولة عند القفل)"""
     _drop_probe(db)
     db.execute("CREATE TABLE [%s] ([ID] AUTOINCREMENT PRIMARY KEY, [V] TEXT(100))" % PROBE)
@@ -189,7 +195,13 @@ def check_concurrency(db, config, threads=4, per_thread=25, processes=2, per_pro
         for t in ths:
             t.join()
         for p in procs:
-            out, _err = p.communicate(timeout=300)
+            try:
+                out, _err = p.communicate(timeout=120)
+            except subprocess.TimeoutExpired:                  # a helper that never answers must not hang the whole test
+                p.kill()
+                out, _err = p.communicate()
+                results.append(("process", {"failed": per_process, "retried": 0, "sample": "the helper process did not finish in 120 s (database locked?)"}))
+                continue
             try:
                 results.append(("process", json.loads(out.strip().splitlines()[-1])))
             except (ValueError, IndexError):
