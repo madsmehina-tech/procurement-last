@@ -447,12 +447,17 @@ def report_markdown(results, meta, final):
 
 
 def run_all(db, config, db_copy, archive_root, work, script=None, migrate=True, full_hash=False, legacy_root=None):
-    """Runs every check in order. Returns (results, verdict)."""
-    results = [check_environment(db, config), check_database(db, config, migrate=migrate)]
+    """Runs every check in order. Returns (results, verdict). Each check announces itself first (so a slow or stuck one can be seen)."""
+    def go(fn, *args, **kw):
+        print(">> %s ..." % (fn.__doc__ or fn.__name__), flush=True)
+        r = fn(*args, **kw)
+        print("   %s (%ss)" % (r.status, r.seconds), flush=True)
+        return r
+    results = [go(check_environment, db, config), go(check_database, db, config, migrate=migrate)]
     if results[-1].status == FAIL and results[-1].data.get("pending_after") is None:
         return results, verdict(results)                       # the copy cannot even be read: nothing else is meaningful
-    results += [check_transactions(db, config), check_concurrency(db, config, script=script), check_text(db, config), check_integrity(db, config)]
-    results.append(check_pages(db, config))
-    results.append(check_archive(db, config, archive_root, legacy_root=legacy_root))
-    results.append(check_backup_restore(db, config, db_copy, archive_root, work, full_hash=full_hash, legacy_root=legacy_root))
+    results += [go(check_transactions, db, config), go(check_concurrency, db, config, script=script), go(check_text, db, config), go(check_integrity, db, config)]
+    results.append(go(check_pages, db, config))
+    results.append(go(check_archive, db, config, archive_root, legacy_root=legacy_root))
+    results.append(go(check_backup_restore, db, config, db_copy, archive_root, work, full_hash=full_hash, legacy_root=legacy_root))
     return results, verdict(results)

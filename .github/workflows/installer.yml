@@ -84,6 +84,9 @@ jobs:
           Get-Content D:\PO\app\config.ini
       - name: Acceptance check on COPIES of the fresh installation (real Access engine)
         continue-on-error: true
+        timeout-minutes: 12
+        env:
+          PYTHONUNBUFFERED: "1"
         shell: pwsh
         run: |
           New-Item -ItemType Directory D:\PO_TEST | Out-Null
