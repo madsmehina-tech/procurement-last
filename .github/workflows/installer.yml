@@ -93,12 +93,16 @@ jobs:
         shell: pwsh
         run: |
           if (Test-Path D:\PO_TEST\work\acceptance_report.md) { Get-Content D:\PO_TEST\work\acceptance_report.md }
+      - name: Collect results inside the workspace
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory results -Force | Out-Null
+          foreach ($f in 'D:\PO\install_log.txt','D:\PO_TEST\work\acceptance_report.md','D:\PO_TEST\work\acceptance_report.json') { if (Test-Path $f) { Copy-Item $f results\ } }
+          if (Test-Path D:\PO\logs) { Copy-Item D:\PO\logs\*.txt results\ -ErrorAction SilentlyContinue }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: e2e-results
-          path: |
-            D:\PO\install_log.txt
-            D:\PO_TEST\work\acceptance_report.*
-            D:\PO\logs\*.txt
+          path: results
           if-no-files-found: ignore

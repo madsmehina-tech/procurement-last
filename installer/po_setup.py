@@ -220,9 +220,12 @@ def sha256_file(path):
     return h.hexdigest()
 
 
+PS_PRELUDE = "$env:PSModulePath = [Environment]::GetEnvironmentVariable('PSModulePath','Machine'); "      # (a PowerShell 7 parent leaves a path that Windows PowerShell 5.1 cannot load its own modules from)
+
+
 def ps(script):
     """Command line that runs a PowerShell script (no profile, no policy problems)."""
-    return ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script]
+    return ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", PS_PRELUDE + script]
 
 
 def ps_quote(text):
@@ -869,7 +872,21 @@ def relaunch_as_admin():
     ctypes.windll.shell32.ShellExecuteW(None, "runas", exe, args, None, 1)
 
 
+def fix_console():
+    """Arabic text must never crash the tool: UTF-8 output, and no console at all (a windowed exe has sys.stdout = None) is fine."""
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name, None)
+        if stream is None:
+            setattr(sys, name, open(os.devnull, "w", encoding="utf-8"))
+        else:
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except (AttributeError, ValueError):
+                pass
+
+
 def main(argv=None):
+    fix_console()
     ap = argparse.ArgumentParser(description="PO Setup")
     ap.add_argument("--silent", action="store_true")
     ap.add_argument("--dry-run", action="store_true")

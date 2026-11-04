@@ -289,6 +289,22 @@ def test_selftest_and_dry_run_cli(tmp_path):
     assert r2.returncode == 0 and "النتيجة" in r2.stdout and not (tmp_path / "B").exists()
 
 
+def test_arabic_output_survives_a_legacy_console_encoding(tmp_path):
+    """Found on a real Windows machine: print() of Arabic crashed with cp1252. The tool must reconfigure its output."""
+    f = tmp_path / "a.json"
+    f.write_text(json.dumps({"share_folder": str(tmp_path / "S"), "base": str(tmp_path / "B"), "admin_password": "Passw0rd1", "zip_path": make_zip(tmp_path / "po_web_v1.zip"),
+                             "skip_prereqs": True, "create_share": False, "open_firewall": False, "autostart": False, "start_after": False, "install_tesseract": False}), encoding="utf-8")
+    r = subprocess.run([sys.executable, os.path.join(HERE, "..", "po_setup.py"), "--dry-run", "--answers", str(f)], capture_output=True,
+                       env=dict(os.environ, PYTHONIOENCODING="cp1252", PYTHONUTF8="0"))
+    assert r.returncode == 0, r.stderr.decode("utf-8", "replace")[-400:]
+    assert "النتيجة".encode("utf-8") in r.stdout
+
+
+def test_powershell_commands_reset_the_module_path_first():
+    cmd = ps_cmd = ps.ps("Get-Date")
+    assert cmd[-1].startswith("$env:PSModulePath = [Environment]::GetEnvironmentVariable('PSModulePath','Machine');") and cmd[-1].endswith("Get-Date")
+
+
 def test_an_installer_with_a_bad_signature_is_never_run(tmp_path, monkeypatch):
     a = answers(tmp_path, skip_prereqs=False, python_path="")
     monkeypatch.setattr(ps, "find_python", lambda c: "")
