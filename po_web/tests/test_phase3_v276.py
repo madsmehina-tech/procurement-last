@@ -247,9 +247,49 @@ def test_concurrency_check_counts_every_row(world):
 def test_concurrency_check_fails_when_writes_are_lost(world, monkeypatch):
     import acceptance as ac
     db, cfg = world
-    monkeypatch.setattr(ac, "writer_main", lambda db_, rows, tag: 3)             # every thread reports 3 failed writes
+    def refuses_three(db_, rows, tag):
+        for _ in range(rows - 3):
+            db_.execute("INSERT INTO [%s] ([V]) VALUES ('x')" % ac.PROBE)                                                # writes what it could ...
+        return {"failed": 3, "retried": 0, "sample": "locked"}                                                           # ... and reports 3 refused writes honestly
+    monkeypatch.setattr(ac, "writer_main", refuses_three)
     r = ac.check_concurrency(db, cfg, threads=2, per_thread=5, processes=0)
-    assert r.status == ac.FAIL and r.data["thread_failures"] == 6
+    assert r.status == ac.FAIL and r.data["thread_failures"] == 6 and "locked" in r.detail
+
+
+def test_lock_retries_are_a_warning_and_a_silent_loss_is_a_failure(world, monkeypatch):
+    import acceptance as ac
+    db, cfg = world
+    monkeypatch.setattr(ac, "writer_main", lambda db_, rows, tag: (db_.execute("INSERT INTO [%s] ([V]) VALUES ('x')" % ac.PROBE) and None) or {"failed": 0, "retried": 2, "sample": "locked once"})
+    r = ac.check_concurrency(db, cfg, threads=1, per_thread=1, processes=0)
+    assert r.status == ac.WARN and r.data["thread_retries"] == 2 and "إعادة محاولة" in r.detail
+    monkeypatch.setattr(ac, "writer_main", lambda db_, rows, tag: {"failed": 0, "retried": 0, "sample": ""})          # claims success but wrote nothing: records vanished
+    r2 = ac.check_concurrency(db, cfg, threads=1, per_thread=3, processes=0)
+    assert r2.status == ac.FAIL and "بصمت" in r2.detail
+
+
+def test_the_writer_retries_a_locked_write_and_reports_what_happened():
+    import acceptance as ac
+
+    class Flaky:
+        def __init__(self):
+            self.n = 0
+
+        def execute(self, sql, params=()):
+            self.n += 1
+            if self.n in (1, 2):
+                raise RuntimeError("Could not update; currently locked")
+    r = ac.writer_main(Flaky(), 2, "t", retries=3)
+    assert r["failed"] == 0 and r["retried"] == 1 and "locked" in r["sample"]
+    class Dead:
+        def execute(self, sql, params=()):
+            raise RuntimeError("always locked")
+    import time
+    real_sleep = time.sleep
+    time.sleep = lambda s: None
+    try:
+        assert ac.writer_main(Dead(), 2, "t", retries=2)["failed"] == 2
+    finally:
+        time.sleep = real_sleep
 
 
 def test_database_check_reports_a_missing_unique_index(world):

@@ -128,7 +128,7 @@ def child(args):
 def writer(rows, tag):
     import acceptance
     import db
-    print(acceptance.writer_main(db, rows, tag))
+    print(json.dumps(acceptance.writer_main(db, rows, tag)))
     return 0
 
 

@@ -9,6 +9,7 @@ A check that could not run is SKIP - never PASS. The tool's verdict is PASS only
 The functions take the database module as an argument so the logic can be tested here with a stand-in database; the Access-specific
 behaviour (real transactions, locks, text, speed) can only be proven by running the tool on the company PC.
 """
+import json
 import os
 import random
 import statistics
@@ -144,31 +145,38 @@ def check_transactions(db, config):
 
 
 # ------------------------------------------------------------------------------------------------------------- 4. concurrency
-def writer_main(db, rows, tag):
-    """Used by the helper processes: writes `rows` rows, one connection each, and prints how many failed."""
-    failed = 0
+def writer_main(db, rows, tag, retries=5):
+    """Writes `rows` rows, one connection each. A write refused by a lock is retried (0.2 s, 0.4 s ...) up to `retries` times.
+    Returns {"failed": rows never written, "retried": writes that needed a retry, "sample": the first error text}."""
+    failed = retried = 0
+    sample = ""
     for i in range(rows):
-        try:
-            db.execute("INSERT INTO [%s] ([V]) VALUES (?)" % PROBE, ("%s-%d" % (tag, i),))
-        except Exception:                                      # noqa
-            failed += 1
-            time.sleep(0.05)
-    return failed
+        for attempt in range(retries + 1):
+            try:
+                db.execute("INSERT INTO [%s] ([V]) VALUES (?)" % PROBE, ("%s-%d" % (tag, i),))
+                if attempt:
+                    retried += 1
+                break
+            except Exception as e:                             # noqa
+                sample = sample or " ".join(str(e).split())[:140]
+                if attempt == retries:
+                    failed += 1
+                else:
+                    time.sleep(0.2 * (attempt + 1))
+    return {"failed": failed, "retried": retried, "sample": sample}
 
 
 @timed
 def check_concurrency(db, config, threads=4, per_thread=25, processes=2, per_process=25, script=None):
-    """الكتابة المتزامنة: عدة خيوط وعمليتان معاً، دون فقد سجل ولا قفل"""
+    """الكتابة المتزامنة: عدة خيوط وعمليتان معاً، دون فقد سجل (مع إعادة المحاولة عند القفل)"""
     _drop_probe(db)
     db.execute("CREATE TABLE [%s] ([ID] AUTOINCREMENT PRIMARY KEY, [V] TEXT(100))" % PROBE)
-    failures = []
-    lock = threading.Lock()
+    results, lock = [], threading.Lock()
 
     def work(k):
-        f = writer_main(db, per_thread, "t%d" % k)
-        if f:
-            with lock:
-                failures.append(f)
+        r = writer_main(db, per_thread, "t%d" % k)
+        with lock:
+            results.append(("thread", r))
     t0 = time.time()
     try:
         ths = [threading.Thread(target=work, args=(k,)) for k in range(threads)]
@@ -180,22 +188,31 @@ def check_concurrency(db, config, threads=4, per_thread=25, processes=2, per_pro
             t.start()
         for t in ths:
             t.join()
-        proc_failed = 0
         for p in procs:
             out, _err = p.communicate(timeout=300)
             try:
-                proc_failed += int(out.strip().splitlines()[-1])
+                results.append(("process", json.loads(out.strip().splitlines()[-1])))
             except (ValueError, IndexError):
-                proc_failed += per_process
+                results.append(("process", {"failed": per_process, "retried": 0, "sample": "no answer from the helper process: " + (_err or "")[-120:]}))
         expected = threads * per_thread + (processes * per_process if script and processes else 0)
         got = int(db.scalar("SELECT COUNT(*) FROM [%s]" % PROBE, default=0))
-        data = {"expected_rows": expected, "rows_found": got, "thread_failures": sum(failures), "process_failures": proc_failed, "seconds": round(time.time() - t0, 1),
-                "rows_per_second": round(got / max(time.time() - t0, 0.001), 1)}
+        agg = lambda kind, key: sum(r[key] for k, r in results if k == kind)
+        data = {"expected_rows": expected, "rows_found": got, "thread_failures": agg("thread", "failed"), "process_failures": agg("process", "failed"),
+                "thread_retries": agg("thread", "retried"), "process_retries": agg("process", "retried"), "seconds": round(time.time() - t0, 1),
+                "rows_per_second": round(got / max(time.time() - t0, 0.001), 1), "first_error": next((r["sample"] for _k, r in results if r["sample"]), "")}
     finally:
         _drop_probe(db)
-    if data["rows_found"] != data["expected_rows"] or data["thread_failures"] or data["process_failures"]:
-        return Result("conc", check_concurrency.__doc__, FAIL, "المتوقع %d سجلاً والموجود %d، وأخطاء: خيوط %d، عمليات %d" % (data["expected_rows"], data["rows_found"], data["thread_failures"], data["process_failures"]), data)
-    return Result("conc", check_concurrency.__doc__, PASS, "%d سجلاً كُتبت من %d خيوط%s دون فقد (%.0f سجل/ثانية)" % (got, threads, " وعمليتين" if script and processes else "", data["rows_per_second"]), data)
+    failed = data["thread_failures"] + data["process_failures"]
+    silent = data["expected_rows"] - failed - data["rows_found"]
+    if silent:
+        return Result("conc", check_concurrency.__doc__, FAIL, "ضاع %d سجل بصمت (المتوقع %d، الموجود %d، المرفوض صراحةً %d)" % (silent, data["expected_rows"], data["rows_found"], failed), data)
+    if failed:
+        return Result("conc", check_concurrency.__doc__, FAIL, "رُفضت %d كتابة حتى بعد إعادة المحاولة (خيوط %d، عمليات %d): %s" % (failed, data["thread_failures"], data["process_failures"], data["first_error"]), data)
+    retried = data["thread_retries"] + data["process_retries"]
+    if retried:
+        return Result("conc", check_concurrency.__doc__, WARN, "كل السجلات (%d) كُتبت، لكن %d كتابة احتاجت إعادة محاولة بسبب قفل Access (خيوط %d، عمليات %d). النظام يكتب من عملية واحدة وبقفل كتابة عام فلا يتعرّض لهذا عادةً؛ المهم ألا يعمل نسختان من النظام معاً. أول خطأ: %s"
+                      % (got, retried, data["thread_retries"], data["process_retries"], data["first_error"]), data)
+    return Result("conc", check_concurrency.__doc__, PASS, "%d سجلاً كُتبت من %d خيوط%s دون فقد ولا إعادة محاولة (%.0f سجل/ثانية)" % (got, threads, " وعمليتين" if script and processes else "", data["rows_per_second"]), data)
 
 
 # ------------------------------------------------------------------------------------------------------------- 5. Arabic text
