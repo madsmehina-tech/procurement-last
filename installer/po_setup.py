@@ -593,9 +593,11 @@ def step_pip(c):
 
 def step_migrate(c):
     env = {"PYTHONUTF8": "1"}
+    cmd = [c.python, "migrate.py"]
     if c.a.db_mode == "new":
         env.update({"PO_ADMIN_USER": c.a.admin_user, "PO_ADMIN_NAME": c.a.admin_name, "PO_ADMIN_PASSWORD": c.a.admin_password})
-    code, out = c.run([c.python, "migrate.py"], cwd=c.a.app, env=env, timeout=1800)
+        cmd.append("--new-database")                                              # a brand-new EMPTY database: build the base tables too
+    code, out = c.run(cmd, cwd=c.a.app, env=env, timeout=1800)
     if code != 0:
         return "fail", "فشل python migrate.py: %s" % " ".join(out.split())[-300:]
     dup = "يوجد تكرار" in out

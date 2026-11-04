@@ -87,12 +87,19 @@ def status():
         print(("  [x] " if name in done else "  [ ] ") + name)
 
 
-def run(backup=True):
+def run(backup=True, new_db=False):
+    """new_db=True (python migrate.py --new-database): the file is a brand-new EMPTY Access database - create the three base tables first (m000).
+    Without it a database that lacks PurchaseOrders is refused (it is probably the wrong file)."""
     if not db.table_exists("PurchaseOrders"):
-        print("!! جدول PurchaseOrders غير موجود في", db.DB_PATH)
-        print("   تحقق من مسار القاعدة في config.ini (القسم [database]) - هذه القاعدة يجب أن تكون")
-        print("   قاعدة PurchaseSystem.accdb التي يكتب إليها ملف الإكسل.")
-        return False
+        if new_db:
+            print("== قاعدة جديدة فارغة: إنشاء الجداول الأساسية (m000)")
+            importlib.import_module("migrations.m000_base_tables").main()
+        else:
+            print("!! جدول PurchaseOrders غير موجود في", db.DB_PATH)
+            print("   تحقق من مسار القاعدة في config.ini (القسم [database]) - هذه القاعدة يجب أن تكون")
+            print("   قاعدة PurchaseSystem.accdb التي يكتب إليها ملف الإكسل.")
+            print("   (إن كانت قاعدة جديدة فارغة أنشأتها الآن: python migrate.py --new-database)")
+            return False
     done = applied()
     refresh_descriptions()
     pending = [n for n in discover() if n not in done]

@@ -140,10 +140,10 @@ def test_a_full_run_in_order_creates_folders_config_and_database_and_calls_the_r
     assert os.path.isfile(a.app + "/config.ini") and open(a.app + "/deploy/python_path.txt").read() == sys.executable and os.path.isfile(a.app + "/po.bat")
     cmds = [" ".join(c[0]) for c in rec.calls]
     assert any("-m pip install" in c and "requirements.txt" in c for c in cmds)
-    assert any(c.endswith("migrate.py") for c in cmds) and any("setup_check.py" in c for c in cmds) and any("check_storage.py" in c for c in cmds)
-    order = [i for i, c in enumerate(cmds) if "pip install" in c or c.endswith("migrate.py") or "setup_check" in c or "check_storage" in c]
+    assert any("migrate.py" in c for c in cmds) and any("setup_check.py" in c for c in cmds) and any("check_storage.py" in c for c in cmds)
+    order = [i for i, c in enumerate(cmds) if "pip install" in c or "migrate.py" in c or "setup_check" in c or "check_storage" in c]
     assert order == sorted(order) and cmds[order[0]].find("pip") >= 0                                              # pip first, then migrate, then the checks
-    migrate_env = [c[2] for c in rec.calls if c[0][-1].endswith("migrate.py")][0]
+    migrate_env = [c[2] for c in rec.calls if "migrate.py" in c[0]][0]
     assert "PO_ADMIN_PASSWORD" not in migrate_env                                                                   # an existing database: no admin is passed
     assert "ثُبّتت" in summary_ok(results) or True
 
@@ -164,7 +164,8 @@ def test_a_new_database_passes_the_admin_only_to_migrate_and_never_logs_the_pass
 
     rec, log = Echo(), []
     results, overall, ctx = ps.run_install(a, log.append, run=rec)
-    env = [c[2] for c in rec.calls if c[0][-1].endswith("migrate.py")][0]
+    env = [c[2] for c in rec.calls if "migrate.py" in c[0]][0]
+    assert [c[0][-1] for c in rec.calls if "migrate.py" in c[0]] == ["--new-database"]
     assert env["PO_ADMIN_USER"] == "boss" and env["PO_ADMIN_PASSWORD"] == "Sup3rSecret" and env["PYTHONUTF8"] == "1"
     assert os.path.isfile(a.db_path)
     assert not any("Sup3rSecret" in l for l in log), [l for l in log if "Sup3rSecret" in l]                         # (Ctx.run is replaced here: logging goes through Ctx.log)
