@@ -37,6 +37,9 @@ def main():
         if not db.table_exists(table):
             print("- %s: table not found, skipped" % table)
             continue
+        if db.index_exists(table, name):                 # already there (language-independent check): nothing to do
+            print("- %s.%s: already exists" % (table, ", ".join(cols)))
+            continue
         dups = _duplicates(table, cols)
         if dups:
             shown = "؛ ".join(" / ".join(str(d[c]) for c in cols) + " (×%d)" % d["N"] for d in dups[:10])
@@ -49,7 +52,9 @@ def main():
             print("- %s.%s: unique index created" % (table, ", ".join(cols)))
         except Exception as e:                           # noqa - an index that already exists is fine; any other problem is reported, never fatal
             msg = " ".join(str(e).split())[:140]
-            exists = "already exists" in msg.lower() or "موجود" in msg
+            # the REAL Access driver says «Table 'X' already has an index named 'Y'» (found on a real Windows run); other languages say it differently,
+            # so the wording is only a hint: the catalogue is asked again after the failure
+            exists = any(k in msg.lower() for k in ("already exists", "already has an index")) or "موجود" in msg or db.index_exists(table, name)
             print("- %s.%s: %s" % (table, ", ".join(cols), "already exists" if exists else "skipped (%s)" % msg))
             if not exists:
                 complete = False

@@ -46,3 +46,35 @@ def test_running_it_twice_is_harmless():
     m = importlib.import_module("migrations.m026_unique_numbers")
     m.main()
     m.main()
+
+
+def test_the_real_access_wording_of_an_existing_index_counts_as_existing(monkeypatch, capsys):
+    """Found on a real Windows machine: Access says «Table 'X' already has an index named 'Y'». m032 / a second `migrate.py` must still be complete."""
+    import importlib
+    conftest.build_schema()
+    m = importlib.import_module("migrations.m026_unique_numbers")
+    real_execute = m.db.execute
+
+    def access_like(sql, params=()):
+        if sql.startswith("CREATE UNIQUE INDEX"):
+            raise Exception("('HYS11', \"[HYS11] [Microsoft][ODBC Microsoft Access Driver] Table 'PurchaseOrders' already has an index named 'ux_po_number'. (-1403)\")")
+        return real_execute(sql, params)
+    monkeypatch.setattr(m.db, "execute", access_like)
+    monkeypatch.setattr(m.db, "index_exists", lambda t, n: False)                     # even when the catalogue question is unanswerable
+    assert m.main() is True
+    assert "skipped" not in capsys.readouterr().out
+
+
+def test_an_unknown_language_message_is_resolved_by_asking_the_catalogue(monkeypatch):
+    import importlib
+    import re
+    conftest.build_schema()
+    m = importlib.import_module("migrations.m026_unique_numbers")
+    attempted = set()
+
+    def create_fails_in_another_language(sql, params=()):
+        attempted.add(re.search(r"INDEX \[(\w+)\]", sql).group(1))
+        raise Exception("رسالة بلغة أخرى")
+    monkeypatch.setattr(m.db, "index_exists", lambda t, n: n in attempted)              # not there before the CREATE attempt, there afterwards
+    monkeypatch.setattr(m.db, "execute", create_fails_in_another_language)
+    assert m.main() is True

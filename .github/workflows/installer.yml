@@ -70,6 +70,10 @@ jobs:
         if: always()
         shell: pwsh
         run: if (Test-Path D:\PO\install_log.txt) { Get-Content D:\PO\install_log.txt -Tail 400 }
+      - name: Install summary (one line per step)
+        if: always()
+        shell: pwsh
+        run: if (Test-Path D:\PO\install_log.txt) { Select-String -Path D:\PO\install_log.txt -Pattern '\[(OK|WARN|FAIL|SKIP)\]' | ForEach-Object { $_.Line } }
       - name: The server answers
         shell: pwsh
         run: |
