@@ -89,6 +89,11 @@ def sha(path):
 
 
 def main(argv):
+    for _n in ("stdout", "stderr"):                         # Arabic output must not crash when redirected to a file
+        try:
+            getattr(sys, _n).reconfigure(encoding="utf-8", errors="replace")
+        except Exception:                                   # noqa
+            pass
     args = [a for a in argv[1:] if not a.startswith("--")]
     opt = lambda n: argv[argv.index(n) + 1] if n in argv else None
     prog = os.path.abspath(args[0] if args else os.getcwd())

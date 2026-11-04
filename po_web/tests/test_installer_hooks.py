@@ -47,3 +47,16 @@ def test_deploy_scripts_use_the_python_the_installer_chose(bat, needle):
     run_lines = [l for l in text.splitlines() if needle in l and not l.lstrip().lower().startswith("rem")]
     assert run_lines and all('"%PO_PY%"' in l for l in run_lines), run_lines
     assert text.index('set "PO_PY=python"') < text.index(needle)                              # defined before it is used
+
+
+def test_every_tool_survives_redirected_output_with_a_legacy_code_page(tmp_path):
+    """Real-Windows finding: with output captured (cp1252) the tools crashed on their first Arabic line."""
+    import subprocess
+    import sys
+    env = dict(os.environ, PYTHONIOENCODING="cp1252", PYTHONUTF8="0")
+    env.pop("PO_PROTECT", None)
+    r = subprocess.run([sys.executable, os.path.join(conftest.ROOT, "tools", "where_is_my_data.py"), conftest.ROOT], capture_output=True, env=env)
+    assert r.returncode in (0, 1) and "UnicodeEncodeError" not in r.stderr.decode("utf-8", "replace")
+    code = "import config; print('\\u0628\\u062f\\u0623 \\u0627\\u062e\\u062a\\u0628\\u0627\\u0631')"          # config alone makes later Arabic prints safe
+    r2 = subprocess.run([sys.executable, "-c", code], cwd=conftest.ROOT, capture_output=True, env=env)
+    assert r2.returncode == 0 and "بدأ اختبار".encode("utf-8") in r2.stdout, r2.stderr.decode("utf-8", "replace")[-300:]

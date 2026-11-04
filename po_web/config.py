@@ -10,6 +10,20 @@ import os
 import secrets
 import configparser
 
+def _utf8_console():
+    """Arabic text must never crash a tool: when output is redirected (a file, a pipe, a scheduled task) Windows hands Python a legacy code page.
+    (Found on a real Windows machine: every tool that printed Arabic crashed with «charmap» when its output was captured.)"""
+    import sys
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name, None)
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:                                # noqa - no stream, or a replaced one (tests): leave it
+            pass
+
+
+_utf8_console()
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.environ.get("PO_CONFIG") or os.path.join(BASE_DIR, "config.ini")
 

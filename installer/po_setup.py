@@ -559,7 +559,7 @@ def step_config(c):
         with open(os.path.join(a.app, "deploy", "python_path.txt"), "w", encoding="ascii", errors="replace") as f:
             f.write(c.python)
         with open(os.path.join(a.app, "po.bat"), "w", encoding="ascii", errors="replace", newline="\r\n") as f:
-            f.write('@echo off\r\nrem runs python of this installation:  po tools\\setup_check.py\r\n"%s" %%*\r\n' % c.python)
+            f.write('@echo off\r\nrem runs python of this installation:  po tools\\setup_check.py\r\nset PYTHONUTF8=1\r\n"%s" %%*\r\n' % c.python)
     return "ok", "كُتب config.ini (UTF-8) وpo.bat"
 
 
