@@ -115,7 +115,7 @@ ENVIRONMENT = _get("server", "environment", "PO_ENV", "production").lower()   # 
 CSRF_ENABLED = _get("server", "csrf", "PO_CSRF", "1") != "0"          # request-forgery protection; only the automatic tests switch it off
 SESSION_HOURS = int(_get("server", "session_hours", "PO_SESSION_HOURS", "12"))
 
-APP_VERSION = "27.8"
+APP_VERSION = "27.9"
 
 
 def secret_key_source():

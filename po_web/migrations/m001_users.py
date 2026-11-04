@@ -35,10 +35,16 @@ def main():
 
     print()
     print("Now create the first (admin) account.")
-    username = input("Admin username: ").strip()
-    fullname = input("Full name (shown in the app): ").strip() or username
-    password = getpass.getpass("Admin password: ")
-    password2 = getpass.getpass("Confirm password: ")
+    import os
+    if os.environ.get("PO_ADMIN_USER") and os.environ.get("PO_ADMIN_PASSWORD"):      # given by the installer (child process environment only; never written anywhere)
+        username = os.environ["PO_ADMIN_USER"].strip()
+        fullname = (os.environ.get("PO_ADMIN_NAME") or "").strip() or username
+        password = password2 = os.environ["PO_ADMIN_PASSWORD"]
+    else:
+        username = input("Admin username: ").strip()
+        fullname = input("Full name (shown in the app): ").strip() or username
+        password = getpass.getpass("Admin password: ")
+        password2 = getpass.getpass("Confirm password: ")
     if password != password2:
         print("Passwords did not match - run this script again.")
         return
