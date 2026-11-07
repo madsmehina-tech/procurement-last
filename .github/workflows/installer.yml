@@ -44,6 +44,12 @@ jobs:
           Start-Sleep -Seconds 3
           Get-Content selftest.txt
           if (-not (Select-String -Path selftest.txt -Pattern '^OK')) { exit 1 }
+      - name: The wizard window really opens and works (GUI self test on the built exe)
+        shell: pwsh
+        run: |
+          Start-Process -FilePath .\dist\PO_Setup.exe -ArgumentList '--gui-selftest','--out','gui_selftest.txt' -Wait
+          Get-Content gui_selftest.txt
+          if (-not (Select-String -Path gui_selftest.txt -Pattern '^OK')) { exit 1 }
       - uses: actions/upload-artifact@v4
         with:
           name: PO_Setup

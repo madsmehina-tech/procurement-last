@@ -754,7 +754,7 @@ def summary_text(results, overall, a):
 
 
 # ------------------------------------------------------------------------------------------------------------- the wizard (tkinter)
-def wizard(initial=None):
+def wizard(initial=None, selftest_out=None):
     import tkinter as tk
     from tkinter import filedialog, messagebox, ttk
     import threading
@@ -762,8 +762,8 @@ def wizard(initial=None):
     root.title("تثبيت نظام المشتريات والمقاولين")
     root.geometry("760x640")
     a = initial or Answers()
-    v = {k: tk.StringVar(value=str(getattr(a, k))) for k in ("share_folder", "base", "share_name", "team_group", "db_existing", "admin_user", "admin_name", "admin_password", "admin_password2",
-                                                              "backup_db_dir", "backup_set_dir", "port") if hasattr(a, k) or k == "admin_password2"}
+    v = {k: tk.StringVar(value=str(getattr(a, k, ""))) for k in ("share_folder", "base", "share_name", "team_group", "db_existing", "admin_user", "admin_name", "admin_password", "admin_password2",
+                                                              "backup_db_dir", "backup_set_dir", "port")}
     flags = {k: tk.BooleanVar(value=getattr(a, k)) for k in ("create_share", "install_tesseract", "open_firewall", "autostart", "start_after", "replace_existing")}
     db_mode = tk.StringVar(value=a.db_mode)
     frames = {}
@@ -863,6 +863,24 @@ def wizard(initial=None):
             root.after(0, lambda: btn.state(["!disabled"]))
         threading.Thread(target=work, daemon=True).start()
     btn.configure(command=go)
+    if selftest_out:                       # build everything above for real, read the fields back, validate, close (used by CI on Windows)
+        problems = []
+        try:
+            root.update()
+            z = collect()
+            if z.port != int(a.port) or z.share_folder != a.share_folder:
+                problems.append("collect() does not return what was shown")
+            validate(z, check_paths=False)
+            if len(nb.tabs()) != 5:
+                problems.append("tabs=%d" % len(nb.tabs()))
+            suggest()
+        except Exception as e:             # noqa: BLE001
+            problems.append("%s: %s" % (type(e).__name__, e))
+        root.destroy()
+        text = "OK" if not problems else "PROBLEMS: " + "; ".join(problems)
+        open(selftest_out, "w", encoding="utf-8").write(text + "\n")
+        print(text)
+        return 0 if not problems else 1
     root.mainloop()
 
 
@@ -894,6 +912,7 @@ def main(argv=None):
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--answers", help="JSON file of answers")
     ap.add_argument("--selftest", action="store_true", help="checks that this tool's own logic works (no changes), writes the result to --out")
+    ap.add_argument("--gui-selftest", action="store_true", help="opens the wizard window logic, checks it, closes it (writes the result to --out)")
     ap.add_argument("--out")
     args = ap.parse_args(argv)
     a = Answers()
@@ -925,6 +944,8 @@ def main(argv=None):
         res, overall, _c = run_install(a, make_logger(a.log_file) if not args.dry_run else print, dry=args.dry_run)
         print(summary_text(res, overall, a))
         return 0 if overall in ("ok", "warn") else 1
+    if args.gui_selftest:
+        return wizard(a, selftest_out=args.out or os.path.join(os.environ.get("TEMP", "."), "po_gui_selftest.txt"))
     if IS_WINDOWS and not is_admin():
         relaunch_as_admin()
         return 0
