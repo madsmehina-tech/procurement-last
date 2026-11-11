@@ -144,7 +144,7 @@ def test_a_full_run_in_order_creates_folders_config_and_database_and_calls_the_r
     order = [i for i, c in enumerate(cmds) if "pip install" in c or "migrate.py" in c or "setup_check" in c or "check_storage" in c]
     assert order == sorted(order) and cmds[order[0]].find("pip") >= 0                                              # pip first, then migrate, then the checks
     migrate_env = [c[2] for c in rec.calls if "migrate.py" in c[0]][0]
-    assert "PO_ADMIN_PASSWORD" not in migrate_env                                                                   # an existing database: no admin is passed
+    assert migrate_env.get("PO_ADMIN_PASSWORD") == "Secret123"                                                         # given only so a database WITHOUT an admin account can get one; unused otherwise
     assert "ثُبّتت" in summary_ok(results) or True
 
 
@@ -318,3 +318,11 @@ def test_an_installer_with_a_bad_signature_is_never_run(tmp_path, monkeypatch):
     rec = BadSig()
     st, msg = ps.step_python(ps.Ctx(a, run=rec, download=lambda url, dest, sha=None: dest))
     assert st == "fail" and "توقيع" in msg and not [c for c in rec.calls if c[0][0].endswith("amd64.exe")]
+
+
+def test_migrate_without_admin_in_existing_db_gives_a_clear_message():
+    a = ps.Answers(share_folder=r"E:\Share", base=r"E:\PO", db_mode="existing", admin_password="")
+    c = ps.Ctx(a, log=lambda m: None, dry=False, run=lambda cmd, **k: (1, 'input("Admin username: ") EOFError'), download=None)
+    c.python = "python"
+    status, detail = ps.step_migrate(c)
+    assert status == "fail" and "حساب مدير" in detail

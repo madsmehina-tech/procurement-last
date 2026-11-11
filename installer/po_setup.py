@@ -130,6 +130,8 @@ def validate(a, check_paths=True):
         errs.append("كلمة مرور المدير: 8 خانات فأكثر وفيها حرف ورقم.")
     if a.db_mode == "new" and not re.match(r"^[A-Za-z0-9_.\-]{3,50}$", a.admin_user or ""):
         errs.append("اسم مستخدم المدير: حروف إنجليزية وأرقام (3 خانات فأكثر).")
+    if a.db_mode == "existing" and a.admin_password and not ADMIN_PASSWORD_RULE.match(a.admin_password):
+        errs.append("كلمة مرور المدير: 8 خانات فأكثر وفيها حرف ورقم (أو اتركها فارغة إن كانت القاعدة فيها مدير).")
     if a.db_mode == "existing" and check_paths and not os.path.isfile(a.db_existing or ""):
         errs.append("ملف القاعدة الموجودة غير موجود: %s" % a.db_existing)
     if a.db_mode not in ("new", "existing"):
@@ -191,7 +193,7 @@ class Ctx:
         e = dict(os.environ)
         e.update(env or {})
         try:
-            p = subprocess.run(cmd, cwd=cwd, env=e, capture_output=True, timeout=timeout)
+            p = subprocess.run(cmd, cwd=cwd, env=e, capture_output=True, timeout=timeout, stdin=subprocess.DEVNULL)
         except (OSError, subprocess.TimeoutExpired) as ex:
             return 1, "%s: %s" % (type(ex).__name__, ex)
         out = (p.stdout or b"").decode("utf-8", "replace") + (p.stderr or b"").decode("utf-8", "replace")
@@ -594,10 +596,13 @@ def step_pip(c):
 def step_migrate(c):
     env = {"PYTHONUTF8": "1"}
     cmd = [c.python, "migrate.py"]
-    if c.a.db_mode == "new":
+    if c.a.admin_password:                                                            # only used if the database has no admin account yet
         env.update({"PO_ADMIN_USER": c.a.admin_user, "PO_ADMIN_NAME": c.a.admin_name, "PO_ADMIN_PASSWORD": c.a.admin_password})
+    if c.a.db_mode == "new":
         cmd.append("--new-database")                                              # a brand-new EMPTY database: build the base tables too
     code, out = c.run(cmd, cwd=c.a.app, env=env, timeout=1800)
+    if code != 0 and "Admin username" in out:
+        return "fail", "القاعدة المنسوخة لا تحتوي حساب مدير. ارجع إلى صفحة «حساب المدير» وأدخل اسماً وكلمة مرور (8+ وحرف ورقم) ثم أعد التثبيت."
     if code != 0:
         return "fail", "فشل python migrate.py: %s" % " ".join(out.split())[-300:]
     dup = "يوجد تكرار" in out
@@ -808,7 +813,7 @@ def wizard(initial=None, selftest_out=None):
     row(f2, "منفذ النظام:", v["port"], 5)
 
     f3 = page("٣) حساب المدير")
-    ttk.Label(f3, text="للقاعدة الجديدة فقط. كلمة المرور لا تُحفظ ولا تُكتب في السجل.").grid(row=0, column=0, columnspan=3, sticky="e")
+    ttk.Label(f3, text="مطلوب للقاعدة الجديدة. للقاعدة الموجودة: أدخله فقط إذا كانت بلا حساب مدير. كلمة المرور لا تُحفظ ولا تُكتب في السجل.").grid(row=0, column=0, columnspan=3, sticky="e")
     row(f3, "اسم المستخدم (إنجليزي):", v["admin_user"], 1)
     row(f3, "الاسم الظاهر:", v["admin_name"], 2)
     row(f3, "كلمة المرور (8+ وحرف ورقم):", v["admin_password"], 3, show="•")
