@@ -55,6 +55,15 @@ jobs:
           name: PO_Setup
           path: dist/PO_Setup.exe
 
+  tools:
+    needs: logic
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PO_import_pdfs_tool
+          path: po_web/tools/import_legacy_pdfs.py
   e2e:
     needs: logic
     runs-on: windows-latest
