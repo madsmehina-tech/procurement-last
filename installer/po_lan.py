@@ -197,7 +197,7 @@ def host_alias_and_export(c):
             notes.append("الاسم http://%s:%d يعمل على هذا الجهاز" % (alias, int(a.port)))
         except OSError as e:
             notes.append("تعذّر تعديل ملف hosts (%s)" % e)
-    data = {"product": "po_web", "version": 1, "server_name": socket.gethostname(), "server_ip": ip, "port": int(a.port), "alias": alias, "tailscale_ip": ts,
+    data = {"product": "po_web", "version": 1, "server_name": socket.gethostname(), "server_ip": ip, "port": int(a.port), "alias": alias, "tailscale_ip": ts, "share_name": (a.share_name if getattr(a, "create_share", True) else "") or "PO_Archive",
             "created": datetime.now().strftime("%Y-%m-%d %H:%M")}
     out_dir = a.export_dir or a.base
     path = os.path.join(out_dir, "client_import.json")
@@ -232,6 +232,8 @@ class ClientAnswers:
     share_user: str = ""             # the Windows account of the MAIN PC used to open the shared archive folder from this PC (optional)
     share_password: str = ""         # kept by Windows Credential Manager on this PC (cmdkey); never written by this tool or logged
     server_name: str = ""            # the main PC's computer name (from client_import.json)
+    share_name: str = "PO_Archive"   # the name of the shared archive folder on the main PC
+    map_drive: str = ""              # a drive letter (e.g. P) to show the shared archive as a network drive on this PC; empty = none
 
 
 def load_import(path):
@@ -248,6 +250,7 @@ def apply_import(a, data):
     a.alias = data.get("alias") or a.alias
     a.tailscale_ip = data.get("tailscale_ip") or a.tailscale_ip
     a.server_name = data.get("server_name") or a.server_name
+    a.share_name = data.get("share_name") or a.share_name
     return a
 
 
@@ -301,7 +304,128 @@ def save_share_credentials(a, reach, runner=None):
     return ok, failed
 
 
-def run_client(a, log, ps, ps_quote, is_admin, dry=False, desktop=None, hosts=None, tester=None, opener_fn=None, cred_runner=None):
+# ---- things that belong to the PERSON at the desk (saved account, network drive, desktop shortcut) ---------------------------------------------
+# PO_Setup runs as administrator. A network drive made there is invisible to the person's own Explorer, and when another (admin) account was typed in
+# the UAC prompt, a saved account or a shortcut would land in THAT account. So these steps run as a small script inside the desk user's own session.
+def _psq(text):
+    return "'" + str(text).replace("'", "''") + "'"
+
+
+def share_account(a, reach):
+    owner = a.server_name or reach
+    return a.share_user if ("\\" in a.share_user or "@" in a.share_user) else "%s\\%s" % (owner, a.share_user)
+
+
+def drive_letter(text):
+    m = re.match(r"^\s*([A-Za-z])\s*:?\s*$", text or "")
+    return m.group(1).upper() if m else ""
+
+
+def user_script(a, reach, link, result_file):
+    """PowerShell for the desk user's session: save the account, map the drive, make the shortcut; one line per outcome in result_file."""
+    lines = ["$ErrorActionPreference = 'Continue'", "$r = @()"]
+    if a.share_user and a.share_password:
+        lines += ["$u = %s; $p = %s" % (_psq(share_account(a, reach)), _psq(a.share_password)),
+                  "foreach ($t in @(%s)) { cmdkey /add:$t /user:$u /pass:$p | Out-Null; $r += ('CRED=' + $t + '|' + $LASTEXITCODE) }" % ", ".join(_psq(t) for t in credential_targets(a, reach))]
+    d = drive_letter(a.map_drive)
+    if d:
+        unc = "\\\\%s\\%s" % (reach, a.share_name or "PO_Archive")
+        lines += ["cmd /c 'net use %s: /delete /y' 2>&1 | Out-Null" % d,
+                  "$o = (cmd /c ('net use %s: \"' + %s + '\" /persistent:yes') 2>&1 | Out-String)" % (d, _psq(unc)),
+                  "$r += ('DRIVE=%s|' + $LASTEXITCODE + '|' + (($o -replace '\\s+', ' ').Trim()))" % d]
+    if a.shortcut:
+        safe = re.sub(r'[\\/:*?"<>|]', "", a.shortcut_name).strip() or "PO"
+        lines += ["$f = Join-Path ([Environment]::GetFolderPath('Desktop')) %s" % _psq(safe + ".url"),
+                  "Set-Content -LiteralPath $f -Value ('[InternetShortcut]' + \"`r`n\" + 'URL=' + %s) -Encoding ASCII; $r += ('LNK=' + $f)" % _psq(link)]
+    lines.append("Set-Content -LiteralPath %s -Value $r -Encoding UTF8" % _psq(result_file))
+    return "\r\n".join(lines) + "\r\n"
+
+
+def undo_user_script(ctx, result_file):
+    lines = ["$r = @()"]
+    for t in ctx.get("cmdkeys", []):
+        lines.append("cmdkey /delete:%s | Out-Null" % t)
+    if ctx.get("drive"):
+        lines.append("cmd /c 'net use %s: /delete /y' 2>&1 | Out-Null" % ctx["drive"])
+    for lnk in ctx.get("shortcuts", []):
+        lines.append("Remove-Item -LiteralPath %s -Force -ErrorAction SilentlyContinue" % _psq(lnk))
+    lines.append("Set-Content -LiteralPath %s -Value 'DONE' -Encoding UTF8" % _psq(result_file))
+    return "\r\n".join(lines) + "\r\n"
+
+
+def parse_user_result(text):
+    out = {"cmdkeys": [], "cred_failed": [], "drive": "", "drive_error": "", "shortcuts": []}
+    for line in (text or "").splitlines():
+        line = line.strip().lstrip("\ufeff")
+        if line.startswith("CRED="):
+            t, _s, code = line[5:].partition("|")
+            (out["cmdkeys"] if code.strip() == "0" else out["cred_failed"]).append(t)
+        elif line.startswith("DRIVE="):
+            parts = line[6:].split("|", 2)
+            if len(parts) >= 2 and parts[1].strip() == "0":
+                out["drive"] = parts[0]
+            else:
+                out["drive_error"] = parts[2] if len(parts) > 2 else "?"
+        elif line.startswith("LNK="):
+            out["shortcuts"].append(line[4:])
+    return out
+
+
+def run_in_user_session(script_text, ps, work_dir=None, timeout=90):
+    """Runs a PowerShell script as the person signed in at the desk (a one-time scheduled task in their session), or directly when there is no such
+    session / it is the same account and no separate session is needed. Returns (result text or None, how: 'desk-user' | 'direct' | 'failed')."""
+    import subprocess
+    import uuid
+    work = work_dir or os.path.join(program_data_dir(), "user_step")
+    os.makedirs(work, exist_ok=True)
+    tag = uuid.uuid4().hex[:10]
+    script, result = os.path.join(work, "s_%s.ps1" % tag), os.path.join(work, "r_%s.txt" % tag)
+    text = script_text.replace("__RESULT__", result)
+    with open(script, "w", encoding="utf-8-sig", newline="") as f:           # (with a BOM: Windows PowerShell reads Arabic names correctly)
+        f.write(text)
+
+    def read():
+        try:
+            with open(result, "r", encoding="utf-8-sig") as f:
+                return f.read()
+        except OSError:
+            return None
+    how = "failed"
+    try:
+        reg = ("$u = (Get-CimInstance Win32_ComputerSystem).UserName; "
+               "if (-not $u) { $p = Get-CimInstance Win32_Process -Filter \"Name='explorer.exe'\" | Select-Object -First 1; if ($p) { $o = Invoke-CimMethod -InputObject $p -MethodName GetOwner; $u = $o.Domain + '\\' + $o.User } }; "
+               "if (-not $u) { Write-Output 'NOUSER'; exit 3 }; "
+               "icacls %s /inheritance:r /grant ($u + ':(OI)(CI)M') '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null; "
+               "$a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"' + %s + '\"'); "
+               "$pr = New-ScheduledTaskPrincipal -UserId $u -LogonType Interactive -RunLevel Limited; "
+               "Register-ScheduledTask -TaskName 'PO Setup (user step)' -Action $a -Principal $pr -Force | Out-Null; "
+               "Start-ScheduledTask -TaskName 'PO Setup (user step)'; "
+               "for ($i = 0; $i -lt 120; $i++) { Start-Sleep -Milliseconds 500; if (Test-Path -LiteralPath %s) { break } }; "
+               "Unregister-ScheduledTask -TaskName 'PO Setup (user step)' -Confirm:$false -ErrorAction SilentlyContinue; "
+               "if (Test-Path -LiteralPath %s) { exit 0 } else { Write-Output 'NORESULT'; exit 4 }") % (_psq(work), _psq(script), _psq(result), _psq(result))
+        try:
+            p = subprocess.run(ps(reg), capture_output=True, timeout=timeout, stdin=subprocess.DEVNULL)
+            if p.returncode == 0 and read() is not None:
+                how = "desk-user"
+        except (OSError, subprocess.SubprocessError):
+            pass
+        if how == "failed":                                                    # no desk session (or the task could not run): do it in this process's own account
+            try:
+                subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script], capture_output=True, timeout=timeout, stdin=subprocess.DEVNULL)
+                if read() is not None:
+                    how = "direct"
+            except (OSError, subprocess.SubprocessError):
+                pass
+        return read(), how
+    finally:
+        for f in (script, result):
+            try:
+                os.remove(f)
+            except OSError:
+                pass
+
+
+def run_client(a, log, ps, ps_quote, is_admin, dry=False, desktop=None, hosts=None, tester=None, opener_fn=None, cred_runner=None, user_runner=None):
     """The client steps. Returns (results, overall) like run_install."""
     results, overall = [], "ok"
     admin = bool(is_admin() if callable(is_admin) else is_admin)
@@ -350,6 +474,33 @@ def run_client(a, log, ps, ps_quote, is_admin, dry=False, desktop=None, hosts=No
             except OSError as e:
                 add("alias", "الاسم البديل", "warn", "تعذّر تعديل ملف hosts (%s)؛ سيُستعمل العنوان الرقمي." % e)
                 link = "http://%s:%d" % (reach, int(a.port))
+    hooks = desktop is not None or cred_runner is not None                           # (the unit tests drive the simple path)
+    if not dry and not hooks and (a.share_user or drive_letter(a.map_drive) or a.shortcut) and (user_runner is not None or os.name == "nt"):
+        if a.share_user and not a.share_password:
+            add("cred", "حساب مجلد الشير", "warn", "أدخل كلمة مرور الحساب «%s» ليُحفظ؛ لم يُحفظ." % a.share_user)
+        if a.map_drive and not drive_letter(a.map_drive):
+            add("drive", "قرص الشبكة", "warn", "حرف القرص غير صالح: «%s» (اكتب حرفاً واحداً مثل P)." % a.map_drive)
+        text, how = (user_runner or (lambda sc: run_in_user_session(sc, ps)))(user_script(a, reach, link, "__RESULT__"))
+        if text is None:
+            add("user", "إعدادات المستخدم", "warn", "تعذّر تنفيذ خطوات المستخدم (الحساب المحفوظ / قرص الشبكة / الاختصار). افتح الرابط يدوياً: %s" % link)
+        else:
+            r = parse_user_result(text)
+            where = "في حساب المستخدم الجالس على الجهاز" if how == "desk-user" else "في الحساب الذي شغّل الأداة"
+            uc = state.setdefault("user_ctx", {"cmdkeys": [], "drive": "", "shortcuts": []})
+            if a.share_user and a.share_password:
+                uc["cmdkeys"] = sorted(set(uc.get("cmdkeys", []) + r["cmdkeys"]))
+                add("cred", "حساب مجلد الشير", "ok" if r["cmdkeys"] and not r["cred_failed"] else "warn",
+                    ("حُفظ الحساب «%s» %s للجهاز الرئيسي: %s" % (a.share_user, where, "، ".join(r["cmdkeys"]))) if r["cmdkeys"] else "تعذّر حفظ الحساب في ويندوز.")
+            if drive_letter(a.map_drive):
+                if r["drive"]:
+                    uc["drive"] = r["drive"]
+                    add("drive", "قرص الشبكة", "ok", "القرص %s: يفتح \\\\%s\\%s (يبقى بعد إعادة التشغيل)" % (r["drive"], reach, a.share_name))
+                else:
+                    add("drive", "قرص الشبكة", "warn", "تعذّر ربط القرص %s: (%s). تأكد من حساب الجهاز الرئيسي وكلمة مروره، وأن الجهاز الرئيسي يعمل." % (drive_letter(a.map_drive), r["drive_error"][:140]))
+            if a.shortcut:
+                uc["shortcuts"] = sorted(set(uc.get("shortcuts", []) + r["shortcuts"]))
+                add("shortcut", "اختصار سطح المكتب", "ok" if r["shortcuts"] else "warn", r["shortcuts"][0] if r["shortcuts"] else "تعذّر إنشاء الاختصار. افتح الرابط يدوياً: %s" % link)
+        a = dataclasses.replace(a, share_user="", shortcut=False)                    # done above: skip the simple path below
     if a.share_user:
         if not a.share_password:
             add("cred", "حساب مجلد الشير", "warn", "أدخل كلمة مرور الحساب «%s» ليُحفظ؛ لم يُحفظ شيء." % a.share_user)
@@ -418,6 +569,10 @@ def remove_lan(c_run, ps, hosts=None, state=None):
             done.append("اختصار: حُذف " + lnk)
         except OSError:
             pass
+    uc = st.get("user_ctx") or {}
+    if (uc.get("cmdkeys") or uc.get("drive") or uc.get("shortcuts")) and os.name == "nt":
+        text, how = run_in_user_session(undo_user_script(uc, "__RESULT__"), ps)
+        done.append("إعدادات المستخدم (الحساب المحفوظ، قرص الشبكة %s، الاختصار): %s" % (uc.get("drive") or "—", "أُزيلت" if text is not None else "تعذّرت إزالتها"))
     for t in st.get("cmdkeys", []):
         code, _o = c_run(["cmdkey", "/delete:" + t])
         done.append("حساب محفوظ للجهاز الرئيسي (%s): %s" % (t, "حُذف" if code == 0 else "غير موجود"))

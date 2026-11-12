@@ -1045,9 +1045,9 @@ def client_wizard(initial=None, selftest_out=None):
     import threading
     root = tk.Tk()
     root.title("إعداد جهاز عضو الفريق")
-    root.geometry("720x680")
+    root.geometry("720x740")
     a = initial or lan.ClientAnswers()
-    v = {k: tk.StringVar(value=str(getattr(a, k, ""))) for k in ("import_file", "server", "port", "alias", "tailscale_ip", "shortcut_name", "share_user", "share_password")}
+    v = {k: tk.StringVar(value=str(getattr(a, k, ""))) for k in ("import_file", "server", "port", "alias", "tailscale_ip", "shortcut_name", "share_user", "share_password", "map_drive")}
     flags = {k: tk.BooleanVar(value=bool(getattr(a, k))) for k in ("outside_office", "shortcut", "open_browser")}
     f = ttk.Frame(root, padding=14)
     f.pack(fill="both", expand=True)
@@ -1067,17 +1067,18 @@ def client_wizard(initial=None, selftest_out=None):
     row("اسم الاختصار على سطح المكتب:", "shortcut_name", 6)
     row("حساب ويندوز على الجهاز الرئيسي لفتح مجلد الشير (اختياري):", "share_user", 12)
     row("كلمة مرور ذلك الحساب (تُحفظ في ويندوز هذا الجهاز فقط):", "share_password", 13, show="•")
+    row("حرف قرص الشبكة لمجلد الأرشيف (مثل P، أو فارغ):", "map_drive", 15)
     ttk.Checkbutton(f, text="أعمل الآن من خارج المكتب (عبر Tailscale)", variable=flags["outside_office"]).grid(row=7, column=0, columnspan=3, sticky="e")
     ttk.Checkbutton(f, text="أنشئ اختصاراً على سطح المكتب", variable=flags["shortcut"]).grid(row=8, column=0, columnspan=3, sticky="e")
     ttk.Checkbutton(f, text="افتح النظام بعد الإعداد", variable=flags["open_browser"]).grid(row=9, column=0, columnspan=3, sticky="e")
     box = tk.Text(f, height=10, width=80, wrap="word")
-    box.grid(row=14, column=0, columnspan=3, pady=8)
+    box.grid(row=16, column=0, columnspan=3, pady=8)
     btn = ttk.Button(f, text="اختبر وأعدّ")
     btn.grid(row=10, column=1, pady=6)
 
     def collect():
         z = lan.ClientAnswers()
-        for k in ("import_file", "server", "alias", "tailscale_ip", "shortcut_name", "share_user"):
+        for k in ("import_file", "server", "alias", "tailscale_ip", "shortcut_name", "share_user", "map_drive"):
             setattr(z, k, v[k].get().strip())
         z.share_password = v["share_password"].get()
         z.port = int(v["port"].get() or 5000)
@@ -1585,6 +1586,7 @@ def main(argv=None):
     ap.add_argument("--server", help="client: address of the main PC")
     ap.add_argument("--port", type=int, help="client: port (default 5000)")
     ap.add_argument("--alias", help="client: friendly name for the link")
+    ap.add_argument("--map-drive", help="client: drive letter for the shared archive folder (e.g. P)")
     ap.add_argument("--share-user", help="client: the main PC's Windows account for the shared archive folder (its password is read from the environment variable PO_SHARE_PASSWORD)")
     ap.add_argument("--export", action="store_true", help="full backup: writes PO_Export_<date>.zip (database + archive + old uploads) from --app into --dest; changes nothing")
     ap.add_argument("--app", help="export: the program folder (the one with config.ini)")
@@ -1634,7 +1636,7 @@ def main(argv=None):
         return 0 if r["ok"] else 1
     if args.role == "client" and (args.silent or args.dry_run):
         z = lan.ClientAnswers(import_file=args.import_file or "", server=args.server or "", alias=args.alias or "", open_browser=False,
-                              share_user=args.share_user or "", share_password=os.environ.get("PO_SHARE_PASSWORD", ""))
+                              share_user=args.share_user or "", share_password=os.environ.get("PO_SHARE_PASSWORD", ""), map_drive=args.map_drive or "")
         if args.port:
             z.port = args.port
         res, overall = run_client_answers(z, print, dry=args.dry_run)

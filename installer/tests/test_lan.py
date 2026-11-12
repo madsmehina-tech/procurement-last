@@ -223,3 +223,36 @@ def test_boot_account_rules(tmp_path):
     assert not ps.python_private_to(r"C:\Users\D\AppData\Local\Programs\Python\Python312\python.exe", "PC\\d")
     assert not ps.python_private_to(r"C:\Program Files\Python312\python.exe", "PC\\svc")
     assert any("كلمة مرور ويندوز" in e for e in ps.validate(answers(tmp_path, boot_start=True, boot_user="svc"), check_paths=False))
+
+
+def test_user_steps_run_in_the_desk_users_session_and_are_recorded_for_removal(tmp_path, monkeypatch):
+    monkeypatch.setattr(lan, "state_path", lambda: str(tmp_path / "state.json"))
+    a = lan.ClientAnswers(server="192.168.100.55", server_name="ENG-PC", share_name="PO_Archive", open_browser=False, share_user="po", share_password="S3c'ret", map_drive="p:")
+    seen = []
+
+    def runner(script):
+        seen.append(script)
+        return "\ufeffCRED=192.168.100.55|0\r\nCRED=ENG-PC|0\r\nDRIVE=P|0|The command completed successfully.\r\nLNK=C:\\Users\\sara\\Desktop\\x.url\r\n", "desk-user"
+    logs = []
+    res, overall = lan.run_client(a, logs.append, ps.ps, ps.ps_quote, False, tester=lambda h, p: (True, "ok"), user_runner=runner)
+    assert overall == "ok", res
+    sc = seen[0]
+    assert "net use P: " in sc and "\\\\192.168.100.55\\PO_Archive" in sc and "/persistent:yes" in sc and "$p = 'S3c''ret'" in sc and "/user:$u" in sc
+    assert "S3c" not in "\n".join(logs) and "S3c" not in (tmp_path / "state.json").read_text(encoding="utf-8")
+    uc = lan.load_state(str(tmp_path / "state.json"))["user_ctx"]
+    assert uc["drive"] == "P" and uc["cmdkeys"] == ["192.168.100.55", "ENG-PC"] and uc["shortcuts"] == ["C:\\Users\\sara\\Desktop\\x.url"]
+    assert [r[0] for r in res if r[0] in ("cred", "drive", "shortcut")] == ["cred", "drive", "shortcut"]
+    undo = lan.undo_user_script(uc, "R")
+    assert "cmdkey /delete:ENG-PC" in undo and "net use P: /delete /y" in undo and "x.url" in undo
+
+
+def test_a_drive_that_cannot_be_mapped_is_reported_with_the_windows_reason(tmp_path, monkeypatch):
+    monkeypatch.setattr(lan, "state_path", lambda: str(tmp_path / "state.json"))
+    a = lan.ClientAnswers(server="192.168.100.55", open_browser=False, map_drive="P", shortcut=False)
+    res, overall = lan.run_client(a, lambda m: None, ps.ps, ps.ps_quote, False, tester=lambda h, p: (True, "ok"),
+                                  user_runner=lambda sc: ("DRIVE=P|2|System error 1326 has occurred. The user name or password is incorrect.", "direct"))
+    drive = [r for r in res if r[0] == "drive"][0]
+    assert overall == "warn" and drive[2] == "warn" and "1326" in drive[3]
+    assert lan.drive_letter("p:") == "P" and lan.drive_letter("PO") == "" and lan.drive_letter("") == ""
+    res, overall = lan.run_client(lan.ClientAnswers(server="1.2.3.4", open_browser=False), lambda m: None, ps.ps, ps.ps_quote, False, tester=lambda h, p: (True, "ok"), user_runner=lambda sc: (None, "failed"))
+    assert overall == "warn" and any(r[0] == "user" for r in res)

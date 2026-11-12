@@ -128,14 +128,50 @@ jobs:
           Get-NetFirewallRule -DisplayName 'PO Web*' | Format-Table DisplayName, Enabled, Profile
           if (-not (Select-String -Path C:\Windows\System32\drivers\etc\hosts -Pattern 'poweb.*PO-SETUP')) { exit 1 }
           if (-not (Test-Path D:\PO\client_import.json)) { exit 1 }
+      - name: PROBE - purchase-order PDF (Edge headless) under the accounts a boot task can use
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory D:\probe -Force | Out-Null
+          icacls D:\probe /grant '*S-1-1-0:(OI)(CI)F' | Out-Null
+          @'
+          import os, sys
+          sys.path.insert(0, r"D:\PO\app"); os.chdir(r"D:\PO\app")
+          import config, pdfgen
+          out = sys.argv[1]; config.PDF_ARGS = sys.argv[2] if len(sys.argv) > 2 else ""
+          try:
+              pdfgen.html_to_pdf("<html dir='rtl'><body><h1>اختبار أمر شراء</h1></body></html>", out + ".pdf"); r = "OK %d bytes" % os.path.getsize(out + ".pdf")
+          except Exception as e:
+              r = "FAIL %s: %s" % (type(e).__name__, e)
+          open(out, "w", encoding="utf-8").write(r + " | TEMP=" + os.environ.get("TEMP", "") + " | USER=" + os.environ.get("USERNAME", ""))
+          '@ -replace '(?m)^          ', '' | Set-Content D:\probe\probe.py -Encoding UTF8
+          $py = (Get-Content D:\PO\app\deploy\python_path.txt).Trim()
+          function Probe($name, $user, $pw, $extra) {
+            $out = "D:\probe\$name.txt"
+            $arg = "D:\probe\probe.py `"$out`"" + $(if ($extra) { " `"$extra`"" } else { "" })
+            $a = New-ScheduledTaskAction -Execute $py -Argument $arg -WorkingDirectory 'D:\PO\app'
+            if ($user -eq 'SYSTEM') { Register-ScheduledTask -TaskName "probe-$name" -Action $a -Principal (New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest) -Force | Out-Null }
+            else { Register-ScheduledTask -TaskName "probe-$name" -Action $a -User $user -Password $pw -RunLevel Limited -Force | Out-Null }
+            Start-ScheduledTask -TaskName "probe-$name"
+            foreach ($i in 1..70) { Start-Sleep -Seconds 2; if (Test-Path $out) { break } }
+            "PROBE $name => " + $(if (Test-Path $out) { Get-Content $out -Encoding UTF8 } else { 'NO RESULT (LastTaskResult=' + (Get-ScheduledTaskInfo -TaskName "probe-$name").LastTaskResult + ')' })
+            Unregister-ScheduledTask -TaskName "probe-$name" -Confirm:$false
+          }
+          Probe 'system-plain' 'SYSTEM' '' ''
+          Probe 'system-nosandbox' 'SYSTEM' '' '--no-sandbox'
+          Probe 'account-plain' "$env:COMPUTERNAME\posvc" 'Svc-Passw0rd-CI-7' ''
+          Probe 'account-nosandbox' "$env:COMPUTERNAME\posvc" 'Svc-Passw0rd-CI-7' '--no-sandbox'
       - name: A team PC (client mode, real) - connection test, friendly name, shortcut
         shell: pwsh
         run: |
           $env:PO_SHARE_PASSWORD = 'Svc-Passw0rd-CI-7'
-          python installer\po_setup.py --role client --silent --import-file D:\PO\client_import.json --share-user posvc
+          Get-Content D:\PO\client_import.json
+          python installer\po_setup.py --role client --silent --import-file D:\PO\client_import.json --share-user posvc --map-drive P
           if ($LASTEXITCODE -ne 0) { exit 1 }
           cmdkey /list | Select-String -Pattern 'posvc' -Context 1,0
           if (-not (cmdkey /list | Select-String 'posvc')) { Write-Error 'the account was not saved in Credential Manager'; exit 1 }
+          net use
+          "network drive P: present: $(Test-Path P:\)"
           $desk = [Environment]::GetFolderPath('Desktop')
           Get-ChildItem $desk -Filter *.url | ForEach-Object { $_.FullName; Get-Content $_.FullName }
           if (-not (Get-ChildItem $desk -Filter *.url)) { Write-Error 'no shortcut'; exit 1 }
