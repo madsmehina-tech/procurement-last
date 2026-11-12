@@ -107,6 +107,29 @@ jobs:
           python installer\po_setup.py --remove-lan
           if (Select-String -Path C:\Windows\System32\drivers\etc\hosts -Pattern 'PO-SETUP') { Write-Error 'hosts line not removed'; exit 1 }
           if (Get-NetFirewallRule -DisplayName 'PO Web*' -ErrorAction SilentlyContinue) { Write-Error 'rules not removed'; exit 1 }
+      - name: Start at boot with nobody signed in (scheduled task as SYSTEM) - installs, really starts, answers, removes
+        shell: pwsh
+        run: |
+          # stop the server the installer started, then let the TASK start it
+          Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object { $_.CommandLine -match 'serve.py' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+          Start-Sleep -Seconds 3
+          powershell -NoProfile -ExecutionPolicy Bypass -File installer\boot_task.ps1 -Root D:\PO\app
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $t = Get-ScheduledTask -TaskName 'PO Web Server (Boot)'
+          $t.Principal | Format-List UserId, LogonType, RunLevel
+          if ($t.Principal.UserId -ne 'SYSTEM') { Write-Error 'not SYSTEM'; exit 1 }
+          Start-ScheduledTask -TaskName 'PO Web Server (Boot)'
+          $ok = $false
+          foreach ($i in 1..60) { Start-Sleep -Seconds 3; try { $r = Invoke-WebRequest http://127.0.0.1:5000/health -UseBasicParsing -TimeoutSec 3; if ($r.Content -match 'status') { $ok = $true; break } } catch {} }
+          Get-ScheduledTaskInfo -TaskName 'PO Web Server (Boot)' | Format-List LastRunTime, LastTaskResult
+          Get-Content D:\PO\app\logs\server.out.txt -Tail 20 -ErrorAction SilentlyContinue
+          $owner = (Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object { $_.CommandLine -match 'serve.py' } | ForEach-Object { (Invoke-CimMethod -InputObject $_ -MethodName GetOwner).User })
+          "server process owner: $owner"
+          Stop-ScheduledTask -TaskName 'PO Web Server (Boot)'
+          Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object { $_.CommandLine -match 'serve.py' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+          powershell -NoProfile -ExecutionPolicy Bypass -File installer\boot_task.ps1 -Root D:\PO\app -Remove
+          if (Get-ScheduledTask -TaskName 'PO Web Server (Boot)' -ErrorAction SilentlyContinue) { Write-Error 'task not removed'; exit 1 }
+          if (-not $ok) { Write-Error 'server did not answer when started by the SYSTEM task'; exit 1 }
       - name: Acceptance check on COPIES of the fresh installation (real Access engine)
         continue-on-error: true
         timeout-minutes: 12
