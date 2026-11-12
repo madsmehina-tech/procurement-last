@@ -157,7 +157,8 @@ def build_config(a, tesseract_path=""):
     if a.backup_set_dir:
         lines.append("backup_archive_dir = %s" % a.backup_set_dir)
     else:
-        lines.append("; backup_archive_dir = F:\\PO_BackupSet     <- add it (another disk) and run deploy\\backup_all.bat once")
+        lines.append("; To enable the backup of database + archive: a folder on ANOTHER disk (not D:). Remove the ; at the start of the next line, change the path, then run deploy\\backup_all.bat once.")
+        lines.append("; backup_archive_dir = F:\\PO_BackupSet")
     lines += ["", "[server]", "host = 0.0.0.0", "port = %d" % int(a.port), "threads = 8", "log_dir = %s" % a.logs, "session_hours = 12", ""]
     if tesseract_path:
         lines += ["[ocr]", "tesseract_path = %s" % tesseract_path, "language = ara+eng", "mode = auto", ""]
