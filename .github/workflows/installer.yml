@@ -89,7 +89,14 @@ jobs:
       - name: Install log
         if: always()
         shell: pwsh
-        run: if (Test-Path D:\PO\install_log.txt) { Get-Content D:\PO\install_log.txt -Tail 400 }
+        run: |
+          if (Test-Path D:\PO\install_log.txt) { Get-Content D:\PO\install_log.txt -Tail 400 }
+          "--- boot task"
+          Get-ScheduledTask -TaskName 'PO Web Server (Boot)' -ErrorAction SilentlyContinue | Get-ScheduledTaskInfo | Format-List LastRunTime, LastTaskResult
+          (Get-ScheduledTask -TaskName 'PO Web Server (Boot)' -ErrorAction SilentlyContinue).State
+          "--- server.out.txt (app\logs and logs)"
+          foreach ($f in 'D:\PO\app\logs\server.out.txt','D:\PO\logs\server.out.txt') { if (Test-Path $f) { $f; Get-Content $f -Tail 40 } }
+          icacls D:\PO | Select-Object -First 12
       - name: Install summary (one line per step)
         if: always()
         shell: pwsh

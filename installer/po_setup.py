@@ -701,6 +701,25 @@ def python_private_to(python_path, user):
     return m.group(1).lower() != (user or "").split("\\")[-1].split("@")[0].lower()
 
 
+LSA_CS = ("using System; using System.Runtime.InteropServices; using System.Security.Principal; public class PoLsa { "
+          "[StructLayout(LayoutKind.Sequential)] struct OA { public int Length; public IntPtr Root; public IntPtr Name; public int Attr; public IntPtr SD; public IntPtr QoS; } "
+          "[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] struct US { public ushort Length; public ushort MaximumLength; [MarshalAs(UnmanagedType.LPWStr)] public string Buffer; } "
+          "[DllImport(\"advapi32\")] static extern uint LsaOpenPolicy(IntPtr sys, ref OA oa, int access, out IntPtr h); "
+          "[DllImport(\"advapi32\")] static extern uint LsaAddAccountRights(IntPtr h, byte[] sid, US[] rights, int n); "
+          "[DllImport(\"advapi32\")] static extern int LsaClose(IntPtr h); "
+          "[DllImport(\"advapi32\")] static extern int LsaNtStatusToWinError(uint s); "
+          "public static int Grant(string account, string right) { "
+          "var sid = (SecurityIdentifier)new NTAccount(account).Translate(typeof(SecurityIdentifier)); var b = new byte[sid.BinaryLength]; sid.GetBinaryForm(b, 0); "
+          "var oa = new OA(); oa.Length = Marshal.SizeOf(typeof(OA)); IntPtr h; uint st = LsaOpenPolicy(IntPtr.Zero, ref oa, 0x000F0FFF, out h); if (st != 0) return LsaNtStatusToWinError(st); "
+          "var r = new US[1]; r[0].Buffer = right; r[0].Length = (ushort)(right.Length * 2); r[0].MaximumLength = (ushort)(right.Length * 2 + 2); "
+          "st = LsaAddAccountRights(h, b, r, 1); LsaClose(h); return LsaNtStatusToWinError(st); } }")
+
+
+def grant_batch_right_ps(account):
+    """PowerShell that gives an account the Windows right «Log on as a batch job» (a scheduled task of an ordinary account cannot start without it)."""
+    return "Add-Type -TypeDefinition %s; $r = [PoLsa]::Grant(%s, 'SeBatchLogonRight'); if ($r -ne 0) { Write-Output ('LSA=' + $r); exit 1 }" % (ps_quote(LSA_CS), ps_quote(account))
+
+
 def step_boot(c):
     """Start at boot with nobody signed in: a scheduled task as SYSTEM, or as a real Windows account («run whether the user is signed in or not»)."""
     a = c.a
@@ -725,6 +744,9 @@ def step_boot(c):
         code, out = c.run(["icacls", folder, "/grant", "%s:(OI)(CI)M" % acct, "/T", "/C", "/Q"])
         if code != 0:
             notes.append("تعذّر منح الحساب صلاحية الكتابة على %s" % folder)
+    code, out = c.run(ps(grant_batch_right_ps(acct)))
+    if code != 0:
+        notes.append("تعذّر منح الحساب حق «Log on as a batch job» (%s)؛ امنحه يدوياً من secpol.msc" % " ".join(out.split())[-60:])
     script = common + ("Register-ScheduledTask -TaskName %s -Action $action -Trigger $trigger -Settings $settings -User %s -Password $env:PO_TASK_PASSWORD -RunLevel Limited -Force | Out-Null"
                        % (ps_quote(BOOT_TASK), ps_quote(acct)))
     code, out = c.run(ps(script), env={"PO_TASK_PASSWORD": a.boot_password})          # the password travels in the child's environment only: never on a command line, never in the log
@@ -764,7 +786,7 @@ def step_start(c):
         flags = (0x00000008 | 0x00000200) if IS_WINDOWS else 0                      # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
         subprocess.Popen([c.python, "serve.py"], cwd=a.app, stdout=out, stderr=out, env=dict(os.environ, PYTHONUTF8="1"), creationflags=flags)
     url = "http://127.0.0.1:%d/health" % int(a.port)
-    for _ in range(60):
+    for _ in range(40):
         time.sleep(1)
         try:
             with urllib.request.urlopen(url, timeout=3) as r:
@@ -773,7 +795,11 @@ def step_start(c):
                 return ("ok", "الخادم يعمل: %s (health: %s)" % (url, "ok" if '"ok"' in body or "'ok'" in body else "انظر السجل"))
         except Exception:                                # noqa
             continue
-    return "warn", "لم يستجب الخادم خلال دقيقة: راجع %s\\server.out.txt" % a.logs
+    extra = ""
+    if started_by_task:
+        _code, info = c.run(ps("$i = Get-ScheduledTaskInfo -TaskName %s; Write-Output ('LastTaskResult=' + $i.LastTaskResult + ' State=' + (Get-ScheduledTask -TaskName %s).State)" % (ps_quote(BOOT_TASK), ps_quote(BOOT_TASK))))
+        extra = " (%s)" % " ".join(info.split())[-80:]
+    return "warn", "لم يستجب الخادم خلال دقيقة: راجع %s\\server.out.txt%s" % (a.logs, extra)
 
 
 STEPS = [("preflight", "فحص الجهاز", None), ("python", "بايثون 3.12 (مع PATH)", step_python), ("ace", "سائق Access (ACE)", step_ace), ("tesseract", "Tesseract العربي", step_tesseract),
