@@ -1190,7 +1190,7 @@ def write_python_pointer(app, python):
         f.write('@echo off\r\nrem runs python of this installation:  po tools\\setup_check.py\r\nset PYTHONUTF8=1\r\n"%s" %%*\r\n' % python)
 
 
-def admin_shared_python(app, chosen="", install=True, runner=None, say=None):
+def admin_shared_python(app, chosen="", install=True, runner=None, say=None, skip_current=False):
     """Makes the system run on a Python that every Windows account can use (needed to run the server as another account). Returns the text to show.
     1) a shared Python already on the PC (or the one chosen)  2) else Python %s is installed «for all users» (signed installer, checked)
     3) the libraries are installed into it  4) the system is pointed at it and restarted. The old Python is left as it is."""
@@ -1204,7 +1204,7 @@ def admin_shared_python(app, chosen="", install=True, runner=None, say=None):
         if in_user_profile(target[0]):
             return "✘ هذا البايثون داخل ملف مستخدم (%s) فلا تستطيع الحسابات الأخرى تشغيله. اختر بايثون مثبّتاً «لكل المستخدمين»." % target[0]
     else:
-        found = shared_pythons(runner)
+        found = [f for f in shared_pythons(runner) if not (skip_current and os.path.normcase(f[0]) == os.path.normcase(old))]      # (skip_current: the automatic test moves to ANOTHER one)
         target = found[0] if found else None
     if not target and install:
         say("… لا يوجد بايثون مشترك: جارٍ تنزيل بايثون %s وتثبيته لكل المستخدمين" % PY311_VERSION)
@@ -1347,8 +1347,9 @@ def admin_test(app, dest):
         check("readiness check runs", "PO Web" in out, out.strip()[-200:])
         text = admin_network(app, "po.panel.test", "", dest)
         check("network settings applied", "✘" not in text and os.path.isfile(os.path.join(dest, "client_import.json")), text[-300:])
-        text = admin_shared_python(app)
-        check("shared python", text.startswith("✔"), text[:300])
+        before = admin.find_python(app)
+        text = admin_shared_python(app, skip_current=True)
+        check("shared python: libraries installed into ANOTHER python and the system switched to it", text.startswith("✔") and admin.find_python(app) != before, text[:400])
         check("server answers after the python switch", admin.start_server(app, ps_run, wait=90), admin.find_python(app))
         text = admin_boot(app, True)
         check("boot start (SYSTEM)", text.startswith("✔"), text[:200])
