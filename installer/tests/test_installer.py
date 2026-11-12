@@ -326,3 +326,16 @@ def test_migrate_without_admin_in_existing_db_gives_a_clear_message():
     c.python = "python"
     status, detail = ps.step_migrate(c)
     assert status == "fail" and "حساب مدير" in detail
+
+
+def test_migrate_is_tried_again_once_when_the_driver_refuses_a_connection(monkeypatch):
+    monkeypatch.setattr(ps.time, "sleep", lambda s: None)
+    a = ps.Answers(share_folder=r"E:\Share", base=r"E:\PO", db_mode="existing")
+    outs = [(1, "pyodbc.Error: ('HY000', 'The driver did not supply an error!')"), (0, "done")]
+    c = ps.Ctx(a, log=lambda m: None, dry=False, run=lambda cmd, **k: outs.pop(0), download=None)
+    c.python = "python"
+    assert ps.step_migrate(c)[0] == "ok" and outs == []
+    outs = [(1, "boom"), (1, "boom again")]
+    c = ps.Ctx(a, log=lambda m: None, dry=False, run=lambda cmd, **k: outs.pop(0), download=None)
+    c.python = "python"
+    assert ps.step_migrate(c)[0] == "fail" and outs == []

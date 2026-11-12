@@ -40,8 +40,7 @@ jobs:
       - name: The exe works (self test, no changes)
         shell: pwsh
         run: |
-          .\dist\PO_Setup.exe --selftest --out selftest.txt
-          Start-Sleep -Seconds 3
+          Start-Process -FilePath .\dist\PO_Setup.exe -ArgumentList '--selftest','--out','selftest.txt' -Wait
           Get-Content selftest.txt
           if (-not (Select-String -Path selftest.txt -Pattern '^OK')) { exit 1 }
       - name: The wizard window really opens and works (GUI self test on the built exe)

@@ -640,6 +640,10 @@ def step_migrate(c):
     if c.a.db_mode == "new":
         cmd.append("--new-database")                                              # a brand-new EMPTY database: build the base tables too
     code, out = c.run(cmd, cwd=c.a.app, env=env, timeout=1800)
+    if code != 0 and "Admin username" not in out and not c.dry:          # the Access driver sometimes refuses one connection («did not supply an error»): the steps are safe to repeat
+        c.log("migrate failed once; trying again in 5 seconds")
+        time.sleep(5)
+        code, out = c.run(cmd, cwd=c.a.app, env=env, timeout=1800)
     if code != 0 and "Admin username" in out:
         return "fail", "القاعدة المنسوخة لا تحتوي حساب مدير. ارجع إلى صفحة «حساب المدير» وأدخل اسماً وكلمة مرور (8+ وحرف ورقم) ثم أعد التثبيت."
     if code != 0:
