@@ -496,6 +496,8 @@ def step_share(c):
               "else { if ($me) { New-SmbShare -Name " + ps_quote(a.share_name) + " -Path " + ps_quote(a.share_folder) + " -ReadAccess $team -FullAccess $me | Out-Null } "
               "else { New-SmbShare -Name " + ps_quote(a.share_name) + " -Path " + ps_quote(a.share_folder) + " -ReadAccess $team | Out-Null }; Write-Output 'CREATED' }; "
               "icacls " + ps_quote(a.share_folder) + " /grant ($team + ':(OI)(CI)RX') | Out-Null; "
+              # file sharing must be allowed through the firewall on the PRIVATE network too (it is often enabled only for the profile that was active when sharing was first turned on)
+              "try { Set-NetFirewallRule -Group '@FirewallAPI.dll,-28502' -Profile Private,Domain -Enabled True -ErrorAction Stop; Write-Output 'FPS=1' } catch { Write-Output 'FPS=0' }; "
               "if ($me) { icacls " + ps_quote(a.share_folder) + " /grant ($me + ':(OI)(CI)F') | Out-Null }")
     code, out = c.run(ps(script))
     if code != 0:
@@ -1159,6 +1161,29 @@ def admin_boot(app, enable, user="", password=""):
     return "✔ أُلغي التشغيل عند الإقلاع، وعاد النظام يبدأ بعد دخولك إلى ويندوز." if code == 0 else "⚠ تعذّر: %s" % " ".join(out.split())[-160:]
 
 
+def lan_share_name(app):
+    """The share name from config.ini ([storage] share_path = \\\\PC\\Name)."""
+    try:
+        _ini, cp = admin.read_ini(app)
+        v = cp.get("storage", "share_path").strip()
+        return v.rstrip("\\").split("\\")[-1] if v.startswith("\\\\") else ""
+    except Exception:                                                # noqa: BLE001
+        return ""
+
+
+def step_file_sharing(c):
+    """Lets other PCs open the shared archive folder: «File and Printer Sharing» allowed on the private network."""
+    code, out = c.run(ps("try { Set-NetFirewallRule -Group '@FirewallAPI.dll,-28502' -Profile Private,Domain -Enabled True -ErrorAction Stop; Write-Output 'FPS=1' } catch { Write-Output ('FPS=0 ' + $_.Exception.Message) }; "
+                         "$s = Get-SmbShare -Name %s -ErrorAction SilentlyContinue; if ($s) { Write-Output ('SHARE=' + $s.Path) } else { Write-Output 'SHARE=' }" % ps_quote(c.a.share_name)))
+    m = re.search(r"SHARE=(.*)", out or "")
+    share = (m.group(1).strip() if m else "")
+    if "FPS=1" not in (out or ""):
+        return "warn", "تعذّر تفعيل «مشاركة الملفات والطابعات» في الجدار الناري: فعّلها من إعدادات المشاركة المتقدمة."
+    if not share:
+        return "warn", "مشاركة الملفات مسموحة في الجدار الناري، لكن لا توجد مشاركة باسم «%s» على هذا الجهاز." % c.a.share_name
+    return "ok", "مشاركة الملفات مسموحة على الشبكة الخاصة، والمشاركة «%s» تشير إلى %s" % (c.a.share_name, share)
+
+
 def admin_network(app, alias, extra, export_dir, set_private=True):
     """Network type, firewall rule, friendly name and the team file - the same steps as the installation."""
     a = admin_answers(app)
@@ -1170,7 +1195,8 @@ def admin_network(app, alias, extra, export_dir, set_private=True):
         return "✘ " + "؛ ".join(errs)
     c = Ctx(a, log=lambda m: None)
     lines = []
-    for title, fn in (("نوع الشبكة", step_network), ("الجدار الناري", step_firewall), ("اسم الرابط وملف الفريق", step_lanfile)):
+    a.create_share, a.share_name = True, (lan_share_name(app) or "PO_Archive")
+    for title, fn in (("نوع الشبكة", step_network), ("الجدار الناري", step_firewall), ("مشاركة الملفات عبر الشبكة", step_file_sharing), ("اسم الرابط وملف الفريق", step_lanfile)):
         try:
             status, detail = fn(c)
         except Exception as e:                                       # noqa: BLE001

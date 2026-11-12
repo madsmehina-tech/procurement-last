@@ -157,21 +157,24 @@ jobs:
             "PROBE $name => " + $(if (Test-Path $out) { Get-Content $out -Encoding UTF8 } else { 'NO RESULT (LastTaskResult=' + (Get-ScheduledTaskInfo -TaskName "probe-$name").LastTaskResult + ')' })
             Unregister-ScheduledTask -TaskName "probe-$name" -Confirm:$false
           }
+          Start-Transcript D:\probe\summary.log | Out-Null
           Probe 'system-plain' 'SYSTEM' '' ''
           Probe 'system-nosandbox' 'SYSTEM' '' '--no-sandbox'
           Probe 'account-plain' "$env:COMPUTERNAME\posvc" 'Svc-Passw0rd-CI-7' ''
           Probe 'account-nosandbox' "$env:COMPUTERNAME\posvc" 'Svc-Passw0rd-CI-7' '--no-sandbox'
+          Stop-Transcript | Out-Null
       - name: A team PC (client mode, real) - connection test, friendly name, shortcut
         shell: pwsh
         run: |
           $env:PO_SHARE_PASSWORD = 'Svc-Passw0rd-CI-7'
           Get-Content D:\PO\client_import.json
-          python installer\po_setup.py --role client --silent --import-file D:\PO\client_import.json --share-user posvc --map-drive P
+          python installer\po_setup.py --role client --silent --import-file D:\PO\client_import.json --share-user posvc --map-drive P | Tee-Object D:\probe\client.log
           if ($LASTEXITCODE -ne 0) { exit 1 }
           cmdkey /list | Select-String -Pattern 'posvc' -Context 1,0
           if (-not (cmdkey /list | Select-String 'posvc')) { Write-Error 'the account was not saved in Credential Manager'; exit 1 }
-          net use
-          "network drive P: present: $(Test-Path P:\)"
+          (net use | Out-String) | Set-Content D:\probe\drive.log
+          "network drive P: present: $(Test-Path P:\)" | Add-Content D:\probe\drive.log
+          Select-String -Path D:\probe\client.log -Pattern '.' -ErrorAction SilentlyContinue | Out-Null
           $desk = [Environment]::GetFolderPath('Desktop')
           Get-ChildItem $desk -Filter *.url | ForEach-Object { $_.FullName; Get-Content $_.FullName }
           if (-not (Get-ChildItem $desk -Filter *.url)) { Write-Error 'no shortcut'; exit 1 }
@@ -266,6 +269,9 @@ jobs:
           New-Item -ItemType Directory results -Force | Out-Null
           foreach ($f in 'D:\PO\install_log.txt','D:\PO_TEST\work\acceptance_report.md','D:\PO_TEST\work\acceptance_report.json') { if (Test-Path $f) { Copy-Item $f results\ } }
           if (Test-Path D:\PO\logs) { Copy-Item D:\PO\logs\*.txt results\ -ErrorAction SilentlyContinue }
+          "===== SUMMARY ====="
+          foreach ($f in 'D:\probe\summary.log','D:\probe\client.log','D:\probe\drive.log') { if (Test-Path $f) { Get-Content $f -Encoding UTF8 | Where-Object { $_ -match 'PROBE|✔|⚠|✘|P:|present|OK|error' } | Select-Object -First 14 } }
+          "===== END ====="
       - uses: actions/upload-artifact@v4
         if: always()
         with:
