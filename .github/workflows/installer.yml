@@ -88,6 +88,25 @@ jobs:
           if ($r.Content -notmatch '"status"') { exit 1 }
           Get-SmbShare PO_Archive | Format-List Name,Path
           Get-Content D:\PO\app\config.ini
+      - name: The host wrote the team file and the friendly name
+        shell: pwsh
+        run: |
+          Get-Content D:\PO\client_import.json
+          Get-Content C:\Windows\System32\drivers\etc\hosts | Select-String 'PO-SETUP'
+          Get-NetFirewallRule -DisplayName 'PO Web*' | Format-Table DisplayName, Enabled, Profile
+          if (-not (Select-String -Path C:\Windows\System32\drivers\etc\hosts -Pattern 'poweb.*PO-SETUP')) { exit 1 }
+          if (-not (Test-Path D:\PO\client_import.json)) { exit 1 }
+      - name: A team PC (client mode, real) - connection test, friendly name, shortcut
+        shell: pwsh
+        run: |
+          python installer\po_setup.py --role client --silent --import-file D:\PO\client_import.json
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $desk = [Environment]::GetFolderPath('Desktop')
+          Get-ChildItem $desk -Filter *.url | ForEach-Object { $_.FullName; Get-Content $_.FullName }
+          if (-not (Get-ChildItem $desk -Filter *.url)) { Write-Error 'no shortcut'; exit 1 }
+          python installer\po_setup.py --remove-lan
+          if (Select-String -Path C:\Windows\System32\drivers\etc\hosts -Pattern 'PO-SETUP') { Write-Error 'hosts line not removed'; exit 1 }
+          if (Get-NetFirewallRule -DisplayName 'PO Web*' -ErrorAction SilentlyContinue) { Write-Error 'rules not removed'; exit 1 }
       - name: Acceptance check on COPIES of the fresh installation (real Access engine)
         continue-on-error: true
         timeout-minutes: 12

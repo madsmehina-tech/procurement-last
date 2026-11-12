@@ -38,6 +38,9 @@ import urllib.request
 import zipfile
 from datetime import datetime
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import po_lan as lan  # noqa: E402
+
 IS_WINDOWS = os.name == "nt"
 SETUP_VERSION = "1.0"
 
@@ -75,6 +78,10 @@ class Answers:
     replace_existing: bool = False                        # an older program folder is moved aside (app_old_<time>) and its config.ini + instance kept
     zip_path: str = ""                                    # the program package (default: next to this file / inside the exe)
     python_path: str = ""                                 # force a specific python.exe (normally found / installed automatically)
+    set_private: bool = True                              # a «Public» network blocks the team: make it «Private» (remembered, undone by «remove»)
+    allowed_extra: str = ""                               # extra ranges besides the office subnet, e.g. 192.168.5.0/24, 10.0.0.0/8 (never the whole internet)
+    alias_name: str = "poweb"                             # friendly name for the link: http://poweb:5000 (a tagged line in hosts); empty = none
+    export_dir: str = ""                                  # where client_import.json is written (default: <base>)
     skip_prereqs: bool = False                            # for tests / machines where Python and the driver are known to be fine
 
     @property
@@ -134,6 +141,10 @@ def validate(a, check_paths=True):
         errs.append("كلمة مرور المدير: 8 خانات فأكثر وفيها حرف ورقم (أو اتركها فارغة إن كانت القاعدة فيها مدير).")
     if a.db_mode == "existing" and check_paths and not os.path.isfile(a.db_existing or ""):
         errs.append("ملف القاعدة الموجودة غير موجود: %s" % a.db_existing)
+    _extra, extra_errs = lan.parse_remote_list(a.allowed_extra)
+    errs += extra_errs
+    if (a.alias_name or "") and not lan.valid_alias(a.alias_name):
+        errs.append("الاسم البديل للرابط: حروف إنجليزية صغيرة وأرقام وشرطة (2-30 خانة) أو اتركه فارغاً.")
     if a.db_mode not in ("new", "existing"):
         errs.append("خيار القاعدة غير معروف.")
     if os.path.normcase(os.path.abspath(a.share_folder)) == os.path.normcase(os.path.abspath(a.app)) or \
@@ -629,13 +640,23 @@ def step_firewall(c):
         return "skip", "لم يُطلب"
     p = int(c.a.port)
     cmds = [["netsh", "advfirewall", "firewall", "delete", "rule", "name=PO Web (LAN)"], ["netsh", "advfirewall", "firewall", "delete", "rule", "name=PO Web (Tailscale)"],
-            ["netsh", "advfirewall", "firewall", "add", "rule", "name=PO Web (LAN)", "dir=in", "action=allow", "protocol=TCP", "localport=%d" % p, "profile=private,domain", "remoteip=LocalSubnet"],
+            ["netsh", "advfirewall", "firewall", "add", "rule", "name=PO Web (LAN)", "dir=in", "action=allow", "protocol=TCP", "localport=%d" % p, "profile=private,domain", "remoteip=" + ",".join(["LocalSubnet"] + lan.parse_remote_list(c.a.allowed_extra)[0])],
             ["netsh", "advfirewall", "firewall", "add", "rule", "name=PO Web (Tailscale)", "dir=in", "action=allow", "protocol=TCP", "localport=%d" % p, "remoteip=100.64.0.0/10"]]
     for i, cmd in enumerate(cmds):
         code, out = c.run(cmd)
         if i >= 2 and code != 0:
             return "warn", "تعذّر ضبط الجدار الناري: شغّل deploy\\open_firewall.bat كمسؤول."
     return "ok", "المنفذ %d مفتوح لشبكة المكتب وTailscale فقط (ليس للإنترنت). تأكد أن الشبكة «Private»." % p
+
+
+def step_network(c):
+    if not c.a.set_private:
+        return "skip", "لم يُطلب"
+    return lan.host_network_profile(c, ps, ps_quote)
+
+
+def step_lanfile(c):
+    return lan.host_alias_and_export(c)
 
 
 def step_autostart(c):
@@ -675,10 +696,10 @@ def step_start(c):
 STEPS = [("preflight", "فحص الجهاز", None), ("python", "بايثون 3.12 (مع PATH)", step_python), ("ace", "سائق Access (ACE)", step_ace), ("tesseract", "Tesseract العربي", step_tesseract),
          ("folders", "إنشاء المجلدات", step_folders), ("share", "مشاركة مجلد الشير", step_share), ("unpack", "فك البرنامج", step_unpack),
          ("database", "قاعدة البيانات", step_database), ("config", "ملف config.ini", step_config), ("pip", "تثبيت المكتبات (pip)", step_pip),
-         ("migrate", "تهيئة القاعدة (migrate)", step_migrate), ("checks", "فحص الجاهزية", step_checks), ("firewall", "الجدار الناري", step_firewall),
+         ("migrate", "تهيئة القاعدة (migrate)", step_migrate), ("checks", "فحص الجاهزية", step_checks), ("network", "نوع الشبكة (Private)", step_network), ("firewall", "الجدار الناري", step_firewall), ("lanfile", "اسم الرابط وملف الفريق", step_lanfile),
          ("autostart", "التشغيل التلقائي", step_autostart), ("start", "تشغيل الخادم", step_start)]
 # a failed step stops everything after it, except these (the system is usable without them)
-OPTIONAL = {"tesseract", "share", "firewall", "autostart", "start", "checks"}
+OPTIONAL = {"tesseract", "share", "network", "firewall", "lanfile", "autostart", "start", "checks"}
 
 
 def step_preflight(c):
@@ -753,7 +774,7 @@ def summary_text(results, overall, a):
     for key, title, status, detail in results:
         lines.append("%s %s — %s" % (icon.get(status, "?"), title, detail))
     if overall != "fail":
-        lines += ["", "رابط النظام لأجهزة الفريق:  http://%s:%d" % (socket.gethostname(), int(a.port)),
+        lines += ["", "رابط النظام لأجهزة الفريق:  http://%s:%d   (أو بالعنوان الرقمي من ملف client_import.json)" % ((a.alias_name or socket.gethostname()), int(a.port)),
                   "مجلد البرنامج: %s   |   الأرشيف المشارك: %s   |   السجل: %s" % (a.app, a.share_folder, a.log_file),
                   "التالي: ادخل بحساب المدير وأضف بقية الفريق (python po.bat tools\\add_user.py)، وضع backup_archive_dir في config.ini وشغّل deploy\\backup_all.bat مرة يدوياً."]
     return "\n".join(lines)
@@ -769,8 +790,8 @@ def wizard(initial=None, selftest_out=None):
     root.geometry("760x640")
     a = initial or Answers()
     v = {k: tk.StringVar(value=str(getattr(a, k, ""))) for k in ("share_folder", "base", "share_name", "team_group", "db_existing", "admin_user", "admin_name", "admin_password", "admin_password2",
-                                                              "backup_db_dir", "backup_set_dir", "port")}
-    flags = {k: tk.BooleanVar(value=getattr(a, k)) for k in ("create_share", "install_tesseract", "open_firewall", "autostart", "start_after", "replace_existing")}
+                                                              "backup_db_dir", "backup_set_dir", "port", "allowed_extra", "alias_name", "export_dir")}
+    flags = {k: tk.BooleanVar(value=getattr(a, k)) for k in ("create_share", "install_tesseract", "open_firewall", "autostart", "start_after", "replace_existing", "set_private")}
     db_mode = tk.StringVar(value=a.db_mode)
     frames = {}
     nb = ttk.Notebook(root)
@@ -822,8 +843,12 @@ def wizard(initial=None, selftest_out=None):
 
     f4 = page("٤) خيارات")
     for i, (k, t) in enumerate((("install_tesseract", "ثبّت Tesseract مع العربية (قراءة صور عروض الأسعار)"), ("open_firewall", "افتح المنفذ لشبكة المكتب وTailscale فقط"),
-                                ("autostart", "شغّل النظام تلقائياً بعد دخول ويندوز"), ("start_after", "شغّل الخادم بعد التثبيت"), ("replace_existing", "استبدل برنامجاً قديماً موجوداً (مع حفظ config.ini وinstance)"))):
-        ttk.Checkbutton(f4, text=t, variable=flags[k]).grid(row=i, column=0, sticky="e", pady=4)
+                                ("autostart", "شغّل النظام تلقائياً بعد دخول ويندوز"), ("start_after", "شغّل الخادم بعد التثبيت"), ("replace_existing", "استبدل برنامجاً قديماً موجوداً (مع حفظ config.ini وinstance)"),
+                                ("set_private", "حوّل الشبكة إلى Private إن كانت Public (بدونه يحجب الجدار الناري أجهزة الفريق)"))):
+        ttk.Checkbutton(f4, text=t, variable=flags[k]).grid(row=i, column=0, columnspan=3, sticky="e", pady=4)
+    row(f4, "اسم بديل للرابط (مثل poweb، أو اتركه فارغاً):", v["alias_name"], 8)
+    row(f4, "نطاقات إضافية للمكتب (اختياري، مثل 192.168.5.0/24):", v["allowed_extra"], 9)
+    row(f4, "مجلد حفظ ملف الفريق client_import.json (فارغ = مجلد التثبيت):", v["export_dir"], 10, browse=True)
 
     f5 = page("٥) التثبيت")
     box = tk.Text(f5, height=26, width=92, wrap="word")
@@ -833,7 +858,7 @@ def wizard(initial=None, selftest_out=None):
 
     def collect():
         z = Answers()
-        for k in ("share_folder", "base", "share_name", "team_group", "db_existing", "admin_user", "admin_name", "admin_password", "backup_db_dir", "backup_set_dir"):
+        for k in ("share_folder", "base", "share_name", "team_group", "db_existing", "admin_user", "admin_name", "admin_password", "backup_db_dir", "backup_set_dir", "allowed_extra", "alias_name", "export_dir"):
             setattr(z, k, v[k].get().strip() if k != "admin_password" else v[k].get())
         z.port = int(v["port"].get() or 5000)
         z.db_mode = db_mode.get()
@@ -890,6 +915,132 @@ def wizard(initial=None, selftest_out=None):
     root.mainloop()
 
 
+# ------------------------------------------------------------------------------------------------------------- the client (team PC) window + the first screen
+def client_wizard(initial=None, selftest_out=None):
+    import tkinter as tk
+    from tkinter import filedialog, messagebox, ttk
+    import threading
+    root = tk.Tk()
+    root.title("إعداد جهاز عضو الفريق")
+    root.geometry("700x560")
+    a = initial or lan.ClientAnswers()
+    v = {k: tk.StringVar(value=str(getattr(a, k, ""))) for k in ("import_file", "server", "port", "alias", "tailscale_ip", "shortcut_name")}
+    flags = {k: tk.BooleanVar(value=bool(getattr(a, k))) for k in ("outside_office", "shortcut", "open_browser")}
+    f = ttk.Frame(root, padding=14)
+    f.pack(fill="both", expand=True)
+    ttk.Label(f, text="هذا الجهاز سيفتح النظام من الجهاز الرئيسي. اختر ملف client_import.json الذي أعطاك إياه مسؤول النظام، أو اكتب عنوان الجهاز الرئيسي.",
+              wraplength=640, justify="right").grid(row=0, column=0, columnspan=3, sticky="e", pady=6)
+
+    def row(label, key, r, browse=False):
+        ttk.Label(f, text=label, wraplength=260, justify="right").grid(row=r, column=2, sticky="e", pady=4)
+        ttk.Entry(f, textvariable=v[key], width=40).grid(row=r, column=1, sticky="ew", padx=6)
+        if browse:
+            ttk.Button(f, text="استعراض…", command=lambda: v[key].set(filedialog.askopenfilename(filetypes=[("JSON", "*.json")]) or v[key].get())).grid(row=r, column=0)
+    row("ملف الفريق (client_import.json):", "import_file", 1, browse=True)
+    row("أو عنوان الجهاز الرئيسي (مثل 192.168.100.55):", "server", 2)
+    row("المنفذ:", "port", 3)
+    row("اسم بديل للرابط (اختياري، مثل poweb):", "alias", 4)
+    row("عنوان Tailscale (للعمل من خارج المكتب):", "tailscale_ip", 5)
+    row("اسم الاختصار على سطح المكتب:", "shortcut_name", 6)
+    ttk.Checkbutton(f, text="أعمل الآن من خارج المكتب (عبر Tailscale)", variable=flags["outside_office"]).grid(row=7, column=0, columnspan=3, sticky="e")
+    ttk.Checkbutton(f, text="أنشئ اختصاراً على سطح المكتب", variable=flags["shortcut"]).grid(row=8, column=0, columnspan=3, sticky="e")
+    ttk.Checkbutton(f, text="افتح النظام بعد الإعداد", variable=flags["open_browser"]).grid(row=9, column=0, columnspan=3, sticky="e")
+    box = tk.Text(f, height=10, width=80, wrap="word")
+    box.grid(row=11, column=0, columnspan=3, pady=8)
+    btn = ttk.Button(f, text="اختبر وأعدّ")
+    btn.grid(row=10, column=1, pady=6)
+
+    def collect():
+        z = lan.ClientAnswers()
+        for k in ("import_file", "server", "alias", "tailscale_ip", "shortcut_name"):
+            setattr(z, k, v[k].get().strip())
+        z.port = int(v["port"].get() or 5000)
+        for k, var in flags.items():
+            setattr(z, k, bool(var.get()))
+        return z
+
+    def go():
+        try:
+            z = collect()
+        except ValueError:
+            messagebox.showerror("خطأ", "رقم المنفذ غير صالح.")
+            return
+        btn.state(["disabled"])
+
+        def work():
+            res, overall = run_client_answers(z, make_logger(os.path.join(lan.program_data_dir(), "client_log.txt")))
+            root.after(0, lambda: (box.insert("end", client_summary(res, overall)), btn.state(["!disabled"])))
+        threading.Thread(target=work, daemon=True).start()
+    btn.configure(command=go)
+    if selftest_out:
+        problems = []
+        try:
+            root.update()
+            z = collect()
+            if z.port != int(a.port):
+                problems.append("client collect() does not return what was shown")
+        except Exception as e:                       # noqa: BLE001
+            problems.append("%s: %s" % (type(e).__name__, e))
+        root.destroy()
+        text = "OK" if not problems else "PROBLEMS: " + "; ".join(problems)
+        open(selftest_out, "w", encoding="utf-8").write(text + "\n")
+        print(text)
+        return 0 if not problems else 1
+    root.mainloop()
+
+
+def run_client_answers(z, log, dry=False):
+    return lan.run_client(z, log, ps, ps_quote, is_admin(), dry=dry)
+
+
+def client_summary(results, overall):
+    icon = {"ok": "✔", "warn": "⚠", "fail": "✘"}
+    head = {"ok": "اكتمل الإعداد — افتح النظام من الاختصار", "warn": "اكتمل مع ملاحظات", "fail": "لم يكتمل الإعداد"}[overall]
+    return "\n".join([head, ""] + ["%s %s — %s" % (icon.get(s, "?"), t, d) for _k, t, s, d in results])
+
+
+def launcher(selftest_out=None):
+    """The first screen of the one tool: what is this PC?"""
+    import tkinter as tk
+    from tkinter import ttk, messagebox
+    root = tk.Tk()
+    root.title("نظام المشتريات والمقاولين — الإعداد")
+    root.geometry("560x360")
+    f = ttk.Frame(root, padding=20)
+    f.pack(fill="both", expand=True)
+    ttk.Label(f, text="ما هو دور هذا الجهاز؟", font=("", 14, "bold")).pack(pady=10)
+    choice = {"role": None}
+
+    def pick(role):
+        choice["role"] = role
+        root.destroy()
+    ttk.Button(f, text="الجهاز الرئيسي (يحمل القاعدة والأرشيف — تثبيت كامل)", command=lambda: pick("host")).pack(fill="x", pady=6, ipady=8)
+    ttk.Button(f, text="جهاز عضو في الفريق (يفتح النظام من الجهاز الرئيسي)", command=lambda: pick("client")).pack(fill="x", pady=6, ipady=8)
+    ttk.Button(f, text="إزالة إعدادات الشبكة التي أضافتها الأداة (لا تمس البرنامج ولا البيانات)", command=lambda: pick("remove")).pack(fill="x", pady=6, ipady=8)
+    if selftest_out:
+        root.update()
+        root.destroy()
+        open(selftest_out, "w", encoding="utf-8").write("OK\n")
+        return None
+    root.mainloop()
+    return choice["role"]
+
+
+def _run_plain(cmd):
+    try:
+        p = subprocess.run(cmd, capture_output=True, timeout=120, stdin=subprocess.DEVNULL)
+        return p.returncode, (p.stdout or b"").decode("utf-8", "replace")
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 1, str(e)
+
+
+def remove_lan_cli(log=print):
+    lines = lan.remove_lan(_run_plain, ps)
+    for l in lines:
+        log(l)
+    return lines
+
+
 # ------------------------------------------------------------------------------------------------------------- main
 def relaunch_as_admin():
     params = " ".join('"%s"' % x for x in sys.argv[1:])
@@ -919,6 +1070,12 @@ def main(argv=None):
     ap.add_argument("--answers", help="JSON file of answers")
     ap.add_argument("--selftest", action="store_true", help="checks that this tool's own logic works (no changes), writes the result to --out")
     ap.add_argument("--gui-selftest", action="store_true", help="opens the wizard window logic, checks it, closes it (writes the result to --out)")
+    ap.add_argument("--role", choices=("host", "client"), help="host = main PC (full installation); client = a team PC (no program, only the way to open it)")
+    ap.add_argument("--import-file", help="client: client_import.json made by the host")
+    ap.add_argument("--server", help="client: address of the main PC")
+    ap.add_argument("--port", type=int, help="client: port (default 5000)")
+    ap.add_argument("--alias", help="client: friendly name for the link")
+    ap.add_argument("--remove-lan", action="store_true", help="removes what this tool added to the network settings (firewall rules, hosts lines, shortcuts); never touches program or data")
     ap.add_argument("--out")
     args = ap.parse_args(argv)
     a = Answers()
@@ -942,6 +1099,16 @@ def main(argv=None):
             open(args.out, "w", encoding="utf-8").write(text + "\nzip=%s\nwindows=%s\nadmin=%s\n" % (find_zip(a), IS_WINDOWS, is_admin()))
         print(text)
         return 0 if not problems else 1
+    if args.remove_lan:
+        remove_lan_cli()
+        return 0
+    if args.role == "client" and (args.silent or args.dry_run):
+        z = lan.ClientAnswers(import_file=args.import_file or "", server=args.server or "", alias=args.alias or "", open_browser=False)
+        if args.port:
+            z.port = args.port
+        res, overall = run_client_answers(z, print, dry=args.dry_run)
+        print(client_summary(res, overall))
+        return 0 if overall in ("ok", "warn") else 1
     if args.dry_run or args.silent:
         errs = validate(a, check_paths=False)
         if errs:
@@ -951,9 +1118,34 @@ def main(argv=None):
         print(summary_text(res, overall, a))
         return 0 if overall in ("ok", "warn") else 1
     if args.gui_selftest:
-        return wizard(a, selftest_out=args.out or os.path.join(os.environ.get("TEMP", "."), "po_gui_selftest.txt"))
+        out = args.out or os.path.join(os.environ.get("TEMP", "."), "po_gui_selftest.txt")
+        parts = []
+        rc = 0
+        for name, fn in (("launcher", lambda o: launcher(selftest_out=o) or 0), ("host", lambda o: wizard(a, selftest_out=o)), ("client", lambda o: client_wizard(None, selftest_out=o))):
+            o = out + "." + name
+            try:
+                rc |= int(fn(o) or 0)
+                parts.append("%s: %s" % (name, open(o, encoding="utf-8").read().strip()))
+            except Exception as e:                             # noqa: BLE001
+                rc = 1
+                parts.append("%s: PROBLEMS %s: %s" % (name, type(e).__name__, e))
+        text = ("OK" if rc == 0 else "PROBLEMS") + "\n" + "\n".join(parts) + "\n"
+        open(out, "w", encoding="utf-8").write(text)
+        print(text)
+        return rc
     if IS_WINDOWS and not is_admin():
         relaunch_as_admin()
+        return 0
+    role = args.role
+    if not role:
+        role = launcher()
+        if role is None:
+            return 0
+    if role == "remove":
+        remove_lan_cli()
+        return 0
+    if role == "client":
+        client_wizard(lan.ClientAnswers(import_file=args.import_file or "", server=args.server or "", alias=args.alias or ""))
         return 0
     wizard(a)
     return 0

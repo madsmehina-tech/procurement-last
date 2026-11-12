@@ -38,3 +38,16 @@ PO_Setup.exe --silent  --answers answers.json      لتنفيذ كامل
 - ثم **اختبار القبول على نسخة منها**: التراجع عند فشل المعاملة ✔، النص العربي ✔، الصفحات (الأبطأ 95 مللي ثانية) ✔، النسخ والاسترجاع ببصمة كل الملفات ✔، والكتابة المتزامنة ⚠ (كل السجلات كُتبت، وبعض الكتابات احتاجت إعادة محاولة بسبب قفل Access عند 4 خيوط + عمليتين معاً).
 - أخطاء وجدها هذا الاختبار وأُصلحت: طباعة العربية عند تحويل المخرجات، وحزمة PowerShell، و`migrate.py` على قاعدة فارغة، ونص رسالة Access للفهرس الموجود.
 - **لم يُختبر هنا:** نافذة الويزارد بالفأرة (فُحص منطقها فقط)، ومشاركة الشير على شبكة مكتب حقيقية، وتثبيت بايثون من الصفر (الجهاز الاختباري فيه بايثون)، وTesseract على جهازكم، والجهاز الفعلي للشركة.
+
+## One file for the main PC AND the team PCs (v1.1)
+
+`PO_Setup.exe` now opens with a first screen: **main PC** (full installation, as before) / **team PC** / **remove the network settings**.
+
+| | What it does |
+|---|---|
+| Main PC | as before, plus: makes a *Public* network *Private* (a Public network blocked the team: the firewall rule is for private networks), firewall rule for the office subnet (+ optional extra ranges, never the whole internet), friendly name (`poweb`) as a tagged line in `hosts`, and writes `client_import.json` (no passwords) |
+| Team PC | reads `client_import.json` (or an address typed by hand), **tests the connection** (port, then `/health`) and says which layer fails, adds the friendly-name line (admin only), puts a shortcut on the Desktop, opens the system. Outside the office it points the name to the Tailscale address |
+| Remove | deletes only what the tool added (firewall rules by name, tagged `hosts` lines, shortcuts, restores the network type it changed). **Never touches the program, the database or the archive** |
+
+Command line: `PO_Setup.exe --role client --silent --import-file client_import.json`, `PO_Setup.exe --remove-lan`.
+What was really tested: logic (33 tests); on real Windows in CI: the host install, the exported file, the `hosts` line, the firewall rules, the client run (connection test, shortcut) and the removal. The windows are opened and closed by a self-test; clicking by a person is not covered.
