@@ -133,3 +133,57 @@ def test_panel_helpers_describe_the_existing_installation(app, tmp_path):
     assert a.app == app and a.base == os.path.dirname(app) and a.share_folder == str(tmp_path / "Archive") and a.port == 5055 and a.python_path == sys.executable
     assert ps.admin_boot(app, True, "svc", "").startswith("✘")
     assert ps.admin_network(app, "Bad Name", "", "").startswith("✘") and ps.admin_network(app, "", "0.0.0.0/0", "").startswith("✘")
+
+
+def test_shared_python_is_found_checked_and_the_system_is_pointed_at_it(app, monkeypatch):
+    prof, shared = r"C:\Users\D\AppData\Local\Programs\Python\Python312\python.exe", r"C:\Program Files\Python311\python.exe"
+    assert ps.in_user_profile(prof) and not ps.in_user_profile(shared) and not ps.in_user_profile(r"C:\Users\Public\py\python.exe")
+    calls = []
+
+    def runner(cmd):
+        calls.append(cmd)
+        if "-c" in cmd and cmd[-1] == ps.PROBE_CODE:
+            return (0, "%s\n%s\n64\n" % (cmd[0], "3.12.4" if "Users" in cmd[0] else "3.11.9")) if cmd[0] in (prof, shared) else (1, "")
+        if "pip" in cmd:
+            return 0, "installed"
+        return 0, "LIBS=OK"
+    assert ps.probe_python(prof, runner) == (prof, "3.12.4") and ps.probe_python("nope.exe", runner) is None
+    assert ps.shared_pythons(runner, [prof, shared]) == [(shared, "3.11.9")]
+    monkeypatch.setattr(ps, "candidate_pythons", lambda extra=None: [prof, shared])
+    monkeypatch.setattr(ps.admin, "port_listening", lambda port, host="127.0.0.1": False)
+    assert ps.admin_shared_python(app, prof, runner=runner).startswith("✘")                 # a profile Python is refused
+    text = ps.admin_shared_python(app, "", install=False, runner=runner)
+    assert text.startswith("✔") and open(os.path.join(app, "deploy", "python_path.txt")).read() == shared
+    assert shared in open(os.path.join(app, "po.bat")).read()
+    assert any("pip" in c and c[0] == shared and "requirements.txt" in c for c in calls)
+    assert "أصلاً" in ps.admin_shared_python(app, "", install=False, runner=runner)        # second time: nothing to do
+    monkeypatch.setattr(ps, "candidate_pythons", lambda extra=None: [prof])
+    (open(os.path.join(app, "deploy", "python_path.txt"), "w")).write(prof)
+    assert ps.admin_shared_python(app, "", install=False, runner=runner).startswith("✘")    # none found and installing not allowed here
+
+
+def test_a_failed_library_install_leaves_the_old_python_in_place(app, monkeypatch):
+    shared = r"C:\Program Files\Python311\python.exe"
+    before = open(os.path.join(app, "deploy", "python_path.txt")).read()
+
+    def runner(cmd):
+        if cmd[-1] == ps.PROBE_CODE:
+            return 0, "%s\n3.11.9\n64\n" % cmd[0]
+        return (1, "no internet") if "pip" in cmd else (0, "LIBS=OK")
+    monkeypatch.setattr(ps, "candidate_pythons", lambda extra=None: [shared])
+    assert ps.admin_shared_python(app, "", install=False, runner=runner).startswith("✘")
+    assert open(os.path.join(app, "deploy", "python_path.txt")).read() == before
+
+
+def test_a_python_under_program_files_is_found_although_its_path_has_a_space(tmp_path, monkeypatch):
+    folder = tmp_path / "Program Files" / "Python312"
+    folder.mkdir(parents=True)
+    exe = folder / "python.exe"
+    exe.write_bytes(b"")
+
+    class P:
+        returncode = 0
+        stdout = ("%s\r\n3.12.8\r\n64\r\n" % exe).encode()
+    monkeypatch.setattr(ps, "candidate_pythons", lambda extra=None: [str(exe)])
+    monkeypatch.setattr(ps.subprocess, "run", lambda *a, **k: P())
+    assert ps.find_python(ps.Ctx(ps.Answers())) == str(exe)

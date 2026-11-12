@@ -341,7 +341,7 @@ def find_python(ctx):
             p = subprocess.run(cmd, capture_output=True, timeout=30)
         except (OSError, subprocess.TimeoutExpired):
             continue
-        parts = (p.stdout or b"").decode("utf-8", "replace").split()
+        parts = [l.strip() for l in (p.stdout or b"").decode("utf-8", "replace").splitlines() if l.strip()]      # by LINE: «C:\\Program Files\\Python312» has a space
         if p.returncode == 0 and len(parts) >= 3 and parts[2] == "64":
             v = parse_python_version("Python " + parts[1])
             if python_ok(v) and os.path.isfile(parts[0]):
@@ -739,10 +739,10 @@ def step_boot(c):
         code, out = c.run(ps(script))
         if code != 0:
             return "warn", "تعذّر إنشاء مهمة الإقلاع: %s" % " ".join(out.split())[-160:]
-        return "ok", "يبدأ النظام بعد إقلاع الجهاز بدقيقة دون دخول أحد (بحساب النظام). تنبيه: تحويل العقود إلى PDF بواسطة Word لا يعمل بحساب النظام."
+        return "ok", "يبدأ النظام بعد إقلاع الجهاز بدقيقة دون دخول أحد (بحساب النظام). تنبيه: بحساب النظام لا يعمل إنشاء PDF لأمر الشراء ولا تحويل العقود بواسطة Word؛ لهما اختر حساب ويندوز حقيقياً."
     acct = boot_account(a.boot_user)
     if python_private_to(c.python, acct):
-        return "warn", ("بايثون مثبَّت داخل ملف مستخدم آخر (%s) فلا يستطيع الحساب «%s» تشغيله. استعمل الحساب صاحب ذلك المجلد، أو ثبّت بايثون «لكل المستخدمين»، ثم أعد الأداة. لم تُنشأ مهمة الإقلاع." % (c.python, acct))
+        return "warn", ("بايثون مثبَّت داخل ملف مستخدم آخر (%s) فلا يستطيع الحساب «%s» تشغيله. الحل: لوحة الإدارة ← «الخادم» ← زر «جهّز بايثون مشتركاً لكل الحسابات» ثم أعد المحاولة (أو استعمل الحساب صاحب ذلك المجلد). لم تُنشأ مهمة الإقلاع." % (c.python, acct))
     notes = []
     for folder in dict.fromkeys([a.base, a.share_folder, a.backup_db] + ([a.backup_set_dir] if a.backup_set_dir else [])):      # the account must be able to write the data
         code, out = c.run(["icacls", folder, "/grant", "%s:(OI)(CI)M" % acct, "/T", "/C", "/Q"])
@@ -1146,6 +1146,118 @@ def admin_answers(app):
                    port=s["port"], python_path=admin.find_python(app))
 
 
+PY311_VERSION = "3.11.9"
+PY311_URL = "https://www.python.org/ftp/python/%s/python-%s-amd64.exe" % (PY311_VERSION, PY311_VERSION)
+PROBE_CODE = "import sys,struct;print(sys.executable);print(sys.version.split()[0]);print(struct.calcsize('P')*8)"
+
+
+def in_user_profile(path):
+    return bool(re.match(r"^[A-Za-z]:\\Users\\(?!Public\\)[^\\]+\\", path or "", re.I))
+
+
+def probe_python(path, runner=None):
+    """(real python.exe path, 'x.y.z') when `path` is a usable Python (3.11 / 3.12, 64-bit), else None."""
+    cmd = ["py", path[3:], "-c", PROBE_CODE] if path.startswith("py:") else [path, "-c", PROBE_CODE]
+    try:
+        if runner:
+            code, out = runner(cmd)
+        else:
+            pr = subprocess.run(cmd, capture_output=True, timeout=30, stdin=subprocess.DEVNULL, creationflags=0x08000000 if IS_WINDOWS else 0)
+            code, out = pr.returncode, (pr.stdout or b"").decode("utf-8", "replace")
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    parts = [l.strip() for l in out.splitlines() if l.strip()]            # by LINE: the path may contain spaces (C:\\Program Files\\Python312)
+    if code == 0 and len(parts) >= 3 and parts[2] == "64" and python_ok(parse_python_version("Python " + parts[1])):
+        return parts[0], parts[1]
+    return None
+
+
+def shared_pythons(runner=None, candidates=None):
+    """Usable Pythons that are NOT inside somebody's Windows profile, so any account can run them."""
+    out = []
+    for c in (candidates if candidates is not None else candidate_pythons()):
+        r = probe_python(c, runner)
+        if r and not in_user_profile(r[0]) and r[0] not in [x[0] for x in out]:
+            out.append(r)
+    return out
+
+
+def write_python_pointer(app, python):
+    """The two small files that say which python.exe runs the system."""
+    with open(os.path.join(app, "deploy", "python_path.txt"), "w", encoding="ascii", errors="replace") as f:
+        f.write(python)
+    with open(os.path.join(app, "po.bat"), "w", encoding="ascii", errors="replace", newline="\r\n") as f:
+        f.write('@echo off\r\nrem runs python of this installation:  po tools\\setup_check.py\r\nset PYTHONUTF8=1\r\n"%s" %%*\r\n' % python)
+
+
+def admin_shared_python(app, chosen="", install=True, runner=None, say=None):
+    """Makes the system run on a Python that every Windows account can use (needed to run the server as another account). Returns the text to show.
+    1) a shared Python already on the PC (or the one chosen)  2) else Python %s is installed «for all users» (signed installer, checked)
+    3) the libraries are installed into it  4) the system is pointed at it and restarted. The old Python is left as it is."""
+    say = say or (lambda t: None)
+    old = admin.find_python(app)
+    target = None
+    if chosen:
+        target = probe_python(chosen, runner)
+        if not target:
+            return "✘ الملف المختار ليس بايثون 3.11 أو 3.12 (64-bit): %s" % chosen
+        if in_user_profile(target[0]):
+            return "✘ هذا البايثون داخل ملف مستخدم (%s) فلا تستطيع الحسابات الأخرى تشغيله. اختر بايثون مثبّتاً «لكل المستخدمين»." % target[0]
+    else:
+        found = shared_pythons(runner)
+        target = found[0] if found else None
+    if not target and install:
+        say("… لا يوجد بايثون مشترك: جارٍ تنزيل بايثون %s وتثبيته لكل المستخدمين" % PY311_VERSION)
+        c = Ctx(Answers(), log=lambda m: None)
+        tmp = os.path.join(tempfile.gettempdir(), "python-%s-amd64.exe" % PY311_VERSION)
+        try:
+            c.download(PY311_URL, tmp)
+        except Exception as e:                                       # noqa: BLE001
+            return "✘ تعذّر تنزيل بايثون (%s). تأكد من الإنترنت." % e
+        if not verify_signature(c, tmp, "Python Software Foundation"):
+            return "✘ توقيع مثبّت بايثون غير صالح: لم يُشغَّل."
+        code, _o = c.run([tmp, "/quiet", "InstallAllUsers=1", "PrependPath=0", "Include_pip=1", "Include_launcher=0", "Include_test=0", "Shortcuts=0"], timeout=1200)
+        if code not in (0, 3010):
+            return "✘ فشل تثبيت بايثون لكل المستخدمين (رمز %s)." % code
+        found = shared_pythons(runner)
+        target = found[0] if found else None
+    if not target:
+        return "✘ لم أجد بايثون مشتركاً لكل المستخدمين على هذا الجهاز."
+    python = target[0]
+    if os.path.normcase(python) == os.path.normcase(old):
+        return "✔ النظام يعمل أصلاً على بايثون مشترك: %s" % python
+    say("… جارٍ تثبيت مكتبات النظام في %s" % python)
+    code, out = _pip_into(app, python, runner)
+    if code != 0:
+        return "✘ فشل تثبيت المكتبات في %s (النظام ما زال على البايثون القديم):\n%s" % (python, out.strip()[-400:])
+    code, out = _run_python(app, python, ["-c", "import flask, pyodbc, waitress, openpyxl, docx; print('LIBS=OK')"], runner)
+    if code != 0 or "LIBS=OK" not in out:
+        return "✘ المكتبات لم تعمل في %s (النظام ما زال على البايثون القديم):\n%s" % (python, out.strip()[-300:])
+    was = admin.port_listening(admin.settings(app)["port"])
+    if was:
+        admin.stop_server(app, ps_run)
+    write_python_pointer(app, python)
+    text = "✔ النظام يعمل الآن على بايثون مشترك لكل الحسابات: %s (الإصدار %s).\nالقديم لم يُحذف: %s" % (python, target[1], old)
+    if was:
+        text += "\n" + ("✔ أُعيد تشغيل الخادم." if admin.start_server(app, ps_run, wait=90) else "⚠ لم يبدأ الخادم: اضغط «تشغيل».")
+    return text + "\nالآن يمكنك تفعيل التشغيل عند الإقلاع بأي حساب ويندوز."
+
+
+def _run_python(app, python, args, runner=None, timeout=1800):
+    cmd = [python] + list(args)
+    if runner:
+        return runner(cmd)
+    try:
+        p = subprocess.run(cmd, cwd=app, capture_output=True, timeout=timeout, stdin=subprocess.DEVNULL, env=dict(os.environ, PYTHONUTF8="1"), creationflags=0x08000000 if IS_WINDOWS else 0)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 1, str(e)
+    return p.returncode, ((p.stdout or b"") + (p.stderr or b"")).decode("utf-8", "replace")
+
+
+def _pip_into(app, python, runner=None):
+    return _run_python(app, python, ["-m", "pip", "install", "--disable-pip-version-check", "-r", "requirements.txt"], runner)
+
+
 def admin_boot(app, enable, user="", password=""):
     """Turns «start at boot with nobody signed in» on (as SYSTEM or a Windows account) or back to «after sign-in». Returns the text to show."""
     a = admin_answers(app)
@@ -1235,6 +1347,9 @@ def admin_test(app, dest):
         check("readiness check runs", "PO Web" in out, out.strip()[-200:])
         text = admin_network(app, "po.panel.test", "", dest)
         check("network settings applied", "✘" not in text and os.path.isfile(os.path.join(dest, "client_import.json")), text[-300:])
+        text = admin_shared_python(app)
+        check("shared python", text.startswith("✔"), text[:300])
+        check("server answers after the python switch", admin.start_server(app, ps_run, wait=90), admin.find_python(app))
         text = admin_boot(app, True)
         check("boot start (SYSTEM)", text.startswith("✔"), text[:200])
         check("status sees the boot task", admin.server_status(app, ps_run)["task"] == "boot")
@@ -1356,6 +1471,15 @@ def admin_wizard(selftest_out=None):
     bar2.grid(row=7, column=0, columnspan=3, sticky="e", pady=6)
     ttk.Button(bar2, text="فعّل التشغيل عند الإقلاع", command=lambda: job(lambda: admin_boot(app(), True, v_buser.get(), v_bpass.get()), done=lambda: v_bpass.set(""))).pack(side="right", padx=4)
     ttk.Button(bar2, text="ألغِه (يبدأ بعد دخول ويندوز)", command=lambda: job(lambda: admin_boot(app(), False))).pack(side="right", padx=4)
+    ttk.Separator(fs).grid(row=8, column=0, columnspan=3, sticky="ew", pady=10)
+    ttk.Label(fs, text="بايثون الذي يشغّل النظام", font=("", 10, "bold")).grid(row=9, column=0, columnspan=3, sticky="e")
+    ttk.Label(fs, text="إن كان بايثون مثبّتاً داخل ملف مستخدم واحد، فلا يستطيع حساب ويندوز آخر تشغيل النظام. هذا الزر يجد بايثون مثبّتاً لكل المستخدمين (أو يثبّته)، ويضع فيه مكتبات النظام، ويحوّل النظام إليه. القديم لا يُحذف.",
+              wraplength=760, justify="right", foreground="#555").grid(row=10, column=0, columnspan=3, sticky="e")
+    v_py = tk.StringVar()
+    ttk.Label(fs, text="python.exe محدد (اختياري):").grid(row=11, column=2, sticky="e", pady=4)
+    ttk.Entry(fs, textvariable=v_py).grid(row=11, column=1, sticky="ew", padx=6)
+    ttk.Button(fs, text="استعراض…", command=lambda: v_py.set((filedialog.askopenfilename(filetypes=[("python.exe", "python.exe")]) or v_py.get()).replace("/", "\\"))).grid(row=11, column=0)
+    ttk.Button(fs, text="جهّز بايثون مشتركاً لكل الحسابات", command=lambda: (say("… جارٍ التجهيز (قد يأخذ بضع دقائق)"), job(lambda: admin_shared_python(app(), v_py.get().strip(), say=lambda t: root.after(0, say, t))))).grid(row=12, column=1, sticky="e", pady=6, padx=6)
 
     # ---- users
     fu = page("المستخدمون")
