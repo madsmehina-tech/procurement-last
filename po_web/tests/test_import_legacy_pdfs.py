@@ -107,3 +107,15 @@ def test_the_same_file_twice_in_the_sheet_is_copied_once(tmp_path):
     add_po("PO-1")
     d = decide([row(1, "PO", "PO-1", str(old / "PO 001.pdf")), row(2, "PO", "PO-1", str(old / "PO 001.pdf"))], old)
     assert [x["status"] for x in d] == ["will_copy", "already_there"]
+
+
+def test_two_orders_that_differ_only_by_a_dash_are_told_apart_by_the_exact_key(tmp_path):
+    old = files(tmp_path)
+    add_po("po-2026383")
+    add_po("po-2026-383")
+    d = decide([row(1, "PO", "po-2026383", str(old / "PO 001.pdf")), row(2, "QU", "po-2026-383", str(old / "Qu 1.pdf")), row(3, "QU", "PO-2026383", str(old / "Qu 1.pdf"))], old)
+    assert [(x["status"], x["po_real"]) for x in d] == [("will_copy", "po-2026383"), ("will_copy", "po-2026-383"), ("will_copy", "po-2026383")]   # exact, ignoring case
+    add_po("PO-2026-9")
+    add_po("po 2026 9")
+    d = decide([row(4, "PO", "PO2026-9", str(old / "PO 001.pdf"))], old)                  # no exact key and two loose matches: still reported, never guessed
+    assert d[0]["status"] == "order_ambiguous"

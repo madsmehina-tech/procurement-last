@@ -91,7 +91,8 @@ def plan(rows, maps, search_index, orders, existing_hashes):
     seen_in_run = set()
     for r in rows:
         d = dict(r, status="", po_real="", src="", note="")
-        cands = orders.get(norm_po(r["po"]), [])
+        exact = [real for real in orders.get("__exact__", {}).get(str(r["po"]).strip().lower(), [])]
+        cands = exact or orders.get(norm_po(r["po"]), [])          # the sheet stores the system's own order key: an EXACT match (ignoring case) wins; only then the loose one
         if not cands:
             d["status"], d["note"] = "order_missing", "الأمر غير موجود في النظام: %s" % r["po"]
             out.append(d)
@@ -129,9 +130,10 @@ def plan(rows, maps, search_index, orders, existing_hashes):
 
 def load_orders():
     import db
-    idx = {}
+    idx = {"__exact__": {}}
     for o in db.query("SELECT [PONumber] FROM [PurchaseOrders]"):
         idx.setdefault(norm_po(o["PONumber"]), []).append(o["PONumber"])
+        idx["__exact__"].setdefault(str(o["PONumber"]).strip().lower(), []).append(o["PONumber"])
     return idx
 
 
