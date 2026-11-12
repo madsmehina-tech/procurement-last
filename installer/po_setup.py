@@ -1296,6 +1296,25 @@ def step_file_sharing(c):
     return "ok", "مشاركة الملفات مسموحة على الشبكة الخاصة، والمشاركة «%s» تشير إلى %s" % (c.a.share_name, share)
 
 
+def step_share_ensure(c):
+    """The shared archive folder must really exist as a Windows share: it is created when it is missing (read-only for the team), file sharing is
+    allowed through the firewall, and the result is read back from Windows."""
+    status, detail = step_share(c)
+    code, out = c.run(ps("$s = Get-SmbShare -Name %s -ErrorAction SilentlyContinue; if ($s) { Write-Output ('SHARE=' + $s.Path) } else { Write-Output 'SHARE=' }; "
+                         "$r = Get-NetFirewallRule -Group '@FirewallAPI.dll,-28502' -ErrorAction SilentlyContinue | Where-Object { $_.Enabled -eq 'True' -and $_.Direction -eq 'Inbound' -and ($_.Profile -match 'Private' -or $_.Profile -eq 'Any') }; "
+                         "Write-Output ('FPS=' + @($r).Count)" % ps_quote(c.a.share_name)))
+    m = re.search(r"SHARE=(.*)", out or "")
+    path = m.group(1).strip() if m else ""
+    f = re.search(r"FPS=(\d+)", out or "")
+    if status != "ok" or not path:
+        return "warn", "المشاركة «%s» غير موجودة ولم أستطع إنشاءها: %s" % (c.a.share_name, detail)
+    if os.path.normcase(path.rstrip("\\")) != os.path.normcase(c.a.share_folder.rstrip("\\")):
+        return "warn", "المشاركة «%s» تشير إلى %s وليس إلى مجلد الأرشيف %s." % (c.a.share_name, path, c.a.share_folder)
+    if not f or int(f.group(1)) == 0:
+        return "warn", "المشاركة «%s» موجودة، لكن «مشاركة الملفات والطابعات» غير مسموحة في الجدار الناري على الشبكة الخاصة." % c.a.share_name
+    return "ok", "\\\\%s\\%s تشير إلى %s (الفريق قراءة فقط)، ومشاركة الملفات مسموحة على الشبكة الخاصة" % (socket.gethostname(), c.a.share_name, path)
+
+
 def admin_network(app, alias, extra, export_dir, set_private=True):
     """Network type, firewall rule, friendly name and the team file - the same steps as the installation."""
     a = admin_answers(app)
@@ -1308,7 +1327,7 @@ def admin_network(app, alias, extra, export_dir, set_private=True):
     c = Ctx(a, log=lambda m: None)
     lines = []
     a.create_share, a.share_name = True, (lan_share_name(app) or "PO_Archive")
-    for title, fn in (("نوع الشبكة", step_network), ("الجدار الناري", step_firewall), ("مشاركة الملفات عبر الشبكة", step_file_sharing), ("اسم الرابط وملف الفريق", step_lanfile)):
+    for title, fn in (("نوع الشبكة", step_network), ("الجدار الناري", step_firewall), ("مشاركة مجلد الأرشيف على الشبكة", step_share_ensure), ("اسم الرابط وملف الفريق", step_lanfile)):
         try:
             status, detail = fn(c)
         except Exception as e:                                       # noqa: BLE001
@@ -1345,8 +1364,12 @@ def admin_test(app, dest):
             check("duplicate user refused", True, str(e))
         code, out = admin.run_tool(app, [os.path.join("tools", "setup_check.py")], timeout=900)
         check("readiness check runs", "PO Web" in out, out.strip()[-200:])
+        share = lan_share_name(app) or "PO_Archive"
+        ps_run("Remove-SmbShare -Name %s -Force -ErrorAction SilentlyContinue" % ps_quote(share))            # as if the share had disappeared
         text = admin_network(app, "po.panel.test", "", dest)
-        check("network settings applied", "✘" not in text and os.path.isfile(os.path.join(dest, "client_import.json")), text[-300:])
+        check("network settings applied", "✘" not in text and "⚠" not in text and os.path.isfile(os.path.join(dest, "client_import.json")), text[-500:])
+        _c, out = ps_run("(Get-SmbShare -Name %s -ErrorAction SilentlyContinue).Path" % ps_quote(share))
+        check("the missing share was created again", os.path.normcase(out.strip()) == os.path.normcase(admin.settings(app)["archive"]), out.strip())
         before = admin.find_python(app)
         text = admin_shared_python(app, skip_current=True)
         check("shared python: libraries installed into ANOTHER python and the system switched to it", text.startswith("✔") and admin.find_python(app) != before, text[:400])
