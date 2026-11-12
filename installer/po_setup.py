@@ -80,6 +80,9 @@ class Answers:
     replace_existing: bool = False                        # an older program folder is moved aside (app_old_<time>) and its config.ini + instance kept
     zip_path: str = ""                                    # the program package (default: next to this file / inside the exe)
     python_path: str = ""                                 # force a specific python.exe (normally found / installed automatically)
+    boot_start: bool = False                              # start when the PC STARTS, with nobody signed in (a scheduled task) instead of «after sign-in»
+    boot_user: str = ""                                   # the Windows account the server runs as at boot (empty = the SYSTEM account)
+    boot_password: str = ""                               # its Windows password: handed to Windows Task Scheduler only; never stored by this tool or logged
     set_private: bool = True                              # a «Public» network blocks the team: make it «Private» (remembered, undone by «remove»)
     allowed_extra: str = ""                               # extra ranges besides the office subnet, e.g. 192.168.5.0/24, 10.0.0.0/8 (never the whole internet)
     alias_name: str = "poweb"                             # friendly name for the link: http://poweb:5000 (a tagged line in hosts); empty = none
@@ -151,6 +154,10 @@ def validate(a, check_paths=True):
         errs.append("ملف حزمة الاسترداد غير موجود: %s" % a.restore_package)
     if a.db_mode == "restore" and a.admin_password and not ADMIN_PASSWORD_RULE.match(a.admin_password):
         errs.append("كلمة مرور المدير: 8 خانات فأكثر وفيها حرف ورقم (أو اتركها فارغة: حسابات النظام تأتي مع الحزمة).")
+    if a.boot_start and a.boot_user and not a.boot_password:
+        errs.append("التشغيل عند الإقلاع بحساب «%s»: أدخل كلمة مرور ويندوز لهذا الحساب (أو اترك اسم الحساب فارغاً ليعمل بحساب النظام)." % a.boot_user)
+    if a.boot_user and not re.match(r"^[^\"/\[\]:;|=,+*?<>]+$", a.boot_user.replace("\\", "", 1)):
+        errs.append("اسم حساب ويندوز غير صالح.")
     if a.db_mode not in ("new", "existing", "restore"):
         errs.append("خيار القاعدة غير معروف.")
     if os.path.normcase(os.path.abspath(a.share_folder)) == os.path.normcase(os.path.abspath(a.app)) or \
@@ -199,8 +206,9 @@ class Ctx:
 
     def log(self, msg):
         text = str(msg)
-        if self.a.admin_password:
-            text = text.replace(self.a.admin_password, "********")
+        for secret in (self.a.admin_password, getattr(self.a, "boot_password", "")):
+            if secret:
+                text = text.replace(secret, "********")
         self._log(text)
 
     def _run(self, cmd, cwd=None, env=None, timeout=1800):
@@ -674,7 +682,62 @@ def step_lanfile(c):
     return lan.host_alias_and_export(c)
 
 
+BOOT_TASK = "PO Web Server (Boot)"
+
+
+def boot_account(user):
+    """«mahmoud» -> «PCNAME\\mahmoud» (a local account); «DOMAIN\\x» and «x@y» stay."""
+    u = (user or "").strip()
+    if u.startswith(".\\"):
+        u = u[2:]
+    return u if ("\\" in u or "@" in u) else "%s\\%s" % (socket.gethostname(), u)
+
+
+def python_private_to(python_path, user):
+    """True when python.exe lives inside ANOTHER person's Windows profile (C:\\Users\\someone\\...): a different account cannot run it."""
+    m = re.match(r"^[A-Za-z]:\\Users\\([^\\]+)\\", python_path or "", re.I)
+    if not m or m.group(1).lower() in ("public", "all users"):
+        return False
+    return m.group(1).lower() != (user or "").split("\\")[-1].split("@")[0].lower()
+
+
+def step_boot(c):
+    """Start at boot with nobody signed in: a scheduled task as SYSTEM, or as a real Windows account («run whether the user is signed in or not»)."""
+    a = c.a
+    bat = os.path.join(a.app, "deploy", "start_server_loop.bat")
+    common = ("$ErrorActionPreference='Stop'; Unregister-ScheduledTask -TaskName 'PO Web Server' -Confirm:$false -ErrorAction SilentlyContinue; "
+              "$action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/c \"' + %s + '\"') -WorkingDirectory %s; "
+              "$trigger = New-ScheduledTaskTrigger -AtStartup; $trigger.Delay = 'PT1M'; "
+              "$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable "
+              "-RestartCount 5 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew; ") % (ps_quote(bat), ps_quote(a.app))
+    if not a.boot_user:
+        script = common + ("$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest; "
+                           "Register-ScheduledTask -TaskName %s -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null") % ps_quote(BOOT_TASK)
+        code, out = c.run(ps(script))
+        if code != 0:
+            return "warn", "تعذّر إنشاء مهمة الإقلاع: %s" % " ".join(out.split())[-160:]
+        return "ok", "يبدأ النظام بعد إقلاع الجهاز بدقيقة دون دخول أحد (بحساب النظام). تنبيه: تحويل العقود إلى PDF بواسطة Word لا يعمل بحساب النظام."
+    acct = boot_account(a.boot_user)
+    if python_private_to(c.python, acct):
+        return "warn", ("بايثون مثبَّت داخل ملف مستخدم آخر (%s) فلا يستطيع الحساب «%s» تشغيله. استعمل الحساب صاحب ذلك المجلد، أو ثبّت بايثون «لكل المستخدمين»، ثم أعد الأداة. لم تُنشأ مهمة الإقلاع." % (c.python, acct))
+    notes = []
+    for folder in dict.fromkeys([a.base, a.share_folder, a.backup_db] + ([a.backup_set_dir] if a.backup_set_dir else [])):      # the account must be able to write the data
+        code, out = c.run(["icacls", folder, "/grant", "%s:(OI)(CI)M" % acct, "/T", "/C", "/Q"])
+        if code != 0:
+            notes.append("تعذّر منح الحساب صلاحية الكتابة على %s" % folder)
+    script = common + ("Register-ScheduledTask -TaskName %s -Action $action -Trigger $trigger -Settings $settings -User %s -Password $env:PO_TASK_PASSWORD -RunLevel Limited -Force | Out-Null"
+                       % (ps_quote(BOOT_TASK), ps_quote(acct)))
+    code, out = c.run(ps(script), env={"PO_TASK_PASSWORD": a.boot_password})          # the password travels in the child's environment only: never on a command line, never in the log
+    if code != 0:
+        return "warn", "تعذّر إنشاء مهمة الإقلاع بالحساب «%s» (تأكد من الاسم وكلمة المرور، وأن الحساب غير معطَّل): %s" % (acct, " ".join(out.split())[-160:])
+    notes.insert(0, "يبدأ النظام بعد إقلاع الجهاز بدقيقة دون دخول أحد، بحساب ويندوز «%s»" % acct)
+    notes.append("إن غيّرت كلمة مرور هذا الحساب لاحقاً فأعد تشغيل الأداة (وإلا تتوقف المهمة)")
+    return ("ok" if len(notes) == 2 else "warn"), "؛ ".join(notes)
+
+
 def step_autostart(c):
+    if c.a.boot_start:
+        return step_boot(c)
     if not c.a.autostart:
         return "skip", "لم يُطلب"
     code, out = c.run(ps("& " + ps_quote(os.path.join(c.a.app, "deploy", "install_autostart.ps1"))))
@@ -692,9 +755,14 @@ def step_start(c):
     if not port_free(a.port):
         return "warn", "المنفذ %d مشغول (ربما النظام يعمل بالفعل)." % a.port
     os.makedirs(a.logs, exist_ok=True)
-    out = open(os.path.join(a.logs, "server.out.txt"), "ab")
-    flags = (0x00000008 | 0x00000200) if IS_WINDOWS else 0                      # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
-    subprocess.Popen([c.python, "serve.py"], cwd=a.app, stdout=out, stderr=out, env=dict(os.environ, PYTHONUTF8="1"), creationflags=flags)
+    started_by_task = False
+    if a.boot_start:                                                               # let the TASK start it: the server then runs under the account it will always run under
+        code, _o = c.run(ps("Start-ScheduledTask -TaskName %s" % ps_quote(BOOT_TASK)))
+        started_by_task = code == 0
+    if not started_by_task:
+        out = open(os.path.join(a.logs, "server.out.txt"), "ab")
+        flags = (0x00000008 | 0x00000200) if IS_WINDOWS else 0                      # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+        subprocess.Popen([c.python, "serve.py"], cwd=a.app, stdout=out, stderr=out, env=dict(os.environ, PYTHONUTF8="1"), creationflags=flags)
     url = "http://127.0.0.1:%d/health" % int(a.port)
     for _ in range(60):
         time.sleep(1)
@@ -805,8 +873,8 @@ def wizard(initial=None, selftest_out=None):
     root.geometry("760x640")
     a = initial or Answers()
     v = {k: tk.StringVar(value=str(getattr(a, k, ""))) for k in ("share_folder", "base", "share_name", "team_group", "db_existing", "admin_user", "admin_name", "admin_password", "admin_password2",
-                                                              "backup_db_dir", "backup_set_dir", "port", "allowed_extra", "alias_name", "export_dir", "restore_package")}
-    flags = {k: tk.BooleanVar(value=getattr(a, k)) for k in ("create_share", "install_tesseract", "open_firewall", "autostart", "start_after", "replace_existing", "set_private")}
+                                                              "backup_db_dir", "backup_set_dir", "port", "allowed_extra", "alias_name", "export_dir", "restore_package", "boot_user", "boot_password")}
+    flags = {k: tk.BooleanVar(value=getattr(a, k)) for k in ("create_share", "install_tesseract", "open_firewall", "autostart", "start_after", "replace_existing", "set_private", "boot_start")}
     db_mode = tk.StringVar(value=a.db_mode)
     frames = {}
     nb = ttk.Notebook(root)
@@ -863,6 +931,9 @@ def wizard(initial=None, selftest_out=None):
                                 ("autostart", "شغّل النظام تلقائياً بعد دخول ويندوز"), ("start_after", "شغّل الخادم بعد التثبيت"), ("replace_existing", "استبدل برنامجاً قديماً موجوداً (مع حفظ config.ini وinstance)"),
                                 ("set_private", "حوّل الشبكة إلى Private إن كانت Public (بدونه يحجب الجدار الناري أجهزة الفريق)"))):
         ttk.Checkbutton(f4, text=t, variable=flags[k]).grid(row=i, column=0, columnspan=3, sticky="e", pady=4)
+    ttk.Checkbutton(f4, text="شغّل النظام عند إقلاع الجهاز دون دخول أحد (بدل «بعد دخول ويندوز»)", variable=flags["boot_start"]).grid(row=6, column=0, columnspan=3, sticky="e", pady=4)
+    row(f4, "حساب ويندوز الذي يعمل به (فارغ = حساب النظام):", v["boot_user"], 7)
+    row(f4, "كلمة مرور ويندوز لهذا الحساب (لا تُحفظ ولا تُسجَّل):", v["boot_password"], 11, show="•")
     row(f4, "اسم بديل للرابط (مثل poweb، أو اتركه فارغاً):", v["alias_name"], 8)
     row(f4, "نطاقات إضافية للمكتب (اختياري، مثل 192.168.5.0/24):", v["allowed_extra"], 9)
     row(f4, "مجلد حفظ ملف الفريق client_import.json (فارغ = مجلد التثبيت):", v["export_dir"], 10, browse=True)
@@ -875,8 +946,8 @@ def wizard(initial=None, selftest_out=None):
 
     def collect():
         z = Answers()
-        for k in ("share_folder", "base", "share_name", "team_group", "db_existing", "admin_user", "admin_name", "admin_password", "backup_db_dir", "backup_set_dir", "allowed_extra", "alias_name", "export_dir", "restore_package"):
-            setattr(z, k, v[k].get().strip() if k != "admin_password" else v[k].get())
+        for k in ("share_folder", "base", "share_name", "team_group", "db_existing", "admin_user", "admin_name", "admin_password", "backup_db_dir", "backup_set_dir", "allowed_extra", "alias_name", "export_dir", "restore_package", "boot_user", "boot_password"):
+            setattr(z, k, v[k].get().strip() if k not in ("admin_password", "boot_password") else v[k].get())
         z.port = int(v["port"].get() or 5000)
         z.db_mode = db_mode.get()
         for k, var in flags.items():
@@ -939,18 +1010,18 @@ def client_wizard(initial=None, selftest_out=None):
     import threading
     root = tk.Tk()
     root.title("إعداد جهاز عضو الفريق")
-    root.geometry("700x560")
+    root.geometry("720x680")
     a = initial or lan.ClientAnswers()
-    v = {k: tk.StringVar(value=str(getattr(a, k, ""))) for k in ("import_file", "server", "port", "alias", "tailscale_ip", "shortcut_name")}
+    v = {k: tk.StringVar(value=str(getattr(a, k, ""))) for k in ("import_file", "server", "port", "alias", "tailscale_ip", "shortcut_name", "share_user", "share_password")}
     flags = {k: tk.BooleanVar(value=bool(getattr(a, k))) for k in ("outside_office", "shortcut", "open_browser")}
     f = ttk.Frame(root, padding=14)
     f.pack(fill="both", expand=True)
     ttk.Label(f, text="هذا الجهاز سيفتح النظام من الجهاز الرئيسي. اختر ملف client_import.json الذي أعطاك إياه مسؤول النظام، أو اكتب عنوان الجهاز الرئيسي.",
               wraplength=640, justify="right").grid(row=0, column=0, columnspan=3, sticky="e", pady=6)
 
-    def row(label, key, r, browse=False):
+    def row(label, key, r, browse=False, show=""):
         ttk.Label(f, text=label, wraplength=260, justify="right").grid(row=r, column=2, sticky="e", pady=4)
-        ttk.Entry(f, textvariable=v[key], width=40).grid(row=r, column=1, sticky="ew", padx=6)
+        ttk.Entry(f, textvariable=v[key], width=40, show=show).grid(row=r, column=1, sticky="ew", padx=6)
         if browse:
             ttk.Button(f, text="استعراض…", command=lambda: v[key].set(filedialog.askopenfilename(filetypes=[("JSON", "*.json")]) or v[key].get())).grid(row=r, column=0)
     row("ملف الفريق (client_import.json):", "import_file", 1, browse=True)
@@ -959,18 +1030,21 @@ def client_wizard(initial=None, selftest_out=None):
     row("اسم بديل للرابط (اختياري، مثل poweb):", "alias", 4)
     row("عنوان Tailscale (للعمل من خارج المكتب):", "tailscale_ip", 5)
     row("اسم الاختصار على سطح المكتب:", "shortcut_name", 6)
+    row("حساب ويندوز على الجهاز الرئيسي لفتح مجلد الشير (اختياري):", "share_user", 12)
+    row("كلمة مرور ذلك الحساب (تُحفظ في ويندوز هذا الجهاز فقط):", "share_password", 13, show="•")
     ttk.Checkbutton(f, text="أعمل الآن من خارج المكتب (عبر Tailscale)", variable=flags["outside_office"]).grid(row=7, column=0, columnspan=3, sticky="e")
     ttk.Checkbutton(f, text="أنشئ اختصاراً على سطح المكتب", variable=flags["shortcut"]).grid(row=8, column=0, columnspan=3, sticky="e")
     ttk.Checkbutton(f, text="افتح النظام بعد الإعداد", variable=flags["open_browser"]).grid(row=9, column=0, columnspan=3, sticky="e")
     box = tk.Text(f, height=10, width=80, wrap="word")
-    box.grid(row=11, column=0, columnspan=3, pady=8)
+    box.grid(row=14, column=0, columnspan=3, pady=8)
     btn = ttk.Button(f, text="اختبر وأعدّ")
     btn.grid(row=10, column=1, pady=6)
 
     def collect():
         z = lan.ClientAnswers()
-        for k in ("import_file", "server", "alias", "tailscale_ip", "shortcut_name"):
+        for k in ("import_file", "server", "alias", "tailscale_ip", "shortcut_name", "share_user"):
             setattr(z, k, v[k].get().strip())
+        z.share_password = v["share_password"].get()
         z.port = int(v["port"].get() or 5000)
         for k, var in flags.items():
             setattr(z, k, bool(var.get()))
@@ -1150,6 +1224,7 @@ def main(argv=None):
     ap.add_argument("--server", help="client: address of the main PC")
     ap.add_argument("--port", type=int, help="client: port (default 5000)")
     ap.add_argument("--alias", help="client: friendly name for the link")
+    ap.add_argument("--share-user", help="client: the main PC's Windows account for the shared archive folder (its password is read from the environment variable PO_SHARE_PASSWORD)")
     ap.add_argument("--export", action="store_true", help="full backup: writes PO_Export_<date>.zip (database + archive + old uploads) from --app into --dest; changes nothing")
     ap.add_argument("--app", help="export: the program folder (the one with config.ini)")
     ap.add_argument("--dest", help="export: where the package is written")
@@ -1194,7 +1269,8 @@ def main(argv=None):
         print(("✔ الحزمة سليمة: %d ملف" % r["files"]) if r["ok"] else "✘ مشاكل: " + "؛ ".join(r["problems"][:10]))
         return 0 if r["ok"] else 1
     if args.role == "client" and (args.silent or args.dry_run):
-        z = lan.ClientAnswers(import_file=args.import_file or "", server=args.server or "", alias=args.alias or "", open_browser=False)
+        z = lan.ClientAnswers(import_file=args.import_file or "", server=args.server or "", alias=args.alias or "", open_browser=False,
+                              share_user=args.share_user or "", share_password=os.environ.get("PO_SHARE_PASSWORD", ""))
         if args.port:
             z.port = args.port
         res, overall = run_client_answers(z, print, dry=args.dry_run)

@@ -229,6 +229,9 @@ class ClientAnswers:
     shortcut: bool = True
     shortcut_name: str = "نظام المشتريات"
     open_browser: bool = True
+    share_user: str = ""             # the Windows account of the MAIN PC used to open the shared archive folder from this PC (optional)
+    share_password: str = ""         # kept by Windows Credential Manager on this PC (cmdkey); never written by this tool or logged
+    server_name: str = ""            # the main PC's computer name (from client_import.json)
 
 
 def load_import(path):
@@ -244,6 +247,7 @@ def apply_import(a, data):
     a.port = int(data.get("port") or a.port)
     a.alias = data.get("alias") or a.alias
     a.tailscale_ip = data.get("tailscale_ip") or a.tailscale_ip
+    a.server_name = data.get("server_name") or a.server_name
     return a
 
 
@@ -271,7 +275,33 @@ def check_connection(host, port, timeout=5, opener=None):
     return False, "المنفذ مفتوح لكن النظام لم يردّ على /health."
 
 
-def run_client(a, log, ps, ps_quote, is_admin, dry=False, desktop=None, hosts=None, tester=None, opener_fn=None):
+def credential_targets(a, reach):
+    """Every name this PC may use for the main PC (address, computer name, friendly name)."""
+    out = []
+    for t in (reach, a.server, a.server_name, (a.alias or "").strip().lower()):
+        if t and t not in out:
+            out.append(t)
+    return out
+
+
+def save_share_credentials(a, reach, runner=None):
+    """Stores the main PC's account in Windows Credential Manager for each of its names, so the shared archive opens without asking.
+    Returns (targets saved, failed). The password goes to cmdkey only."""
+    import subprocess
+    owner = a.server_name or reach
+    user = a.share_user if ("\\" in a.share_user or "@" in a.share_user) else "%s\\%s" % (owner, a.share_user)
+    ok, failed = [], []
+    for t in credential_targets(a, reach):
+        cmd = ["cmdkey", "/add:" + t, "/user:" + user, "/pass:" + a.share_password]
+        try:
+            code = runner(cmd) if runner else subprocess.run(cmd, capture_output=True, timeout=30, stdin=subprocess.DEVNULL).returncode
+        except (OSError, subprocess.SubprocessError):
+            code = 1
+        (ok if code == 0 else failed).append(t)
+    return ok, failed
+
+
+def run_client(a, log, ps, ps_quote, is_admin, dry=False, desktop=None, hosts=None, tester=None, opener_fn=None, cred_runner=None):
     """The client steps. Returns (results, overall) like run_install."""
     results, overall = [], "ok"
     admin = bool(is_admin() if callable(is_admin) else is_admin)
@@ -320,6 +350,16 @@ def run_client(a, log, ps, ps_quote, is_admin, dry=False, desktop=None, hosts=No
             except OSError as e:
                 add("alias", "الاسم البديل", "warn", "تعذّر تعديل ملف hosts (%s)؛ سيُستعمل العنوان الرقمي." % e)
                 link = "http://%s:%d" % (reach, int(a.port))
+    if a.share_user:
+        if not a.share_password:
+            add("cred", "حساب مجلد الشير", "warn", "أدخل كلمة مرور الحساب «%s» ليُحفظ؛ لم يُحفظ شيء." % a.share_user)
+        elif dry:
+            add("cred", "حساب مجلد الشير", "ok", "سيُحفظ الحساب «%s» في ويندوز لفتح مجلد الشير" % a.share_user)
+        else:
+            saved, failed = save_share_credentials(a, reach, cred_runner)
+            state["cmdkeys"] = sorted(set(state.get("cmdkeys", []) + saved))
+            add("cred", "حساب مجلد الشير", "ok" if saved and not failed else "warn",
+                ("حُفظ الحساب «%s» في ويندوز (Credential Manager) للجهاز الرئيسي: %s" % (a.share_user, "، ".join(saved))) if saved else "تعذّر حفظ الحساب في ويندوز.")
     if a.shortcut:
         try:
             lnk = _make_shortcut(a, link, ps, ps_quote, dry, desktop)
@@ -378,6 +418,9 @@ def remove_lan(c_run, ps, hosts=None, state=None):
             done.append("اختصار: حُذف " + lnk)
         except OSError:
             pass
+    for t in st.get("cmdkeys", []):
+        code, _o = c_run(["cmdkey", "/delete:" + t])
+        done.append("حساب محفوظ للجهاز الرئيسي (%s): %s" % (t, "حُذف" if code == 0 else "غير موجود"))
     prof = st.get("network_profile")
     if prof and prof.get("was") and prof.get("interface_index") is not None:
         c_run(ps("Set-NetConnectionProfile -InterfaceIndex %d -NetworkCategory %s" % (int(prof["interface_index"]), prof["was"])))

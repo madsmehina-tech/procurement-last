@@ -77,7 +77,12 @@ jobs:
           $zip = Get-ChildItem po_web_v*.zip | Sort-Object { [version](($_.BaseName -replace 'po_web_v','') -replace '_','.') } -Descending | Select-Object -First 1
           @{ share_folder='D:\PO_Archive'; base='D:\PO'; share_name='PO_Archive'; create_share=$true; team_group='Authenticated Users'; db_mode='new';
              admin_user='ciadmin'; admin_name='CI Admin'; admin_password='Passw0rd-CI-1'; backup_db_dir='D:\PO_Backup\db'; backup_set_dir='D:\PO_BackupSet';
-             port=5000; install_tesseract=$true; open_firewall=$true; autostart=$true; start_after=$true; zip_path=$zip.FullName } | ConvertTo-Json | Out-File -Encoding utf8 answers.json
+             port=5000; install_tesseract=$true; open_firewall=$true; autostart=$true; start_after=$true; zip_path=$zip.FullName;
+             boot_start=$true; boot_user='posvc'; boot_password='Svc-Passw0rd-CI-7' } | ConvertTo-Json | Out-File -Encoding utf8 answers.json
+          # an ordinary (non-administrator) Windows account for the server to run as
+          $pw = ConvertTo-SecureString 'Svc-Passw0rd-CI-7' -AsPlainText -Force
+          New-LocalUser -Name posvc -Password $pw -PasswordNeverExpires | Out-Null
+          Add-LocalGroupMember -Group Users -Member posvc
       - name: Run the installer (real, silent)
         shell: pwsh
         run: python installer\po_setup.py --silent --answers answers.json
@@ -96,6 +101,12 @@ jobs:
           $r.Content
           if ($r.Content -notmatch '"status"') { exit 1 }
           Get-SmbShare PO_Archive | Format-List Name,Path
+          $t = Get-ScheduledTask -TaskName 'PO Web Server (Boot)'
+          $t.Principal | Format-List UserId, LogonType, RunLevel
+          $owner = (Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object { $_.CommandLine -match 'serve.py' } | ForEach-Object { (Invoke-CimMethod -InputObject $_ -MethodName GetOwner).User })
+          "server process owner: $owner"
+          if ("$owner" -notmatch 'posvc') { Write-Error 'the server does not run as the chosen Windows account'; exit 1 }
+          if (Select-String -Path D:\PO\install_log.txt -Pattern 'Svc-Passw0rd-CI-7') { Write-Error 'the Windows password is in the log'; exit 1 }
           Get-Content D:\PO\app\config.ini
       - name: The host wrote the team file and the friendly name
         shell: pwsh
@@ -108,18 +119,23 @@ jobs:
       - name: A team PC (client mode, real) - connection test, friendly name, shortcut
         shell: pwsh
         run: |
-          python installer\po_setup.py --role client --silent --import-file D:\PO\client_import.json
+          $env:PO_SHARE_PASSWORD = 'Svc-Passw0rd-CI-7'
+          python installer\po_setup.py --role client --silent --import-file D:\PO\client_import.json --share-user posvc
           if ($LASTEXITCODE -ne 0) { exit 1 }
+          cmdkey /list | Select-String -Pattern 'posvc' -Context 1,0
+          if (-not (cmdkey /list | Select-String 'posvc')) { Write-Error 'the account was not saved in Credential Manager'; exit 1 }
           $desk = [Environment]::GetFolderPath('Desktop')
           Get-ChildItem $desk -Filter *.url | ForEach-Object { $_.FullName; Get-Content $_.FullName }
           if (-not (Get-ChildItem $desk -Filter *.url)) { Write-Error 'no shortcut'; exit 1 }
           python installer\po_setup.py --remove-lan
           if (Select-String -Path C:\Windows\System32\drivers\etc\hosts -Pattern 'PO-SETUP') { Write-Error 'hosts line not removed'; exit 1 }
           if (Get-NetFirewallRule -DisplayName 'PO Web*' -ErrorAction SilentlyContinue) { Write-Error 'rules not removed'; exit 1 }
+          if (cmdkey /list | Select-String 'posvc') { Write-Error 'saved account not removed'; exit 1 }
       - name: Start at boot with nobody signed in (scheduled task as SYSTEM) - installs, really starts, answers, removes
         shell: pwsh
         run: |
           # stop the server the installer started, then let the TASK start it
+          Stop-ScheduledTask -TaskName 'PO Web Server (Boot)' -ErrorAction SilentlyContinue
           Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object { $_.CommandLine -match 'serve.py' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
           Start-Sleep -Seconds 3
           powershell -NoProfile -ExecutionPolicy Bypass -File installer\boot_task.ps1 -Root D:\PO\app

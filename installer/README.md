@@ -60,3 +60,11 @@ On the new PC: **الجهاز الرئيسي → «استرداد من حزمة 
 each file is checked against the manifest, nothing existing is ever overwritten, then the normal steps run (migrate, checks, firewall, start).
 Command line: `PO_Setup.exe --export --app D:\PO\app --dest E:\Backup`, `PO_Setup.exe --verify-package E:\Backup\PO_Export_....zip`.
 Tested: logic (8 tests) and, on real Windows in CI, an export of a real installation followed by a second installation restored from it (server answers, same archive files).
+
+## Start at boot with nobody signed in, and Windows accounts (v1.3)
+
+Main PC, page «خيارات»: **«شغّل النظام عند إقلاع الجهاز دون دخول أحد»**. Account empty = SYSTEM. With a Windows account + its password the task runs as that account
+(«run whether the user is signed in or not»); the installer grants it Modify on the data / archive / backup folders. The password goes to Task Scheduler only (child-process environment), never to a file or the log.
+Team PC: optional **Windows account of the main PC** + password, saved with `cmdkey` in that PC's Credential Manager for the main PC's address / name / friendly name, so the shared archive opens without a prompt. «Remove» deletes them.
+Tested on real Windows in CI: a non-administrator local account is created, the server is started by the task and its process owner is that account; the client saves and removes the credential; the password is not in the log.
+Not covered: Microsoft Word automation without an interactive session (unsupported by Microsoft; LibreOffice is the dependable backend there).

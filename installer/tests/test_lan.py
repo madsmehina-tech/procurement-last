@@ -166,3 +166,60 @@ def test_a_dotted_alias_is_written_to_hosts_and_removed(tmp_path):
     assert lan.hosts_set(str(h), "192.168.100.55", "alhadab.procurement")
     assert "192.168.100.55\talhadab.procurement\t# PO-SETUP" in h.read_text(encoding="utf-8")
     assert lan.hosts_remove(str(h)) == 1 and "alhadab" not in h.read_text(encoding="utf-8")
+
+
+def test_client_saves_the_main_pc_account_for_every_name_and_remove_deletes_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(lan, "state_path", lambda: str(tmp_path / "state.json"))
+    a = lan.ClientAnswers(server="192.168.100.55", server_name="ENG-PC", alias="alhadab.procurement", open_browser=False, share_user="po", share_password="S3cret!")
+    desktop = tmp_path / "Desktop"
+    desktop.mkdir()
+    hosts = tmp_path / "hosts"
+    hosts.write_text("", encoding="utf-8")
+    calls, logs = [], []
+    res, overall = lan.run_client(a, logs.append, ps.ps, ps.ps_quote, True, desktop=str(desktop), hosts=str(hosts), tester=lambda h, p: (True, "ok"),
+                                  cred_runner=lambda cmd: (calls.append(cmd) or 0))
+    assert overall == "ok", res
+    assert [c[1] for c in calls] == ["/add:192.168.100.55", "/add:ENG-PC", "/add:alhadab.procurement"]
+    assert all(c[2] == "/user:ENG-PC\\po" and c[3] == "/pass:S3cret!" for c in calls)
+    assert "S3cret!" not in "\n".join(logs) and "S3cret!" not in (tmp_path / "state.json").read_text(encoding="utf-8")      # never logged, never stored by the tool
+    cmds = []
+    lan.remove_lan(lambda cmd: (cmds.append(cmd) or (0, "")), ps.ps, hosts=str(hosts))
+    assert ["cmdkey", "/delete:ENG-PC"] in cmds and ["cmdkey", "/delete:192.168.100.55"] in cmds
+
+
+def test_client_with_a_user_but_no_password_saves_nothing(tmp_path, monkeypatch):
+    monkeypatch.setattr(lan, "state_path", lambda: str(tmp_path / "state.json"))
+    a = lan.ClientAnswers(server="192.168.100.55", open_browser=False, share_user="po", shortcut=False)
+    calls = []
+    res, overall = lan.run_client(a, lambda m: None, ps.ps, ps.ps_quote, True, tester=lambda h, p: (True, "ok"), cred_runner=lambda cmd: (calls.append(cmd) or 0))
+    assert overall == "warn" and calls == []
+
+
+def test_boot_task_as_system_and_as_a_windows_account(tmp_path, monkeypatch):
+    (tmp_path / "mine.accdb").write_bytes(b"MYDB")
+    monkeypatch.setattr(lan, "state_path", lambda: str(tmp_path / "state.json"))
+    a = answers(tmp_path, db_mode="existing", db_existing=str(tmp_path / "mine.accdb"), boot_start=True)
+    rec = Recorder()
+    res, overall, _c = ps.run_install(a, lambda m: None, run=rec)
+    flat = [" ".join(str(x) for x in c[0]) for c in rec.calls]
+    reg = [c for c in flat if "Register-ScheduledTask" in c]
+    assert len(reg) == 1 and "-UserId 'SYSTEM'" in reg[0] and "AtStartup" in reg[0] and "PO Web Server (Boot)" in reg[0]
+    assert not any("install_autostart.ps1" in c for c in flat)                                 # not the «after sign-in» task as well
+
+    a2 = answers(tmp_path / "b" if (tmp_path / "b").mkdir() is None else tmp_path, db_mode="existing", db_existing=str(tmp_path / "mine.accdb"), boot_start=True, boot_user="svc", boot_password="W1nPass!")
+    rec, log = Recorder(), []
+    res, overall, _c = ps.run_install(a2, log.append, run=rec)
+    reg = [c for c in rec.calls if "Register-ScheduledTask" in " ".join(map(str, c[0]))][0]
+    text = " ".join(map(str, reg[0]))
+    assert "-Password $env:PO_TASK_PASSWORD" in text and "W1nPass!" not in text and reg[2]["PO_TASK_PASSWORD"] == "W1nPass!"   # in the child's environment only
+    assert "\\svc'" in text and "-RunLevel Limited" in text
+    assert "W1nPass!" not in "\n".join(map(str, log))
+    assert any(c[0][0] == "icacls" and c[0][2] == "/grant" and c[0][3].endswith("\\svc:(OI)(CI)M") for c in rec.calls)       # the account can write the data
+
+
+def test_boot_account_rules(tmp_path):
+    assert ps.boot_account("mahmoud").endswith("\\mahmoud") and ps.boot_account(".\\d").endswith("\\d") and ps.boot_account("CORP\\x") == "CORP\\x"
+    assert ps.python_private_to(r"C:\Users\D\AppData\Local\Programs\Python\Python312\python.exe", "PC\\svc")
+    assert not ps.python_private_to(r"C:\Users\D\AppData\Local\Programs\Python\Python312\python.exe", "PC\\d")
+    assert not ps.python_private_to(r"C:\Program Files\Python312\python.exe", "PC\\svc")
+    assert any("كلمة مرور ويندوز" in e for e in ps.validate(answers(tmp_path, boot_start=True, boot_user="svc"), check_paths=False))
