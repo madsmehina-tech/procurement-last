@@ -50,10 +50,15 @@ jobs:
           Start-Process -FilePath .\dist\PO_Setup.exe -ArgumentList '--gui-selftest','--out','gui_selftest.txt' -Wait
           Get-Content gui_selftest.txt
           if (-not (Select-String -Path gui_selftest.txt -Pattern '^OK')) { exit 1 }
+      - name: Put the guide next to the exe
+        shell: pwsh
+        run: Copy-Item "installer\دليل_لوحة_الإدارة.md" dist\
       - uses: actions/upload-artifact@v4
         with:
           name: PO_Setup
-          path: dist/PO_Setup.exe
+          path: |
+            dist/PO_Setup.exe
+            dist/*.md
 
   tools:
     needs: logic
@@ -188,6 +193,18 @@ jobs:
           "archive files: old=$a new=$b"
           if ($b -lt $a) { Write-Error 'fewer files after restore'; exit 1 }
           Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object { $_.CommandLine -match 'serve.py' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+      - name: Admin panel operations, for real (backup folders in config.ini, stop/start, full backup, add user, network, boot task)
+        shell: pwsh
+        run: |
+          Remove-Item D:\PO\data\*.laccdb -ErrorAction SilentlyContinue
+          python installer\po_setup.py --admin-test --app D:\PO\app --dest D:\PO_AdminTest
+          $code = $LASTEXITCODE
+          Get-Content D:\PO\app\config.ini
+          Get-ChildItem D:\PO\app -Filter 'config.ini.bak_*' | Select-Object Name
+          Stop-ScheduledTask -TaskName 'PO Web Server (Boot)' -ErrorAction SilentlyContinue
+          Unregister-ScheduledTask -TaskName 'PO Web Server (Boot)' -Confirm:$false -ErrorAction SilentlyContinue
+          Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object { $_.CommandLine -match 'serve.py' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+          if ($code -ne 0) { Write-Error 'an admin-panel operation failed'; exit 1 }
       - name: Acceptance check on COPIES of the fresh installation (real Access engine)
         continue-on-error: true
         timeout-minutes: 12

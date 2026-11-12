@@ -41,6 +41,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import po_lan as lan  # noqa: E402
 import po_transfer as transfer  # noqa: E402
+import po_admin as admin  # noqa: E402
 
 IS_WINDOWS = os.name == "nt"
 SETUP_VERSION = "1.0"
@@ -87,11 +88,12 @@ class Answers:
     allowed_extra: str = ""                               # extra ranges besides the office subnet, e.g. 192.168.5.0/24, 10.0.0.0/8 (never the whole internet)
     alias_name: str = "poweb"                             # friendly name for the link: http://poweb:5000 (a tagged line in hosts); empty = none
     export_dir: str = ""                                  # where client_import.json is written (default: <base>)
+    app_dir: str = ""                                     # (admin panel) an existing program folder whose name is not <base>\app
     skip_prereqs: bool = False                            # for tests / machines where Python and the driver are known to be fine
 
     @property
     def app(self):
-        return os.path.join(self.base, "app")
+        return self.app_dir or os.path.join(self.base, "app")
 
     @property
     def data_dir(self):
@@ -862,6 +864,13 @@ def run_install(answers, log, progress=None, dry=False, run=None, download=None,
                 overall, stopped = "fail", True
         elif status == "warn" and overall == "ok":
             overall = "warn"
+    if overall != "fail" and not dry and not only:
+        try:
+            st = lan.load_state()
+            st["app_dir"] = answers.app
+            lan.save_state(st)
+        except OSError:
+            pass
     return results, overall, ctx
 
 
@@ -1116,6 +1125,331 @@ def client_summary(results, overall):
     return "\n".join([head, ""] + ["%s %s — %s" % (icon.get(s, "?"), t, d) for _k, t, s, d in results])
 
 
+def ps_run(script, env=None, timeout=300):
+    """Runs a PowerShell script hidden; returns (exit code, text)."""
+    e = dict(os.environ)
+    e.update(env or {})
+    try:
+        p = subprocess.run(ps(script), capture_output=True, timeout=timeout, stdin=subprocess.DEVNULL, env=e, creationflags=0x08000000 if IS_WINDOWS else 0)
+    except (OSError, subprocess.TimeoutExpired) as ex:
+        return 1, str(ex)
+    return p.returncode, ((p.stdout or b"") + (p.stderr or b"")).decode("utf-8", "replace")
+
+
+def admin_answers(app):
+    """Answers describing an EXISTING installation (for the steps the panel re-uses)."""
+    s = admin.settings(app)
+    return Answers(app_dir=app, base=os.path.dirname(os.path.abspath(app)), share_folder=s["archive"], backup_db_dir=s["backup_dir"], backup_set_dir=s["backup_archive_dir"],
+                   port=s["port"], python_path=admin.find_python(app))
+
+
+def admin_boot(app, enable, user="", password=""):
+    """Turns «start at boot with nobody signed in» on (as SYSTEM or a Windows account) or back to «after sign-in». Returns the text to show."""
+    a = admin_answers(app)
+    if enable:
+        a.boot_start, a.boot_user, a.boot_password = True, user.strip(), password
+        if a.boot_user and not a.boot_password:
+            return "✘ أدخل كلمة مرور ويندوز للحساب «%s»، أو اترك الحساب فارغاً ليعمل بحساب النظام." % a.boot_user
+        c = Ctx(a, log=lambda m: None)
+        c.python = a.python_path
+        status, detail = step_boot(c)
+        return ("✔ " if status == "ok" else "⚠ ") + detail
+    code, out = ps_run("Unregister-ScheduledTask -TaskName %s -Confirm:$false -ErrorAction SilentlyContinue; & %s" % (ps_quote(BOOT_TASK), ps_quote(os.path.join(app, "deploy", "install_autostart.ps1"))))
+    return "✔ أُلغي التشغيل عند الإقلاع، وعاد النظام يبدأ بعد دخولك إلى ويندوز." if code == 0 else "⚠ تعذّر: %s" % " ".join(out.split())[-160:]
+
+
+def admin_network(app, alias, extra, export_dir, set_private=True):
+    """Network type, firewall rule, friendly name and the team file - the same steps as the installation."""
+    a = admin_answers(app)
+    a.alias_name, a.allowed_extra, a.export_dir, a.set_private, a.open_firewall = alias.strip().lower(), extra.strip(), export_dir.strip(), set_private, True
+    _x, errs = lan.parse_remote_list(a.allowed_extra)
+    if a.alias_name and not lan.valid_alias(a.alias_name):
+        errs.append("الاسم البديل: حروف إنجليزية صغيرة وأرقام وشرطة ونقاط بين الأجزاء.")
+    if errs:
+        return "✘ " + "؛ ".join(errs)
+    c = Ctx(a, log=lambda m: None)
+    lines = []
+    for title, fn in (("نوع الشبكة", step_network), ("الجدار الناري", step_firewall), ("اسم الرابط وملف الفريق", step_lanfile)):
+        try:
+            status, detail = fn(c)
+        except Exception as e:                                       # noqa: BLE001
+            status, detail = "fail", str(e)
+        lines.append("%s %s — %s" % ({"ok": "✔", "warn": "⚠", "fail": "✘", "skip": "–"}[status], title, detail))
+    return "\n".join(lines)
+
+
+def admin_test(app, dest):
+    """Every panel operation, for real, on an installation (used by the automatic tests on Windows). Returns 0 when all passed."""
+    bad = []
+
+    def check(name, ok, detail=""):
+        print("%s %s %s" % ("OK " if ok else "BAD", name, detail))
+        if not ok:
+            bad.append(name)
+    try:
+        s0 = admin.settings(app)
+        bak, warns = admin.save_backup_folders(app, {"backup_dir": os.path.join(dest, "db"), "backup_extra_dir": os.path.join(dest, "db2"), "backup_archive_dir": os.path.join(dest, "set")}, "15", "6")
+        s1 = admin.settings(app)
+        check("backup folders saved in config.ini", s1["backup_archive_dir"] == os.path.join(dest, "set") and s1["backup_keep"] == "15" and os.path.isfile(bak) and s1["db"] == s0["db"] and s1["archive"] == s0["archive"])
+        check("server stops", admin.stop_server(app, ps_run))
+        check("server starts with the new settings", admin.start_server(app, ps_run, wait=90), admin.status_text(admin.server_status(app, ps_run)))
+        code, out = admin.backup_now(app)
+        check("full backup", code == 0 and os.path.isdir(os.path.join(dest, "set", "manifests")), out.strip()[-300:])
+        data = admin.list_roles_users(app)
+        check("roles and users read", len(data["roles"]) > 0 and len(data["users"]) > 0, str(data)[:200])
+        msg = admin.add_user(app, "panel.user", "مستخدم اللوحة", "اختبار", data["roles"][-1][0], "Panel-Pass1")
+        check("user added", "panel.user" in [u for u, _s in admin.list_roles_users(app)["users"]], msg)
+        try:
+            admin.add_user(app, "panel.user", "x", "", data["roles"][-1][0], "Panel-Pass1")
+            check("duplicate user refused", False)
+        except admin.AdminError as e:
+            check("duplicate user refused", True, str(e))
+        code, out = admin.run_tool(app, [os.path.join("tools", "setup_check.py")], timeout=900)
+        check("readiness check runs", "PO Web" in out, out.strip()[-200:])
+        text = admin_network(app, "po.panel.test", "", dest)
+        check("network settings applied", "✘" not in text and os.path.isfile(os.path.join(dest, "client_import.json")), text[-300:])
+        text = admin_boot(app, True)
+        check("boot start (SYSTEM)", text.startswith("✔"), text[:200])
+        check("status sees the boot task", admin.server_status(app, ps_run)["task"] == "boot")
+    except Exception as e:                                           # noqa: BLE001
+        check("no exception", False, "%s: %s" % (type(e).__name__, e))
+    return 1 if bad else 0
+
+
+def admin_wizard(selftest_out=None):
+    import tkinter as tk
+    from tkinter import filedialog, messagebox, ttk
+    import threading
+    root = tk.Tk()
+    root.title("لوحة إدارة نظام المشتريات")
+    root.geometry("900x720")
+    top = ttk.Frame(root, padding=8)
+    top.pack(fill="x")
+    v_app = tk.StringVar(value=lan.load_state().get("app_dir", ""))
+    ttk.Button(top, text="استعراض…", command=lambda: (v_app.set(filedialog.askdirectory() or v_app.get()), load())).pack(side="left")
+    ttk.Entry(top, textvariable=v_app, width=70).pack(side="left", padx=6, fill="x", expand=True)
+    ttk.Label(top, text="مجلد البرنامج (الذي فيه serve.py):").pack(side="right")
+    status = ttk.Label(root, text="", padding=4)
+    status.pack(fill="x")
+    nb = ttk.Notebook(root)
+    nb.pack(fill="both", expand=True, padx=8)
+    box = tk.Text(root, height=12, wrap="word")
+    box.pack(fill="both", padx=8, pady=6)
+
+    def say(t):
+        box.insert("end", str(t).rstrip() + "\n\n")
+        box.see("end")
+
+    def app():
+        return v_app.get().strip()
+
+    def job(fn, done=None):
+        """Runs fn() off the window thread, shows its text (or the reason it failed)."""
+        def work():
+            try:
+                text = fn()
+            except admin.AdminError as e:
+                text = "✘ " + str(e)
+            except Exception as e:                                   # noqa: BLE001
+                text = "✘ خطأ غير متوقع: %s: %s" % (type(e).__name__, e)
+            root.after(0, lambda: (say(text) if text else None, done() if done else None, refresh()))
+        threading.Thread(target=work, daemon=True).start()
+
+    def refresh():
+        try:
+            status.configure(text=admin.status_text(admin.server_status(app(), ps_run)))
+        except admin.AdminError as e:
+            status.configure(text=str(e))
+
+    def page(title):
+        f = ttk.Frame(nb, padding=10)
+        nb.add(f, text=title)
+        f.columnconfigure(1, weight=1)
+        return f
+
+    def folder_row(f, r, title, why, var):
+        ttk.Label(f, text=title, font=("", 10, "bold")).grid(row=r, column=2, sticky="e")
+        ttk.Entry(f, textvariable=var).grid(row=r, column=1, sticky="ew", padx=6)
+        ttk.Button(f, text="استعراض…", command=lambda: var.set((filedialog.askdirectory() or var.get()).replace("/", "\\"))).grid(row=r, column=0)
+        ttk.Label(f, text=why, wraplength=760, justify="right", foreground="#555").grid(row=r + 1, column=0, columnspan=3, sticky="e", pady=(0, 8))
+
+    # ---- backups
+    fb = page("النسخ الاحتياطي")
+    bvars = {k: tk.StringVar() for k, _t, _w in admin.BACKUP_KEYS}
+    v_keep, v_hours = tk.StringVar(), tk.StringVar()
+    for i, (k, t, w) in enumerate(admin.BACKUP_KEYS):
+        folder_row(fb, i * 2, t, w, bvars[k])
+    ttk.Label(fb, text="عدد نسخ القاعدة التي يُحتفظ بها:").grid(row=6, column=2, sticky="e")
+    ttk.Entry(fb, textvariable=v_keep, width=8).grid(row=6, column=1, sticky="e", padx=6)
+    ttk.Label(fb, text="نسخة تلقائية كل كم ساعة (0 = إيقاف):").grid(row=7, column=2, sticky="e")
+    ttk.Entry(fb, textvariable=v_hours, width=8).grid(row=7, column=1, sticky="e", padx=6)
+
+    def save_backup():
+        vals = {k: v.get().strip() for k, v in bvars.items()}
+
+        def run():
+            bak, warns = admin.save_backup_folders(app(), vals, v_keep.get().strip(), v_hours.get().strip())
+            text = "✔ حُفظت مجلدات النسخ في config.ini (نسخة من الملف القديم: %s)." % os.path.basename(bak)
+            if warns:
+                text += "\n⚠ " + "\n⚠ ".join(warns)
+            if admin.port_listening(admin.settings(app())["port"]):
+                admin.stop_server(app(), ps_run)
+                text += "\n" + ("✔ أُعيد تشغيل الخادم ليعمل بالإعداد الجديد." if admin.start_server(app(), ps_run) else "⚠ لم يبدأ الخادم بعد إعادة التشغيل: افتح صفحة «الخادم» واضغط تشغيل.")
+            return text
+        job(run)
+
+    def backup_now():
+        def run():
+            code, out = admin.backup_now(app())
+            return ("✔ اكتملت النسخة الكاملة.\n" if code == 0 else "✘ النسخة لم تكتمل:\n") + out.strip()[-1500:]
+        say("… جارٍ أخذ النسخة الكاملة (أول مرة تأخذ وقتاً)")
+        job(run)
+    ttk.Button(fb, text="احفظ الإعدادات", command=save_backup).grid(row=8, column=1, sticky="e", pady=8, padx=6)
+    ttk.Button(fb, text="خذ نسخة كاملة الآن", command=backup_now).grid(row=8, column=0, pady=8)
+
+    # ---- server
+    fs = page("الخادم")
+    ttk.Label(fs, text="إيقاف الخادم نظيف: ينتظر أي حفظ جارٍ ثم يتوقف. التشغيل يتم عبر مهمة ويندوز إن وُجدت.", wraplength=760, justify="right").grid(row=0, column=0, columnspan=3, sticky="e", pady=6)
+    bar = ttk.Frame(fs)
+    bar.grid(row=1, column=0, columnspan=3, sticky="e")
+    ttk.Button(bar, text="تشغيل", command=lambda: job(lambda: "✔ الخادم يعمل." if admin.start_server(app(), ps_run) else "✘ لم يبدأ الخادم: راجع logs\\server.out.txt")).pack(side="right", padx=4)
+    ttk.Button(bar, text="إيقاف", command=lambda: job(lambda: "✔ توقف الخادم." if admin.stop_server(app(), ps_run) else "✘ لم يتوقف الخادم.")).pack(side="right", padx=4)
+    ttk.Button(bar, text="إعادة تشغيل", command=lambda: job(lambda: (admin.stop_server(app(), ps_run), "✔ أُعيد تشغيل الخادم." if admin.start_server(app(), ps_run) else "✘ لم يبدأ الخادم.")[1])).pack(side="right", padx=4)
+    ttk.Button(bar, text="حدّث الحالة", command=refresh).pack(side="right", padx=4)
+    ttk.Separator(fs).grid(row=2, column=0, columnspan=3, sticky="ew", pady=10)
+    ttk.Label(fs, text="التشغيل عند إقلاع الجهاز دون دخول أحد", font=("", 10, "bold")).grid(row=3, column=0, columnspan=3, sticky="e")
+    ttk.Label(fs, text="الحساب فارغ = حساب النظام. مع حساب ويندوز وكلمة مروره يعمل الخادم بذلك الحساب (يُمنح صلاحية الكتابة على مجلدات النظام). كلمة المرور تُسلَّم لمجدول المهام فقط ولا تُحفظ في أي ملف.",
+              wraplength=760, justify="right", foreground="#555").grid(row=4, column=0, columnspan=3, sticky="e")
+    v_buser, v_bpass = tk.StringVar(), tk.StringVar()
+    ttk.Label(fs, text="حساب ويندوز (اختياري):").grid(row=5, column=2, sticky="e", pady=4)
+    ttk.Entry(fs, textvariable=v_buser, width=30).grid(row=5, column=1, sticky="e", padx=6)
+    ttk.Label(fs, text="كلمة مروره:").grid(row=6, column=2, sticky="e", pady=4)
+    ttk.Entry(fs, textvariable=v_bpass, width=30, show="•").grid(row=6, column=1, sticky="e", padx=6)
+    bar2 = ttk.Frame(fs)
+    bar2.grid(row=7, column=0, columnspan=3, sticky="e", pady=6)
+    ttk.Button(bar2, text="فعّل التشغيل عند الإقلاع", command=lambda: job(lambda: admin_boot(app(), True, v_buser.get(), v_bpass.get()), done=lambda: v_bpass.set(""))).pack(side="right", padx=4)
+    ttk.Button(bar2, text="ألغِه (يبدأ بعد دخول ويندوز)", command=lambda: job(lambda: admin_boot(app(), False))).pack(side="right", padx=4)
+
+    # ---- users
+    fu = page("المستخدمون")
+    ttk.Label(fu, text="إنشاء حساب دخول للنظام (ليس حساب ويندوز). الحساب يُنشأ مفعّلاً بالدور الذي تختاره.", wraplength=760, justify="right").grid(row=0, column=0, columnspan=3, sticky="e", pady=6)
+    uv = {k: tk.StringVar() for k in ("user", "full", "job", "pw", "pw2")}
+    for r, (k, label, show) in enumerate((("user", "اسم المستخدم (حروف إنجليزية):", ""), ("full", "الاسم الكامل:", ""), ("job", "المسمى الوظيفي (اختياري):", ""),
+                                          ("pw", "كلمة المرور (8+ وفيها حرف ورقم):", "•"), ("pw2", "أعد كتابتها:", "•")), start=1):
+        ttk.Label(fu, text=label).grid(row=r, column=2, sticky="e", pady=3)
+        ttk.Entry(fu, textvariable=uv[k], width=34, show=show).grid(row=r, column=1, sticky="e", padx=6)
+    ttk.Label(fu, text="الدور:").grid(row=6, column=2, sticky="e", pady=3)
+    role_box = ttk.Combobox(fu, state="readonly", width=32)
+    role_box.grid(row=6, column=1, sticky="e", padx=6)
+    roles = {}
+
+    def load_roles():
+        def run():
+            data = admin.list_roles_users(app())
+            roles.clear()
+            roles.update({name: rid for rid, name in data["roles"]})
+            root.after(0, lambda: (role_box.configure(values=list(roles)), role_box.current(0) if roles else None))
+            return "الحسابات الحالية (%d): %s" % (len(data["users"]), "، ".join("%s [%s]" % (u, st) for u, st in data["users"]))
+        job(run)
+
+    def add_user():
+        if uv["pw"].get() != uv["pw2"].get():
+            say("✘ كلمتا المرور غير متطابقتين.")
+            return
+        if role_box.get() not in roles:
+            say("✘ اضغط «حمّل الأدوار» واختر دوراً.")
+            return
+        args = (uv["user"].get().strip(), uv["full"].get().strip(), uv["job"].get().strip(), roles[role_box.get()], uv["pw"].get())
+        job(lambda: "✔ " + admin.add_user(app(), *args), done=lambda: (uv["pw"].set(""), uv["pw2"].set(""), uv["user"].set("")))
+    ttk.Button(fu, text="أنشئ الحساب", command=add_user).grid(row=7, column=1, sticky="e", pady=8, padx=6)
+    ttk.Button(fu, text="حمّل الأدوار والحسابات", command=load_roles).grid(row=7, column=0, pady=8)
+
+    # ---- network
+    fn = page("الشبكة وأجهزة الفريق")
+    ttk.Label(fn, text="يضبط نوع الشبكة (Private)، ويفتح منفذ النظام لشبكة المكتب فقط، ويكتب الاسم البديل للرابط، وينشئ ملف الفريق client_import.json الذي تنسخه لأجهزة الزملاء مع PO_Setup.exe.",
+              wraplength=760, justify="right").grid(row=0, column=0, columnspan=3, sticky="e", pady=6)
+    v_alias, v_extra, v_exp = tk.StringVar(), tk.StringVar(), tk.StringVar()
+    ttk.Label(fn, text="الاسم البديل للرابط (مثل alhadab.procurement، أو فارغ):").grid(row=1, column=2, sticky="e", pady=3)
+    ttk.Entry(fn, textvariable=v_alias, width=34).grid(row=1, column=1, sticky="e", padx=6)
+    ttk.Label(fn, text="نطاقات إضافية للمكتب (اختياري، مثل 192.168.5.0/24):").grid(row=2, column=2, sticky="e", pady=3)
+    ttk.Entry(fn, textvariable=v_extra, width=34).grid(row=2, column=1, sticky="e", padx=6)
+    ttk.Label(fn, text="مجلد حفظ ملف الفريق:").grid(row=3, column=2, sticky="e", pady=3)
+    ttk.Entry(fn, textvariable=v_exp).grid(row=3, column=1, sticky="ew", padx=6)
+    ttk.Button(fn, text="استعراض…", command=lambda: v_exp.set((filedialog.askdirectory() or v_exp.get()).replace("/", "\\"))).grid(row=3, column=0)
+    ttk.Button(fn, text="طبّق وأنشئ ملف الفريق", command=lambda: job(lambda: admin_network(app(), v_alias.get(), v_extra.get(), v_exp.get()))).grid(row=4, column=1, sticky="e", pady=8, padx=6)
+
+    # ---- checks / export
+    fc = page("الفحص والتصدير")
+    ttk.Label(fc, text="الفحوص تقرأ فقط ولا تغيّر شيئاً.", justify="right").grid(row=0, column=0, columnspan=3, sticky="e", pady=6)
+
+    def tool(args, title):
+        def run():
+            code, out = admin.run_tool(app(), args, timeout=900)
+            return "%s %s\n%s" % ("✔" if code == 0 else "⚠", title, out.strip()[-3000:])
+        return lambda: job(run)
+    ttk.Button(fc, text="فحص الجاهزية", command=tool([os.path.join("tools", "setup_check.py")], "فحص الجاهزية")).grid(row=1, column=2, sticky="e", pady=3)
+    ttk.Button(fc, text="فحص التخزين والأرشيف", command=tool([os.path.join("tools", "check_storage.py")], "فحص التخزين")).grid(row=2, column=2, sticky="e", pady=3)
+    ttk.Button(fc, text="أين بياناتي؟ (المسارات المستعملة)", command=lambda: job(lambda: admin.run_tool(app(), [os.path.join("tools", "where_is_my_data.py"), app()], timeout=300)[1].strip()[-3000:])).grid(row=3, column=2, sticky="e", pady=3)
+    ttk.Separator(fc).grid(row=4, column=0, columnspan=3, sticky="ew", pady=10)
+    v_dest = tk.StringVar()
+    folder_row(fc, 5, "تصدير كامل في حزمة واحدة", "يصنع ملفاً واحداً PO_Export_….zip فيه القاعدة وكل الملفات، ويفحصه ملفاً ملفاً. يوقف الخادم أثناء التصدير ثم يشغّله تلقائياً. للنقل إلى جهاز جديد أو كنسخة تحفظها خارج الجهاز.", v_dest)
+
+    def do_export():
+        def run():
+            was = admin.port_listening(admin.settings(app())["port"])
+            if was and not admin.stop_server(app(), ps_run):
+                return "✘ لم يتوقف الخادم؛ لم يبدأ التصدير."
+            lock = os.path.splitext(admin.settings(app())["db"])[0] + ".laccdb"
+            if os.path.exists(lock):
+                try:
+                    os.remove(lock)                                  # a stale lock left by a stopped server (a live one cannot be removed)
+                except OSError:
+                    pass
+            text = export_text(app(), v_dest.get().strip())
+            if was:
+                text += "\n" + ("✔ أُعيد تشغيل الخادم." if admin.start_server(app(), ps_run) else "⚠ لم يبدأ الخادم: افتح صفحة «الخادم» واضغط تشغيل.")
+            return text
+        say("… جارٍ التصدير")
+        job(run)
+    ttk.Button(fc, text="صدّر الآن", command=do_export).grid(row=7, column=1, sticky="e", pady=4, padx=6)
+
+    def load():
+        try:
+            s = admin.settings(app())
+        except admin.AdminError as e:
+            status.configure(text=str(e))
+            return
+        for k in bvars:
+            bvars[k].set(s[k])
+        v_keep.set(s["backup_keep"])
+        v_hours.set(s["backup_auto_hours"])
+        if not v_exp.get():
+            v_exp.set(os.path.dirname(os.path.abspath(app())))
+        st = lan.load_state()
+        st["app_dir"] = app()
+        try:
+            lan.save_state(st)
+        except OSError:
+            pass
+        refresh()
+    if selftest_out:
+        problems = []
+        try:
+            root.update()
+            if len(nb.tabs()) != 5:
+                problems.append("tabs=%d" % len(nb.tabs()))
+        except Exception as e:                                       # noqa: BLE001
+            problems.append("%s: %s" % (type(e).__name__, e))
+        root.destroy()
+        open(selftest_out, "w", encoding="utf-8").write(("OK" if not problems else "PROBLEMS: " + "; ".join(problems)) + "\n")
+        return 0 if not problems else 1
+    if app():
+        load()
+    else:
+        status.configure(text="اختر مجلد البرنامج (مثل D:\\PO\\app) بزر «استعراض».")
+    root.mainloop()
+
+
 def export_wizard(selftest_out=None):
     import tkinter as tk
     from tkinter import filedialog, ttk
@@ -1179,7 +1513,7 @@ def launcher(selftest_out=None):
     from tkinter import ttk, messagebox
     root = tk.Tk()
     root.title("نظام المشتريات والمقاولين — الإعداد")
-    root.geometry("600x430")
+    root.geometry("640x500")
     f = ttk.Frame(root, padding=20)
     f.pack(fill="both", expand=True)
     ttk.Label(f, text="ما هو دور هذا الجهاز؟", font=("", 14, "bold")).pack(pady=10)
@@ -1190,6 +1524,7 @@ def launcher(selftest_out=None):
         root.destroy()
     ttk.Button(f, text="الجهاز الرئيسي (يحمل القاعدة والأرشيف — تثبيت كامل)", command=lambda: pick("host")).pack(fill="x", pady=6, ipady=8)
     ttk.Button(f, text="جهاز عضو في الفريق (يفتح النظام من الجهاز الرئيسي)", command=lambda: pick("client")).pack(fill="x", pady=6, ipady=8)
+    ttk.Button(f, text="لوحة الإدارة: النسخ الاحتياطي، الخادم، المستخدمون، الشبكة، الفحص (بلا أوامر)", command=lambda: pick("admin")).pack(fill="x", pady=6, ipady=8)
     ttk.Button(f, text="نسخ احتياطي كامل وتصدير (القاعدة + كل الملفات في حزمة واحدة)", command=lambda: pick("export")).pack(fill="x", pady=6, ipady=8)
     ttk.Button(f, text="إزالة إعدادات الشبكة التي أضافتها الأداة (لا تمس البرنامج ولا البيانات)", command=lambda: pick("remove")).pack(fill="x", pady=6, ipady=8)
     if selftest_out:
@@ -1255,6 +1590,7 @@ def main(argv=None):
     ap.add_argument("--app", help="export: the program folder (the one with config.ini)")
     ap.add_argument("--dest", help="export: where the package is written")
     ap.add_argument("--verify-package", help="checks every file of a PO_Export package against its SHA-256")
+    ap.add_argument("--admin-test", action="store_true", help="(for the automatic tests) runs the admin-panel operations for real on --app, backups into --dest, and prints each result")
     ap.add_argument("--remove-lan", action="store_true", help="removes what this tool added to the network settings (firewall rules, hosts lines, shortcuts); never touches program or data")
     ap.add_argument("--out")
     args = ap.parse_args(argv)
@@ -1282,6 +1618,8 @@ def main(argv=None):
     if args.remove_lan:
         remove_lan_cli()
         return 0
+    if args.admin_test:
+        return admin_test(args.app or "", args.dest or "")
     if args.export:
         text = export_text(args.app or "", args.dest or "")
         print(text)
@@ -1314,7 +1652,7 @@ def main(argv=None):
         out = args.out or os.path.join(os.environ.get("TEMP", "."), "po_gui_selftest.txt")
         parts = []
         rc = 0
-        for name, fn in (("launcher", lambda o: launcher(selftest_out=o) or 0), ("host", lambda o: wizard(a, selftest_out=o)), ("client", lambda o: client_wizard(None, selftest_out=o)), ("export", lambda o: export_wizard(selftest_out=o))):
+        for name, fn in (("launcher", lambda o: launcher(selftest_out=o) or 0), ("host", lambda o: wizard(a, selftest_out=o)), ("client", lambda o: client_wizard(None, selftest_out=o)), ("export", lambda o: export_wizard(selftest_out=o)), ("admin", lambda o: admin_wizard(selftest_out=o))):
             o = out + "." + name
             try:
                 rc |= int(fn(o) or 0)
@@ -1339,6 +1677,9 @@ def main(argv=None):
         return 0
     if role == "export":
         export_wizard()
+        return 0
+    if role == "admin":
+        admin_wizard()
         return 0
     if role == "client":
         client_wizard(lan.ClientAnswers(import_file=args.import_file or "", server=args.server or "", alias=args.alias or ""))
