@@ -139,6 +139,32 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File installer\boot_task.ps1 -Root D:\PO\app -Remove
           if (Get-ScheduledTask -TaskName 'PO Web Server (Boot)' -ErrorAction SilentlyContinue) { Write-Error 'task not removed'; exit 1 }
           if (-not $ok) { Write-Error 'server did not answer when started by the SYSTEM task'; exit 1 }
+      - name: Full export, then a SECOND installation restored from the package (real) - same files, server answers
+        shell: pwsh
+        run: |
+          Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object { $_.CommandLine -match 'serve.py' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+          Start-Sleep -Seconds 3
+          Remove-Item D:\PO\data\*.laccdb -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory D:\PO_Archive\ci-test -Force | Out-Null
+          [IO.File]::WriteAllBytes('D:\PO_Archive\ci-test\ملف تجربة.pdf', [Text.Encoding]::ASCII.GetBytes("%PDF-1.4`n%%EOF"))
+          python installer\po_setup.py --export --app D:\PO\app --dest D:\PO_Export
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $pkg = (Get-ChildItem D:\PO_Export\PO_Export_*.zip | Select-Object -First 1).FullName
+          python installer\po_setup.py --verify-package $pkg
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $zip = Get-ChildItem po_web_v*.zip | Sort-Object { [version](($_.BaseName -replace 'po_web_v','') -replace '_','.') } -Descending | Select-Object -First 1
+          @{ share_folder='D:\PO2_Archive'; base='D:\PO2'; create_share=$false; db_mode='restore'; restore_package=$pkg; port=5055; install_tesseract=$false; open_firewall=$false;
+             set_private=$false; alias_name=''; autostart=$false; start_after=$true; zip_path=$zip.FullName } | ConvertTo-Json | Out-File -Encoding utf8 answers2.json
+          python installer\po_setup.py --silent --answers answers2.json
+          if ($LASTEXITCODE -ne 0) { Get-Content D:\PO2\install_log.txt -Tail 60; exit 1 }
+          Select-String -Path D:\PO2\install_log.txt -Pattern '\[(OK|WARN|FAIL|SKIP)\]' | ForEach-Object { $_.Line }
+          $r = Invoke-WebRequest http://127.0.0.1:5055/health -UseBasicParsing
+          if ($r.Content -notmatch '"status"') { exit 1 }
+          if (-not (Test-Path 'D:\PO2_Archive\ci-test\ملف تجربة.pdf')) { Write-Error 'archive file not restored'; exit 1 }
+          $a = (Get-ChildItem D:\PO_Archive -Recurse -File | Measure-Object).Count; $b = (Get-ChildItem D:\PO2_Archive -Recurse -File | Measure-Object).Count
+          "archive files: old=$a new=$b"
+          if ($b -lt $a) { Write-Error 'fewer files after restore'; exit 1 }
+          Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object { $_.CommandLine -match 'serve.py' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
       - name: Acceptance check on COPIES of the fresh installation (real Access engine)
         continue-on-error: true
         timeout-minutes: 12

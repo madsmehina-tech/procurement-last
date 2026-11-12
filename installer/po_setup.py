@@ -40,6 +40,7 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import po_lan as lan  # noqa: E402
+import po_transfer as transfer  # noqa: E402
 
 IS_WINDOWS = os.name == "nt"
 SETUP_VERSION = "1.0"
@@ -63,7 +64,8 @@ class Answers:
     share_name: str = "PO_Archive"
     create_share: bool = True
     team_group: str = "Authenticated Users"               # read-only access to the share for these; «Users» / a group name / DOMAIN\group also work
-    db_mode: str = "new"                                  # new | existing
+    db_mode: str = "new"                                  # new | existing | restore
+    restore_package: str = ""                             # restore: a PO_Export_*.zip made on the old main PC (database + archive + old uploads)
     db_existing: str = ""                                 # a COPY of this file is placed in <base>\data (the original is never touched)
     admin_user: str = "admin"
     admin_name: str = "مدير النظام"
@@ -145,7 +147,11 @@ def validate(a, check_paths=True):
     errs += extra_errs
     if (a.alias_name or "") and not lan.valid_alias(a.alias_name):
         errs.append("الاسم البديل للرابط: حروف إنجليزية صغيرة وأرقام وشرطة ونقاط بين الأجزاء (مثل poweb أو alhadab.procurement) أو اتركه فارغاً.")
-    if a.db_mode not in ("new", "existing"):
+    if a.db_mode == "restore" and check_paths and not os.path.isfile(a.restore_package or ""):
+        errs.append("ملف حزمة الاسترداد غير موجود: %s" % a.restore_package)
+    if a.db_mode == "restore" and a.admin_password and not ADMIN_PASSWORD_RULE.match(a.admin_password):
+        errs.append("كلمة مرور المدير: 8 خانات فأكثر وفيها حرف ورقم (أو اتركها فارغة: حسابات النظام تأتي مع الحزمة).")
+    if a.db_mode not in ("new", "existing", "restore"):
         errs.append("خيار القاعدة غير معروف.")
     if os.path.normcase(os.path.abspath(a.share_folder)) == os.path.normcase(os.path.abspath(a.app)) or \
             os.path.normcase(os.path.abspath(a.share_folder)).startswith(os.path.normcase(os.path.abspath(a.app)) + os.sep):
@@ -581,6 +587,15 @@ def step_database(c):
     a = c.a
     if os.path.isfile(a.db_path):
         return "ok", "ملف القاعدة موجود ولم يُلمس: %s" % a.db_path
+    if a.db_mode == "restore":
+        try:
+            r = transfer.restore_package(a.restore_package, a.db_path, a.share_folder, a.uploads, os.path.join(a.app, "instance"), dry=c.dry)
+        except transfer.TransferError as e:
+            return "fail", str(e)
+        if not r["ok"]:
+            return "fail", "ملفات تالفة داخل الحزمة (%d) مثل %s — أعد التصدير من الجهاز القديم." % (len(r["damaged"]), r["damaged"][0])
+        n = r["counts"]
+        return "ok", "استُردّت الحزمة (%s): القاعدة + %d ملف أرشيف + %d ملف مرفقات قديمة — كل ملف طابق بصمته" % (r["created"], n.get("archive", 0), n.get("legacy", 0))
     if a.db_mode == "existing":
         c.log("copy %s -> %s" % (a.db_existing, a.db_path))
         if not c.dry:
@@ -790,7 +805,7 @@ def wizard(initial=None, selftest_out=None):
     root.geometry("760x640")
     a = initial or Answers()
     v = {k: tk.StringVar(value=str(getattr(a, k, ""))) for k in ("share_folder", "base", "share_name", "team_group", "db_existing", "admin_user", "admin_name", "admin_password", "admin_password2",
-                                                              "backup_db_dir", "backup_set_dir", "port", "allowed_extra", "alias_name", "export_dir")}
+                                                              "backup_db_dir", "backup_set_dir", "port", "allowed_extra", "alias_name", "export_dir", "restore_package")}
     flags = {k: tk.BooleanVar(value=getattr(a, k)) for k in ("create_share", "install_tesseract", "open_firewall", "autostart", "start_after", "replace_existing", "set_private")}
     db_mode = tk.StringVar(value=a.db_mode)
     frames = {}
@@ -830,12 +845,14 @@ def wizard(initial=None, selftest_out=None):
     ttk.Radiobutton(f2, text="قاعدة جديدة فارغة (تثبيت جديد)", variable=db_mode, value="new").grid(row=0, column=1, sticky="e")
     ttk.Radiobutton(f2, text="استعمال نسخة من قاعدة موجودة (يُنسخ ملفها ولا يُلمس الأصل)", variable=db_mode, value="existing").grid(row=1, column=1, sticky="e")
     row(f2, "ملف القاعدة الموجودة:", v["db_existing"], 2, browse=True, folder=False)
-    row(f2, "مجلد نسخ القاعدة (قرص آخر يُفضَّل):", v["backup_db_dir"], 3, browse=True)
-    row(f2, "مجلد نسخ القاعدة + الأرشيف معاً (قرص آخر):", v["backup_set_dir"], 4, browse=True)
-    row(f2, "منفذ النظام:", v["port"], 5)
+    ttk.Radiobutton(f2, text="استرداد من حزمة تصدير (PO_Export_….zip): القاعدة + كل الملفات من الجهاز القديم", variable=db_mode, value="restore").grid(row=3, column=1, sticky="e")
+    row(f2, "ملف حزمة التصدير:", v["restore_package"], 4, browse=True, folder=False)
+    row(f2, "مجلد نسخ القاعدة (قرص آخر يُفضَّل):", v["backup_db_dir"], 5, browse=True)
+    row(f2, "مجلد نسخ القاعدة + الأرشيف معاً (قرص آخر):", v["backup_set_dir"], 6, browse=True)
+    row(f2, "منفذ النظام:", v["port"], 7)
 
     f3 = page("٣) حساب المدير")
-    ttk.Label(f3, text="مطلوب للقاعدة الجديدة. للقاعدة الموجودة: أدخله فقط إذا كانت بلا حساب مدير. كلمة المرور لا تُحفظ ولا تُكتب في السجل.").grid(row=0, column=0, columnspan=3, sticky="e")
+    ttk.Label(f3, text="مطلوب للقاعدة الجديدة. للقاعدة الموجودة أو المستردّة: اتركه فارغاً (الحسابات تأتي مع القاعدة) إلا إذا كانت بلا حساب مدير. كلمة المرور لا تُحفظ ولا تُكتب في السجل.").grid(row=0, column=0, columnspan=3, sticky="e")
     row(f3, "اسم المستخدم (إنجليزي):", v["admin_user"], 1)
     row(f3, "الاسم الظاهر:", v["admin_name"], 2)
     row(f3, "كلمة المرور (8+ وحرف ورقم):", v["admin_password"], 3, show="•")
@@ -858,7 +875,7 @@ def wizard(initial=None, selftest_out=None):
 
     def collect():
         z = Answers()
-        for k in ("share_folder", "base", "share_name", "team_group", "db_existing", "admin_user", "admin_name", "admin_password", "backup_db_dir", "backup_set_dir", "allowed_extra", "alias_name", "export_dir"):
+        for k in ("share_folder", "base", "share_name", "team_group", "db_existing", "admin_user", "admin_name", "admin_password", "backup_db_dir", "backup_set_dir", "allowed_extra", "alias_name", "export_dir", "restore_package"):
             setattr(z, k, v[k].get().strip() if k != "admin_password" else v[k].get())
         z.port = int(v["port"].get() or 5000)
         z.db_mode = db_mode.get()
@@ -999,13 +1016,70 @@ def client_summary(results, overall):
     return "\n".join([head, ""] + ["%s %s — %s" % (icon.get(s, "?"), t, d) for _k, t, s, d in results])
 
 
+def export_wizard(selftest_out=None):
+    import tkinter as tk
+    from tkinter import filedialog, ttk
+    import threading
+    root = tk.Tk()
+    root.title("نسخ احتياطي كامل وتصدير")
+    root.geometry("720x520")
+    f = ttk.Frame(root, padding=14)
+    f.pack(fill="both", expand=True)
+    ttk.Label(f, text="يصنع حزمة واحدة (PO_Export_….zip) فيها القاعدة وكل ملفات الأرشيف والمرفقات القديمة. لا يغيّر شيئاً في النظام.\n"
+                      "أوقف الخادم أولاً. للاسترداد: شغّل PO_Setup على الجهاز الجديد ← الجهاز الرئيسي ← «استرداد من حزمة تصدير».", wraplength=660, justify="right").grid(row=0, column=0, columnspan=3, sticky="e", pady=6)
+    v_app, v_dest = tk.StringVar(), tk.StringVar()
+    for r, (label, var) in enumerate((("مجلد البرنامج (app) الذي فيه config.ini:", v_app), ("مجلد حفظ الحزمة (قرص خارجي يُفضَّل):", v_dest)), start=1):
+        ttk.Label(f, text=label, wraplength=260, justify="right").grid(row=r, column=2, sticky="e", pady=4)
+        ttk.Entry(f, textvariable=var, width=46).grid(row=r, column=1, sticky="ew", padx=6)
+        ttk.Button(f, text="استعراض…", command=lambda var=var: var.set(filedialog.askdirectory() or var.get())).grid(row=r, column=0)
+    box = tk.Text(f, height=16, width=84, wrap="word")
+    box.grid(row=4, column=0, columnspan=3, pady=8)
+    btn = ttk.Button(f, text="ابدأ التصدير")
+    btn.grid(row=3, column=1, pady=6)
+
+    def say(t):
+        box.insert("end", t + "\n")
+        box.see("end")
+
+    def go():
+        btn.state(["disabled"])
+
+        def work():
+            text = export_text(v_app.get().strip(), v_dest.get().strip(), progress=lambda i, n: root.after(0, say, "… %d من %d ملف" % (i, n)) if i % 500 == 0 else None)
+            root.after(0, lambda: (say(text), btn.state(["!disabled"])))
+        threading.Thread(target=work, daemon=True).start()
+    btn.configure(command=go)
+    if selftest_out:
+        root.update()
+        root.destroy()
+        open(selftest_out, "w", encoding="utf-8").write("OK\n")
+        return 0
+    root.mainloop()
+
+
+def export_text(app_dir, dest_dir, progress=None):
+    """Runs the export and returns what to show the person."""
+    if not app_dir or not dest_dir:
+        return "✘ اختر مجلد البرنامج ومجلد الحفظ."
+    try:
+        r = transfer.export_package(app_dir, dest_dir, progress=progress)
+    except transfer.TransferError as e:
+        return "✘ " + str(e)
+    except OSError as e:
+        return "✘ تعذّر التصدير: %s" % e
+    c = r["counts"]
+    return ("✔ اكتمل التصدير وفُحصت الحزمة ملفاً ملفاً.\nالحزمة: %s\nالحجم: %.1f ميجابايت · القاعدة: %d · ملفات الأرشيف: %d · المرفقات القديمة: %d · ملفات داخلية: %d\n"
+            "بصمة الحزمة (SHA-256): %s\nانسخ هذا الملف إلى الجهاز الجديد، ثم: PO_Setup ← الجهاز الرئيسي ← «استرداد من حزمة تصدير»."
+            % (r["package"], r["bytes"] / (1 << 20), c.get("db", 0), c.get("archive", 0), c.get("legacy", 0), c.get("instance", 0), r["package_sha256"]))
+
+
 def launcher(selftest_out=None):
     """The first screen of the one tool: what is this PC?"""
     import tkinter as tk
     from tkinter import ttk, messagebox
     root = tk.Tk()
     root.title("نظام المشتريات والمقاولين — الإعداد")
-    root.geometry("560x360")
+    root.geometry("600x430")
     f = ttk.Frame(root, padding=20)
     f.pack(fill="both", expand=True)
     ttk.Label(f, text="ما هو دور هذا الجهاز؟", font=("", 14, "bold")).pack(pady=10)
@@ -1016,6 +1090,7 @@ def launcher(selftest_out=None):
         root.destroy()
     ttk.Button(f, text="الجهاز الرئيسي (يحمل القاعدة والأرشيف — تثبيت كامل)", command=lambda: pick("host")).pack(fill="x", pady=6, ipady=8)
     ttk.Button(f, text="جهاز عضو في الفريق (يفتح النظام من الجهاز الرئيسي)", command=lambda: pick("client")).pack(fill="x", pady=6, ipady=8)
+    ttk.Button(f, text="نسخ احتياطي كامل وتصدير (القاعدة + كل الملفات في حزمة واحدة)", command=lambda: pick("export")).pack(fill="x", pady=6, ipady=8)
     ttk.Button(f, text="إزالة إعدادات الشبكة التي أضافتها الأداة (لا تمس البرنامج ولا البيانات)", command=lambda: pick("remove")).pack(fill="x", pady=6, ipady=8)
     if selftest_out:
         root.update()
@@ -1075,6 +1150,10 @@ def main(argv=None):
     ap.add_argument("--server", help="client: address of the main PC")
     ap.add_argument("--port", type=int, help="client: port (default 5000)")
     ap.add_argument("--alias", help="client: friendly name for the link")
+    ap.add_argument("--export", action="store_true", help="full backup: writes PO_Export_<date>.zip (database + archive + old uploads) from --app into --dest; changes nothing")
+    ap.add_argument("--app", help="export: the program folder (the one with config.ini)")
+    ap.add_argument("--dest", help="export: where the package is written")
+    ap.add_argument("--verify-package", help="checks every file of a PO_Export package against its SHA-256")
     ap.add_argument("--remove-lan", action="store_true", help="removes what this tool added to the network settings (firewall rules, hosts lines, shortcuts); never touches program or data")
     ap.add_argument("--out")
     args = ap.parse_args(argv)
@@ -1102,6 +1181,18 @@ def main(argv=None):
     if args.remove_lan:
         remove_lan_cli()
         return 0
+    if args.export:
+        text = export_text(args.app or "", args.dest or "")
+        print(text)
+        return 0 if text.startswith("✔") else 1
+    if args.verify_package:
+        try:
+            r = transfer.verify_package(args.verify_package)
+        except transfer.TransferError as e:
+            print("✘ " + str(e))
+            return 1
+        print(("✔ الحزمة سليمة: %d ملف" % r["files"]) if r["ok"] else "✘ مشاكل: " + "؛ ".join(r["problems"][:10]))
+        return 0 if r["ok"] else 1
     if args.role == "client" and (args.silent or args.dry_run):
         z = lan.ClientAnswers(import_file=args.import_file or "", server=args.server or "", alias=args.alias or "", open_browser=False)
         if args.port:
@@ -1121,7 +1212,7 @@ def main(argv=None):
         out = args.out or os.path.join(os.environ.get("TEMP", "."), "po_gui_selftest.txt")
         parts = []
         rc = 0
-        for name, fn in (("launcher", lambda o: launcher(selftest_out=o) or 0), ("host", lambda o: wizard(a, selftest_out=o)), ("client", lambda o: client_wizard(None, selftest_out=o))):
+        for name, fn in (("launcher", lambda o: launcher(selftest_out=o) or 0), ("host", lambda o: wizard(a, selftest_out=o)), ("client", lambda o: client_wizard(None, selftest_out=o)), ("export", lambda o: export_wizard(selftest_out=o))):
             o = out + "." + name
             try:
                 rc |= int(fn(o) or 0)
@@ -1143,6 +1234,9 @@ def main(argv=None):
             return 0
     if role == "remove":
         remove_lan_cli()
+        return 0
+    if role == "export":
+        export_wizard()
         return 0
     if role == "client":
         client_wizard(lan.ClientAnswers(import_file=args.import_file or "", server=args.server or "", alias=args.alias or ""))

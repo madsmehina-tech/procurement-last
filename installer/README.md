@@ -51,3 +51,12 @@ PO_Setup.exe --silent  --answers answers.json      لتنفيذ كامل
 
 Command line: `PO_Setup.exe --role client --silent --import-file client_import.json`, `PO_Setup.exe --remove-lan`.
 What was really tested: logic (33 tests); on real Windows in CI: the host install, the exported file, the `hosts` line, the firewall rules, the client run (connection test, shortcut) and the removal. The windows are opened and closed by a self-test; clicking by a person is not covered.
+
+## Full backup / export and restore on a new main PC (v1.2)
+
+First screen → **«نسخ احتياطي كامل وتصدير»**: choose the program folder (`app`) and a destination; it writes one `PO_Export_<date>.zip` with the database, every archive file,
+the old uploads, `instance` and a manifest (size + SHA-256 per file), then re-reads the package and checks every file. It only reads the installation and refuses while the database is open.
+On the new PC: **الجهاز الرئيسي → «استرداد من حزمة تصدير»**. The database goes to `<base>\data`, the archive to the share folder chosen there (paths in the database are relative, so the folder may differ),
+each file is checked against the manifest, nothing existing is ever overwritten, then the normal steps run (migrate, checks, firewall, start).
+Command line: `PO_Setup.exe --export --app D:\PO\app --dest E:\Backup`, `PO_Setup.exe --verify-package E:\Backup\PO_Export_....zip`.
+Tested: logic (8 tests) and, on real Windows in CI, an export of a real installation followed by a second installation restored from it (server answers, same archive files).
