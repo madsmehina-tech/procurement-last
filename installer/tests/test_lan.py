@@ -25,8 +25,9 @@ def test_remote_list_accepts_ranges_and_refuses_the_whole_internet():
 
 
 def test_alias_rule():
-    assert lan.valid_alias("poweb") and lan.valid_alias("po-web2")
+    assert lan.valid_alias("poweb") and lan.valid_alias("po-web2") and lan.valid_alias("alhadab.procurement") and lan.valid_alias("po.alhadab.lan")
     assert not lan.valid_alias("PO web") and not lan.valid_alias("a") and not lan.valid_alias("بو")
+    assert not lan.valid_alias(".po") and not lan.valid_alias("po.") and not lan.valid_alias("po..web") and not lan.valid_alias("-po") and not lan.valid_alias("po-.web")
 
 
 def test_hosts_only_our_tagged_lines_are_added_replaced_and_removed(tmp_path):
@@ -157,3 +158,11 @@ def test_validate_rejects_open_internet_and_bad_alias(tmp_path):
     a = answers(tmp_path, allowed_extra="0.0.0.0/0", alias_name="Bad Name")
     errs = ps.validate(a, check_paths=False)
     assert any("الإنترنت" in e for e in errs) and any("الاسم البديل" in e for e in errs)
+
+
+def test_a_dotted_alias_is_written_to_hosts_and_removed(tmp_path):
+    h = tmp_path / "hosts"
+    h.write_text("127.0.0.1 localhost\r\n", encoding="utf-8")
+    assert lan.hosts_set(str(h), "192.168.100.55", "alhadab.procurement")
+    assert "192.168.100.55\talhadab.procurement\t# PO-SETUP" in h.read_text(encoding="utf-8")
+    assert lan.hosts_remove(str(h)) == 1 and "alhadab" not in h.read_text(encoding="utf-8")

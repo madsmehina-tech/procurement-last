@@ -23,7 +23,7 @@ import urllib.request
 from datetime import datetime
 
 HOSTS_TAG = "# PO-SETUP"
-NAME_RULE = re.compile(r"^[a-z0-9][a-z0-9-]{1,29}$")
+NAME_RULE = re.compile(r"^(?=.{2,60}$)[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$")      # one or more labels separated by dots, e.g. poweb or alhadab.procurement
 RULE_LAN = "PO Web (LAN)"
 RULE_TS = "PO Web (Tailscale)"
 

@@ -144,7 +144,7 @@ def validate(a, check_paths=True):
     _extra, extra_errs = lan.parse_remote_list(a.allowed_extra)
     errs += extra_errs
     if (a.alias_name or "") and not lan.valid_alias(a.alias_name):
-        errs.append("الاسم البديل للرابط: حروف إنجليزية صغيرة وأرقام وشرطة (2-30 خانة) أو اتركه فارغاً.")
+        errs.append("الاسم البديل للرابط: حروف إنجليزية صغيرة وأرقام وشرطة ونقاط بين الأجزاء (مثل poweb أو alhadab.procurement) أو اتركه فارغاً.")
     if a.db_mode not in ("new", "existing"):
         errs.append("خيار القاعدة غير معروف.")
     if os.path.normcase(os.path.abspath(a.share_folder)) == os.path.normcase(os.path.abspath(a.app)) or \

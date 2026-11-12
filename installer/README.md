@@ -45,7 +45,7 @@ PO_Setup.exe --silent  --answers answers.json      لتنفيذ كامل
 
 | | What it does |
 |---|---|
-| Main PC | as before, plus: makes a *Public* network *Private* (a Public network blocked the team: the firewall rule is for private networks), firewall rule for the office subnet (+ optional extra ranges, never the whole internet), friendly name (`poweb`) as a tagged line in `hosts`, and writes `client_import.json` (no passwords) |
+| Main PC | as before, plus: makes a *Public* network *Private* (a Public network blocked the team: the firewall rule is for private networks), firewall rule for the office subnet (+ optional extra ranges, never the whole internet), friendly name (`poweb`, or a dotted name such as `alhadab.procurement`) as a tagged line in `hosts`, and writes `client_import.json` (no passwords) |
 | Team PC | reads `client_import.json` (or an address typed by hand), **tests the connection** (port, then `/health`) and says which layer fails, adds the friendly-name line (admin only), puts a shortcut on the Desktop, opens the system. Outside the office it points the name to the Tailscale address |
 | Remove | deletes only what the tool added (firewall rules by name, tagged `hosts` lines, shortcuts, restores the network type it changed). **Never touches the program, the database or the archive** |
 
