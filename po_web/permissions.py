@@ -126,7 +126,7 @@ ENDPOINT_PERMS = {
     # public
     "login": PUBLIC, "logout": PUBLIC, "register": PUBLIC, "health": PUBLIC,
     # any signed-in user
-    "dashboard": None, "global_search": None,
+    "dashboard": None, "global_search": None, "insights_data": None, "insights_export": None,          # (each checks the page's own permission)
     # vouchers + supplier account + opening balances (v26)
     "vouchers_list": "vouchers.view", "voucher_view": "vouchers.view", "voucher_print": "vouchers.view", "voucher_pdf": "vouchers.view",
     "voucher_new": "vouchers.create", "voucher_edit": "vouchers.create", "voucher_api_parties": "vouchers.create", "voucher_api_documents": "vouchers.create",

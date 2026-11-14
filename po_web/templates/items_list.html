@@ -5,7 +5,9 @@
 
 {% macro th(label, key) %}<th><a href="{{ url_for('items_list', q=q, supplier=f_supplier, project=f.project, site=f.site, view=view, sort=key, dir=('asc' if (sort == key and desc) else 'desc') if key != 'name' else ('desc' if (sort == key and not desc) else 'asc')) }}" class="th-sort">{{ label }}{% if sort == key %} {{ '▼' if desc else '▲' }}{% endif %}</a></th>{% endmacro %}
 
+{% from "_insights.html" import panel %}
 {% block content %}
+{{ panel('items') }}
 <div class="kpi-grid">
   <div class="kpi-card"><p class="kpi-label">عدد الأصناف</p><p class="kpi-value">{{ kpi.count }}</p></div>
   <div class="kpi-card"><p class="kpi-label">مرات الشراء</p><p class="kpi-value">{{ kpi.purchases }}</p></div>

@@ -1,0 +1,49 @@
+{# The charts + filters panel (28.0). Use:  {% from "_insights.html" import panel %}  {{ panel('orders') }}
+   link_table=True: the page's own table rows carry data-ins-key="<number>" and are hidden / shown by these filters (no second table is drawn). #}
+{% macro panel(page, link_table=False, open=True) %}
+<section class="card ins" data-insights="{{ page }}" data-url="{{ url_for('insights_data', page=page) }}" data-export="{{ url_for('insights_export', page=page) }}" data-link="{{ '1' if link_table else '' }}" style="padding:16px 20px; margin-bottom:1.25rem;">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+    <h2 style="margin:0; font-size:17px;" data-ins-title>الرسوم والفلاتر</h2>
+    <div class="ins-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
+      <a class="btn" data-ins-xlsx href="#">تصدير Excel (لـ Power BI)</a>
+      <button class="btn" type="button" data-ins-print>طباعة / حفظ PDF</button>
+      <button class="btn" type="button" data-ins-reset>مسح الفلاتر</button>
+      <button class="btn" type="button" data-ins-toggle aria-expanded="{{ 'true' if open else 'false' }}">{{ 'إخفاء الرسوم' if open else 'إظهار الرسوم' }}</button>
+    </div>
+  </div>
+  <div class="ins-filters" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(125px, 1fr)); gap:10px; margin-top:12px;">
+    <div><label class="set-lab" style="margin-top:0;" for="ins-{{ page }}-q">بحث</label><input class="inp" id="ins-{{ page }}-q" data-ins-f="q" placeholder="رقم، اسم، مشروع…"></div>
+    <div data-ins-kindbox hidden><label class="set-lab" style="margin-top:0;" for="ins-{{ page }}-kind">النوع</label><select class="inp" id="ins-{{ page }}-kind" data-ins-f="kind"></select></div>
+    <div><label class="set-lab" style="margin-top:0;" for="ins-{{ page }}-from">من شهر</label><input class="inp" type="month" id="ins-{{ page }}-from" data-ins-f="from"></div>
+    <div><label class="set-lab" style="margin-top:0;" for="ins-{{ page }}-to">إلى شهر</label><input class="inp" type="month" id="ins-{{ page }}-to" data-ins-f="to"></div>
+    <div><label class="set-lab" style="margin-top:0;" for="ins-{{ page }}-project">المشروع</label><select class="inp" id="ins-{{ page }}-project" data-ins-f="project"></select></div>
+    <div><label class="set-lab" style="margin-top:0;" for="ins-{{ page }}-party" data-ins-partylab>الطرف</label><select class="inp" id="ins-{{ page }}-party" data-ins-f="party"></select></div>
+    <div><label class="set-lab" style="margin-top:0;" for="ins-{{ page }}-status">الحالة</label><select class="inp" id="ins-{{ page }}-status" data-ins-f="status"></select></div>
+  </div>
+  <div class="kpi-grid" data-ins-kpis style="margin-top:14px; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));"></div>
+  <div data-ins-body {{ '' if open else 'hidden' }}>
+    <div class="ins-charts" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:14px; margin-top:6px;">
+      <div><h3 style="font-size:14px; margin:0 0 4px;">المبالغ والأعداد حسب الشهر</h3><div style="position:relative; height:260px;"><canvas data-ins-c="month"></canvas></div></div>
+      <div><h3 style="font-size:14px; margin:0 0 4px;">حسب الحالة</h3><div style="position:relative; height:260px;"><canvas data-ins-c="status"></canvas></div></div>
+      <div><h3 style="font-size:14px; margin:0 0 4px;" data-ins-partytitle>الأعلى مبلغاً</h3><div style="position:relative; height:260px;"><canvas data-ins-c="party"></canvas></div></div>
+      <div data-ins-projbox><h3 style="font-size:14px; margin:0 0 4px;">حسب المشروع</h3><div style="position:relative; height:260px;"><canvas data-ins-c="project"></canvas></div></div>
+      <div data-ins-kindchart hidden><h3 style="font-size:14px; margin:0 0 4px;">حسب النوع</h3><div style="position:relative; height:260px;"><canvas data-ins-c="kind"></canvas></div></div>
+    </div>
+  </div>
+  <div data-ins-results {{ 'hidden' if link_table else '' }} style="margin-top:14px;">
+    <div class="tbl-wrap"><table class="list no-cards"><thead><tr><th>النوع</th><th>الرقم</th><th>التاريخ</th><th>المشروع</th><th data-ins-partyhead>الطرف</th><th>المبلغ (ريال)</th><th>الحالة</th></tr></thead><tbody data-ins-rows></tbody></table></div>
+  </div>
+  <p class="set-hint" data-ins-note style="margin:8px 0 0;"></p>
+</section>
+<style>
+@media print {
+  body.ins-printing * { visibility: hidden !important; }
+  body.ins-printing .ins, body.ins-printing .ins * { visibility: visible !important; }
+  body.ins-printing .ins { position: absolute; top: 0; right: 0; left: 0; margin: 0; border: 0; box-shadow: none; }
+  body.ins-printing .ins-actions, body.ins-printing .ins-filters { display: none !important; }
+  body.ins-printing [data-ins-body] { display: block !important; }
+}
+</style>
+<script src="{{ url_for('static', filename='chart.umd.js') }}?v=4.4.1" defer></script>
+<script src="{{ url_for('static', filename='insights.js') }}?v=28.0" defer></script>
+{% endmacro %}

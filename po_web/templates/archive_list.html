@@ -3,7 +3,9 @@
 {% block title %}الأرشيف{% endblock %}
 {% block subtitle %}المعاملة تُصنَّف تلقائياً: مقاول ← مشروع ← عقد ← مستخلص، وتُقفل فقط عند اكتمال الأوراق الخمس{% endblock %}
 {% block page_actions %}<a class="btn" href="{{ url_for('payments_archive') }}">أرشيف الدفعات والحركات المالية ←</a><a class="btn" href="{{ url_for('archive_export', q=q, tab=tab) }}">تصدير Excel</a>{% endblock %}
+{% from "_insights.html" import panel %}
 {% block content %}
+{{ panel('archive') }}
 <form method="get" class="ar-bar" id="arF">
   <input class="search-box" type="text" name="q" value="{{ q }}" placeholder="ابحث بالمقاول، المشروع، أو رقم المستخلص" onchange="this.form.submit()">
   <input type="hidden" name="tab" value="{{ tab }}">

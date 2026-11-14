@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% set active = "orders_analytics" %}
+{% set active = "dashboard" %}
 {% block title %}لوحة مؤشرات أوامر الشراء{% endblock %}
 {% block subtitle %}مؤشرات الأداء والإنفاق · Purchase Orders Analytics Dashboard — آخر 6 أشهر: {{ months[0].label }} {{ months[0].sub }} إلى {{ months[-1].label }} {{ months[-1].sub }}{% endblock %}
 {% block page_actions %}
@@ -9,6 +9,7 @@
 {% endblock %}
 
 {% block content %}
+{% set home_tab = 'orders' %}{% include "_home_tabs.html" %}
 <style>
 /* ---- tokens measured from the reference screenshots ---------------------------------
    dark teal #29595e | sage #a4bfc1 | gold #c08d34 | track #edebe6 | text #1d232d | muted #5b626f */

@@ -1,0 +1,6 @@
+{# The home page and the two dashboards that were separate menu entries before 28.0: one place, three tabs. #}
+<nav class="home-tabs" aria-label="أقسام الصفحة الرئيسية" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:1rem;">
+  <a class="btn {{ 'btn-primary' if home_tab == 'overview' else '' }}" href="{{ url_for('dashboard') }}" {{ 'aria-current="page"'|safe if home_tab == 'overview' else '' }}>نظرة عامة</a>
+  {% if can('analytics.view') %}<a class="btn {{ 'btn-primary' if home_tab == 'orders' else '' }}" href="{{ url_for('orders_analytics') }}" {{ 'aria-current="page"'|safe if home_tab == 'orders' else '' }}>مؤشرات المشتريات</a>
+  <a class="btn {{ 'btn-primary' if home_tab == 'subs' else '' }}" href="{{ url_for('subs_dashboard') }}" {{ 'aria-current="page"'|safe if home_tab == 'subs' else '' }}>متابعة مقاولي الباطن</a>{% endif %}
+</nav>

@@ -21,7 +21,10 @@
 <button type="button" class="btn" id="themeBtn" title="الوضع الداكن / الفاتح">الوضع الداكن / الفاتح</button>
 {% endblock %}
 
+{% from "_insights.html" import panel %}
 {% block content %}
+{% set home_tab = 'overview' %}{% include "_home_tabs.html" %}
+{{ panel('home') }}
 {% include "_exec_css.html" %}
 {% include "_exec_extra_css.html" %}
 <div class="exec" id="exec" data-theme="light">

@@ -3,7 +3,9 @@
 {% block title %}دورة الصرف{% endblock %}
 {% block subtitle %}إنشاء ← قرار الإدارة ← تنفيذ التحويل · Payment cycle{% endblock %}
 {% block page_actions %}{% if not history_only %}<a class="btn" href="{{ url_for('cycles_history') }}">الدورات السابقة</a>{% else %}<a class="btn" href="{{ url_for('cycles_list') }}">&rarr; دورة الصرف</a>{% endif %}{% endblock %}
+{% from "_insights.html" import panel %}
 {% block content %}
+{{ panel('cycles') }}
 {% if not history_only %}
 <section class="cy-card" style="padding:22px 24px;">
   <h2 style="margin:0 0 6px; font-size:19px;">لا توجد دورة مفتوحة</h2>

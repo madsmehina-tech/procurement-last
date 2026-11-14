@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% set active = "subs_dashboard" %}
+{% set active = "dashboard" %}
 {% block title %}لوحة مؤشرات مقاولي الباطن{% endblock %}
 {% block subtitle %}للإدارة العليا ومدير العقود والمشتريات · Subcontractors Dashboard{% endblock %}
 {% block page_actions %}
@@ -9,6 +9,7 @@
 <a class="btn btn-primary" href="{{ url_for('subs_dashboard_xlsx', **qs) }}">تصدير Excel</a>{% endif %}
 {% endblock %}
 {% block content %}
+{% set home_tab = 'subs' %}{% include "_home_tabs.html" %}
 {% include "_exec_css.html" %}
 {% include "_exec_extra_css.html" %}
 <div class="exec" id="exec" data-theme="light">

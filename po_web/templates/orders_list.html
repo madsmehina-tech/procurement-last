@@ -6,7 +6,9 @@
 {% block page_actions %}<a class="btn btn-primary" href="{{ url_for('order_new') }}">+ أمر شراء جديد</a>{% endblock %}
 
 {% from "_pager.html" import pager as pager_nav %}
+{% from "_insights.html" import panel %}
 {% block content %}
+{{ panel('orders') }}
 
 <div class="kpi-grid" style="grid-template-columns: repeat(5, 1fr);">
   <div class="kpi-card">

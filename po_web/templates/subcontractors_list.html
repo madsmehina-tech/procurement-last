@@ -8,7 +8,9 @@
 <a class="btn" href="{{ url_for('subcontractors_print', q=q) }}" target="_blank">طباعة</a>
 {% if can('subcontractors.edit') %}<a class="btn btn-primary" href="{{ url_for('subcontractor_new') }}">+ إضافة مقاول جديد</a>{% endif %}
 {% endblock %}
+{% from "_insights.html" import panel %}
 {% block content %}
+{{ panel('subcontractors') }}
 <div class="kpi-grid">
   <div class="kpi-card"><p class="kpi-label">عدد المقاولين</p><p class="kpi-value">{{ kpi.count }}</p></div>
   <div class="kpi-card"><p class="kpi-label">إجمالي المستحق</p><p class="kpi-value">{{ '{:,.0f}'.format(kpi.due) }}</p></div>

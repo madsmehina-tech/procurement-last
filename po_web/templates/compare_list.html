@@ -3,7 +3,9 @@
 {% block title %}مقارنة عروض الأسعار{% endblock %}
 {% block subtitle %}قبل أمر الشراء أو العقد: وحّد البنود، قارن الأسعار، اكشف الناقص، واتخذ قرار الترسية{% endblock %}
 {% block page_actions %}{% if can('compare.edit') %}<a class="btn btn-primary" href="{{ url_for('compare_new') }}">+ مقارنة جديدة</a>{% endif %}{% endblock %}
+{% from "_insights.html" import panel %}
 {% block content %}
+{{ panel('compare') }}
 {% include "_compare_css.html" %}
 <div class="cp-panel">
   <div class="cp-card"><small>عدد المقارنات</small><div class="v">{{ stats.count }}</div><div class="n">{{ stats.open }} قيد العمل</div></div>
