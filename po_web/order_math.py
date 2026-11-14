@@ -28,13 +28,42 @@ def line_total(qty, price):
     return money2(_d(qty) * _d(price))
 
 
-def order_totals(lines, discount=0):
-    """lines: iterable of (qty, unit_price). Returns {subtotal, vat, total_with_vat, discount, grand}."""
-    subtotal = sum((_d(line_total(q, p)) for q, p in lines), Decimal(0)).quantize(_CENT, rounding=ROUND_HALF_UP)
-    vat = (subtotal * VAT_RATE).quantize(_CENT, rounding=ROUND_HALF_UP)
-    with_vat = subtotal + vat
+VAT_MODES = ("add", "incl", "none")          # the VAT is added to the prices | the prices already include it | no VAT at all
+
+
+def vat_mode(value):
+    return value if value in VAT_MODES else "add"
+
+
+def vat_pct(value):
+    """The VAT percentage of an order (15 when it was never set)."""
+    try:
+        p = float(value)
+    except (TypeError, ValueError):
+        return 15.0
+    return p if 0 <= p <= 100 else 15.0
+
+
+def order_totals(lines, discount=0, mode="add", pct=15):
+    """lines: iterable of (qty, unit_price). Returns {subtotal, vat, total_with_vat, discount, grand, mode, pct}.
+        add   subtotal = the lines; the VAT is added on top (the rule of every order before 28.0, with 15%)
+        incl  the lines already INCLUDE the VAT: their sum is the total; the VAT inside it is shown apart
+        none  no VAT: the total is the sum of the lines"""
+    mode, rate = vat_mode(mode), _d(vat_pct(pct)) / Decimal(100)
+    summed = sum((_d(line_total(q, p)) for q, p in lines), Decimal(0)).quantize(_CENT, rounding=ROUND_HALF_UP)
+    if mode == "incl":
+        with_vat = summed
+        subtotal = (summed / (Decimal(1) + rate)).quantize(_CENT, rounding=ROUND_HALF_UP)
+        vat = with_vat - subtotal
+    elif mode == "none":
+        subtotal, vat, with_vat = summed, Decimal(0), summed
+    else:
+        subtotal = summed
+        vat = (subtotal * rate).quantize(_CENT, rounding=ROUND_HALF_UP)
+        with_vat = subtotal + vat
     disc = _d(discount).quantize(_CENT, rounding=ROUND_HALF_UP)
-    return {"subtotal": float(subtotal), "vat": float(vat), "total_with_vat": float(with_vat), "discount": float(disc), "grand": float(with_vat - disc)}
+    return {"subtotal": float(subtotal), "vat": float(vat), "total_with_vat": float(with_vat), "discount": float(disc), "grand": float(with_vat - disc),
+            "mode": mode, "pct": float(vat_pct(pct)) if mode != "none" else 0.0}
 
 
 def with_line_totals(items):

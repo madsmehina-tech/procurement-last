@@ -284,16 +284,29 @@ def contract_template_test(version_id):
 def settings_company():
     if request.method == "POST":
         f = request.form
-        cols = ("LegalName", "CR", "VatNo", "UnifiedNo", "Address", "City", "Phone", "Email", "RepName", "RepTitle", "BankName", "IBAN", "AccountHolder",
-                "SignContracts", "SignProjects", "SignAccounts", "SignFinance", "SignGM", "VoucherDept")
+        import signatures
+        cols = ("LegalName", "CR", "VatNo", "UnifiedNo", "Address", "City", "Phone", "Email", "RepName", "RepTitle", "BankName", "IBAN", "AccountHolder", "VoucherDept")
         vals = [clean_spaces(f.get(c.lower(), "")) for c in cols]
+        signs, sign_error = {}, ""
+        try:
+            for kind in (signatures.PO, signatures.VOUCHER):
+                signs[kind] = signatures.parse(f, kind) if f.getlist("%s_sign_title" % kind) else None
+        except signatures.SignError as e:
+            sign_error = str(e)
         if not vals[0]:
             flash("اسم الشركة النظامي مطلوب.")
+        elif sign_error:
+            flash(sign_error)
         else:
             if db.query("SELECT [ProfileID] FROM [CompanyProfile] WHERE [ProfileID] = 1"):
                 db.execute("UPDATE [CompanyProfile] SET %s, [UpdatedAt] = ? WHERE [ProfileID] = 1" % ", ".join("[%s] = ?" % c for c in cols), tuple(vals) + (datetime.now(),))
             else:
                 db.execute("INSERT INTO [CompanyProfile] ([ProfileID], %s, [UpdatedAt]) VALUES (1, %s, ?)" % (", ".join("[%s]" % c for c in cols), ", ".join("?" for _ in cols)), tuple(vals) + (datetime.now(),))
-            flash("حُفظت بيانات الشركة (الطرف الأول في العقود).")
+            for kind, items in signs.items():
+                if items is not None:
+                    signatures.save(kind, items)
+            flash("حُفظت بيانات الشركة والتوقيعات.")
             return redirect(url_for("settings_company"))
-    return render_template("settings_company.html", c=cg.company())
+    import signatures
+    c = cg.company()
+    return render_template("settings_company.html", c=c, po_signs=signatures.get(signatures.PO, c), voucher_signs=signatures.get(signatures.VOUCHER, c))

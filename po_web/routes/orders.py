@@ -13,6 +13,7 @@ import audit
 import auth
 import ui_helpers
 import money_guards as mg
+import arabic_numbers
 import order_math
 import write_lock
 import db
@@ -250,7 +251,8 @@ def order_preview():
     order = {"PONumber": v["po_number"] or "(بلا رقم)", "OrderDate": v["order_date"], "HijriDate": hijri_display(v["order_date"]),
              "SupplierName": v["supplier"], "QuoteNo": v["quote_no"], "Project": v["project"], "Location": v["location"],
              "Receiver": v["receiver"], "ReceiverPhone": v["phone"], "Discount": v["discount"],
-             "ExtraNotes": v["extra_notes"], "HideWarehouseNote": v["hide_warehouse_note"]}
+             "ExtraNotes": v["extra_notes"], "HideWarehouseNote": v["hide_warehouse_note"],
+             "VatMode": v["vat_mode"], "VatPct": v["vat_pct"], "CurrencyCode": v["currency"], "ExchangeRate": v["rate"]}
     items = [{"LineNo": i, "ItemName": nm, "Unit": un, "Qty": q, "UnitPrice": p} for i, (nm, un, q, p) in enumerate(line_items, 1)]
     return render_template("order_print.html", **po_files.print_context(order, items, "معاينة — لم يُحفظ بعد"))
 
@@ -321,7 +323,7 @@ def _limits():
 def _new_context(form, **extra):
     suppliers, projects = supplier_project_choices()
     catalog, units = items_service.catalog()
-    ctx = dict(suppliers=suppliers, projects=projects, form=form, next_po=form.get("po_number") or next_po_number(),
+    ctx = dict(suppliers=suppliers, projects=projects, form=form, currencies=[(k, c[0]) for k, c in arabic_numbers.CURRENCIES.items()], next_po=form.get("po_number") or next_po_number(),
                hijri_today=hijri_display(_parse_date(form.get("order_date"))),
                today_iso=datetime.now().strftime("%Y-%m-%d"), receivers=receivers_list(), locations=locations_list(),
                recent_pos=[r["PONumber"] for r in sorted(db.query("SELECT [PONumber], [CreatedAt] FROM [PurchaseOrders]"),
@@ -377,9 +379,28 @@ def _read_order(form, editing=None, create_project=True):
             errors.append("الصنف «%s»: %s" % (nm, e))
             continue
         line_items.append((nm, clean_spaces(un), qf, pf))
-    totals = order_math.order_totals([(q_, p_) for _n, _u, q_, p_ in line_items], v["discount"])      # the SAME arithmetic the printed order uses
+    v["vat_mode"] = order_math.vat_mode(form.get("vat_mode"))
+    try:
+        v["vat_pct"] = float(mg.parse_money(form.get("vat_pct") if form.get("vat_pct") not in (None, "") else "15", label="نسبة الضريبة", decimals=2))
+        if v["vat_pct"] > 100:
+            raise mg.MoneyError("نسبة الضريبة لا تزيد على 100.")
+    except mg.MoneyError as e:
+        v["vat_pct"] = 15.0
+        errors.append(str(e))
+    v["currency"] = arabic_numbers.currency_code(form.get("currency"))
+    v["exchange_rate"] = (form.get("exchange_rate") or "").strip() if isinstance(form.get("exchange_rate"), str) else form.get("exchange_rate") or ""
+    v["rate"] = 1.0
+    if v["currency"] != "SAR":
+        try:
+            v["rate"] = float(mg.parse_money(v["exchange_rate"], allow_zero=False, label="سعر الصرف", decimals=6))
+            if not 0.0001 <= v["rate"] <= 100000:
+                raise mg.MoneyError("سعر الصرف خارج المعقول.")
+        except mg.MoneyError as e:
+            errors.append("سعر الصرف (كم ريالاً لوحدة العملة): %s" % e)
+    totals = order_math.order_totals([(q_, p_) for _n, _u, q_, p_ in line_items], v["discount"], v["vat_mode"], v["vat_pct"])      # the SAME arithmetic the printed order uses
     v["subtotal"] = totals["subtotal"]
-    v["total"] = totals["grand"]
+    v["total_currency"] = totals["grand"]                                # in the order's own currency (what the paper shows)
+    v["total"] = order_math.money2(totals["grand"] * v["rate"])          # in riyals: what every list, account and report adds up
     if v["total"] < 0:
         errors.append("الخصم أكبر من إجمالي الأمر؛ راجع قيمة الخصم.")
     elif v["total"] > mg.MAX_MONEY:
@@ -442,11 +463,12 @@ def order_new():
             tx.execute(
                 "INSERT INTO [PurchaseOrders] ([PONumber], [OrderDate], [HijriDate], [SupplierName], [QuoteNo], [Project], "
                 "[Location], [Receiver], [ReceiverPhone], [TotalAmount], [Discount], [ExtraNotes], [HideWarehouseNote], "
-                "[ReceiptStatus], [InvoiceStatus], [PaymentStatus], [CreatedAt], [ModifiedAt], [SupplierID], [ProjectID], [SiteID]) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'لم يبدأ', 'معلق', 'معلق', ?, ?, ?, ?, ?)",
+                "[ReceiptStatus], [InvoiceStatus], [PaymentStatus], [CreatedAt], [ModifiedAt], [SupplierID], [ProjectID], [SiteID], "
+                "[VatMode], [VatPct], [CurrencyCode], [ExchangeRate], [TotalCurrency]) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'لم يبدأ', 'معلق', 'معلق', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (v["po_number"], v["order_date"], hijri_display(v["order_date"]), supplier, v["quote_no"], project,
                  site or v["location"], v["receiver"], v["phone"], v["total"], v["discount"], v["extra_notes"], v["hide_warehouse_note"], now, now,
-                 sup_id, proj_id, site_id),
+                 sup_id, proj_id, site_id, v["vat_mode"], v["vat_pct"], v["currency"], v["rate"], v["total_currency"]),
             )
             _save_items(v["po_number"], line_items, tx)
     except Exception as e:                                # noqa - shown to the person, form kept, nothing half-saved
@@ -533,6 +555,8 @@ def order_edit(po_number):
         form = {"po_number": po_number, "supplier": old["SupplierName"] or "", "project": old["Project"] or "",
                 "location": old.get("Location") or "", "quote_no": old.get("QuoteNo") or "", "receiver": old.get("Receiver") or "",
                 "phone": old.get("ReceiverPhone") or "", "discount": old.get("Discount") or 0, "extra_notes": old.get("ExtraNotes") or "",
+                "vat_mode": order_math.vat_mode(old.get("VatMode")), "vat_pct": "%g" % order_math.vat_pct(old.get("VatPct")), "currency": arabic_numbers.currency_code(old.get("CurrencyCode")),
+                "exchange_rate": ("%g" % old["ExchangeRate"]) if old.get("ExchangeRate") and arabic_numbers.currency_code(old.get("CurrencyCode")) != "SAR" else "",
                 "hide_warehouse_note": bool(old.get("HideWarehouseNote")),
                 "order_date": old["OrderDate"].strftime("%Y-%m-%d") if old.get("OrderDate") else "",
                 "item_name": [i["ItemName"] for i in old_items], "item_unit": [i["Unit"] or "" for i in old_items],
@@ -574,10 +598,12 @@ def order_edit(po_number):
                 "UPDATE [PurchaseOrders] SET [OrderDate] = ?, [HijriDate] = ?, [SupplierName] = ?, [QuoteNo] = ?, [Project] = ?, "
                 "[Location] = ?, [Receiver] = ?, [ReceiverPhone] = ?, [TotalAmount] = ?, [Discount] = ?, [ExtraNotes] = ?, "
                 "[HideWarehouseNote] = ?, [ModifiedAt] = ?, [SupplierID] = ?, [ProjectID] = ?, [SiteID] = ?, "
+                "[VatMode] = ?, [VatPct] = ?, [CurrencyCode] = ?, [ExchangeRate] = ?, [TotalCurrency] = ?, "
                 "[RowVersion] = IIF([RowVersion] IS NULL, 1, [RowVersion] + 1) "
                 "WHERE [PONumber] = ? AND IIF([RowVersion] IS NULL, 0, [RowVersion]) = ?",
                 (v["order_date"], hijri_display(v["order_date"]), supplier, v["quote_no"], project, v["location"], v["receiver"],
-                 v["phone"], v["total"], v["discount"], v["extra_notes"], v["hide_warehouse_note"], datetime.now(), sup_id, proj_id, site_id, po_number, int(sent)),
+                 v["phone"], v["total"], v["discount"], v["extra_notes"], v["hide_warehouse_note"], datetime.now(), sup_id, proj_id, site_id,
+                 v["vat_mode"], v["vat_pct"], v["currency"], v["rate"], v["total_currency"], po_number, int(sent)),
             )
             if changed != 1:                                                         # nothing matched: another save got in between -> undo everything above
                 raise EditConflict()

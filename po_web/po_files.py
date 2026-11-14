@@ -28,18 +28,26 @@ import write_lock
 import pdfgen
 
 SNAPSHOT_FIELDS = ("PONumber", "OrderDate", "HijriDate", "SupplierName", "QuoteNo", "Project", "Location", "Receiver",
-                   "ReceiverPhone", "TotalAmount", "Discount", "ExtraNotes", "HideWarehouseNote")
+                   "ReceiverPhone", "TotalAmount", "Discount", "ExtraNotes", "HideWarehouseNote", "VatMode", "VatPct", "CurrencyCode", "ExchangeRate", "TotalCurrency")
 
 
 def print_context(order, items, watermark=None):
     """Everything order_print.html needs. `order` / `items` may come from the database, from an unsaved form
     (preview) or from an old saved version - the form on paper is the same for all three."""
     items = order_math.with_line_totals(items)
-    t = order_math.order_totals([(it["Qty"], it["UnitPrice"]) for it in items], order.get("Discount") or 0)
+    t = order_math.order_totals([(it["Qty"], it["UnitPrice"]) for it in items], order.get("Discount") or 0, order.get("VatMode"), order.get("VatPct"))
     subtotal, vat, total_with_vat, discount, grand = t["subtotal"], t["vat"], t["total_with_vat"], t["discount"], t["grand"]
     extra_notes = [l.strip() for l in (order.get("ExtraNotes") or "").splitlines() if l.strip()]
+    cur = arabic_numbers.currency_code(order.get("CurrencyCode"))
+    import signatures
+    try:
+        signs = signatures.get(signatures.PO)
+    except Exception:                                   # noqa - (a preview before the tables exist): the four standard boxes
+        signs = signatures.defaults(signatures.PO)
     return dict(order=order, items=items, subtotal=subtotal, vat=vat, total_with_vat=total_with_vat,
-                discount=discount, grand=grand, amount_words=arabic_numbers.amount_to_words(grand),
+                discount=discount, grand=grand, amount_words=arabic_numbers.amount_to_words(grand, cur),
+                vat_mode=t["mode"], vat_pct=t["pct"], currency=cur, currency_name=arabic_numbers.SHORT[cur], currency_full=arabic_numbers.CURRENCIES[cur][0],
+                signs=signs, sign_rows=signatures.rows(signs, signatures.PER_ROW[signatures.PO]),
                 extra_notes=extra_notes, watermark=watermark)
 
 

@@ -88,12 +88,20 @@
     <div class="items-foot">
       <button type="button" class="btn" id="addRowBottom">+ إضافة صنف</button>
       <div class="totals">
-        <div class="t-row"><span>الإجمالي</span><b id="subTotal">0.00</b></div>
-        <div class="t-row"><span>الضريبة (15%)</span><b id="vatTotal">0.00</b></div>
-        <div class="t-row"><span>الإجمالي شامل الضريبة</span><b id="totalWithVat">0.00</b></div>
+        <div class="t-row" style="display:block;"><span style="font-weight:700;">الضريبة</span>
+          <label style="display:block;"><input type="radio" name="vat_mode" value="add" {{ 'checked' if (form.vat_mode or 'add') == 'add' else '' }}> تُضاف على الأسعار</label>
+          <label style="display:block;"><input type="radio" name="vat_mode" value="incl" {{ 'checked' if form.vat_mode == 'incl' else '' }}> الأسعار شاملة الضريبة</label>
+          <label style="display:block;"><input type="radio" name="vat_mode" value="none" {{ 'checked' if form.vat_mode == 'none' else '' }}> بدون ضريبة</label></div>
+        <div class="t-row" id="vatPctRow"><span>نسبة الضريبة %</span><input class="inp t-disc" type="number" step="any" min="0" max="100" name="vat_pct" id="vatPctField" value="{{ form.vat_pct or 15 }}" dir="ltr"></div>
+        <div class="t-row"><span>العملة</span><select class="inp t-disc" name="currency" id="currencyField" style="width:auto;">{% for code, name in currencies %}<option value="{{ code }}" {{ 'selected' if (form.currency or 'SAR') == code else '' }}>{{ name }}</option>{% endfor %}</select></div>
+        <div class="t-row" id="rateRow" hidden><span>سعر الصرف (كم ريالاً للوحدة)</span><input class="inp t-disc" type="number" step="any" min="0" name="exchange_rate" id="rateField" value="{{ form.exchange_rate or '' }}" dir="ltr" placeholder="3.75"></div>
+        <div class="t-row"><span id="subLabel">الإجمالي</span><b id="subTotal">0.00</b></div>
+        <div class="t-row" id="vatRow"><span id="vatLabel">الضريبة (15%)</span><b id="vatTotal">0.00</b></div>
+        <div class="t-row" id="withVatRow"><span>الإجمالي شامل الضريبة</span><b id="totalWithVat">0.00</b></div>
         <div class="t-row"><span>الخصم</span>
           <input class="inp t-disc" type="number" step="any" min="0" name="discount" id="discountField" value="{{ form.discount or 0 }}" dir="ltr"></div>
-        <div class="t-row t-grand"><span>المطلوب سداده بعد الخصم</span><b id="grandTotal">0.00</b></div>
+        <div class="t-row t-grand"><span>المطلوب سداده بعد الخصم <small id="curName"></small></span><b id="grandTotal">0.00</b></div>
+        <div class="t-row" id="sarRow" hidden><span>المعادل بالريال</span><b id="sarTotal">0.00</b></div>
       </div>
     </div>
   </section>
@@ -203,9 +211,21 @@ function recalc() {
     const q = parseFloat(tr.querySelector('[name="item_qty"]').value) || 0, p = parseFloat(tr.querySelector('[name="item_price"]').value) || 0;
     tr.querySelector('.line-total').textContent = fmt(q * p); sub += q * p;
   });
-  const vat = sub * 0.15, withVat = sub + vat, disc = parseFloat(document.getElementById('discountField').value) || 0;
-  document.getElementById('subTotal').textContent = fmt(sub); document.getElementById('vatTotal').textContent = fmt(vat);
+  const mode = (document.querySelector('[name="vat_mode"]:checked') || {}).value || 'add', pct = Math.max(0, parseFloat(document.getElementById('vatPctField').value) || 0);
+  const r2 = x => Math.round((x + Number.EPSILON) * 100) / 100;
+  let net, vat, withVat;                                                       // a preview: the saved figures come from the server, with the same rules
+  if (mode === 'incl') { withVat = r2(sub); net = r2(withVat / (1 + pct / 100)); vat = r2(withVat - net); }
+  else if (mode === 'none') { net = r2(sub); vat = 0; withVat = net; }
+  else { net = r2(sub); vat = r2(net * pct / 100); withVat = r2(net + vat); }
+  const disc = parseFloat(document.getElementById('discountField').value) || 0, cur = document.getElementById('currencyField'), rate = parseFloat(document.getElementById('rateField').value) || 0;
+  document.getElementById('vatPctRow').hidden = mode === 'none'; document.getElementById('vatRow').hidden = mode !== 'add'; document.getElementById('withVatRow').hidden = mode !== 'add';
+  document.getElementById('subLabel').textContent = mode === 'incl' ? 'الإجمالي (الأسعار شاملة الضريبة)' : 'الإجمالي';
+  document.getElementById('vatLabel').textContent = 'الضريبة (' + pct + '%)';
+  document.getElementById('subTotal').textContent = fmt(mode === 'incl' ? withVat : net); document.getElementById('vatTotal').textContent = fmt(vat);
   document.getElementById('totalWithVat').textContent = fmt(withVat);
+  document.getElementById('rateRow').hidden = cur.value === 'SAR'; document.getElementById('sarRow').hidden = cur.value === 'SAR' || !rate;
+  document.getElementById('curName').textContent = cur.value === 'SAR' ? '' : '(' + cur.options[cur.selectedIndex].text + ')';
+  document.getElementById('sarTotal').textContent = fmt((withVat - disc) * rate);
   document.getElementById('grandTotal').textContent = fmt(withVat - disc); document.getElementById('grandMirror').textContent = fmt(withVat - disc);
 }
 function showHint(tr) {
@@ -284,6 +304,9 @@ form.addEventListener('keydown', e => {                  // the header fields: E
   const nx = f[f.indexOf(t) + 1]; if (nx) nx.focus();
 });
 document.getElementById('discountField').addEventListener('input', recalc);
+['vatPctField', 'rateField'].forEach(id => document.getElementById(id).addEventListener('input', recalc));
+document.getElementById('currencyField').addEventListener('change', recalc);
+document.querySelectorAll('[name="vat_mode"]').forEach(r => r.addEventListener('change', recalc));
 ['addRowTop', 'addRowBottom'].forEach(id => document.getElementById(id).addEventListener('click', () => addRow('', '', '', '', true)));
 window.addEventListener('resize', () => document.querySelectorAll('.it-name').forEach(autosize));
 
@@ -376,7 +399,7 @@ for (let i = 0; i < 3; i++) addRow();
     const filled = rows().filter(tr => tr.querySelector('.it-name').value.trim());
     const t = id => document.getElementById(id).textContent;
     const pairs = [['رقم الأمر', v('po_number')], ['التاريخ', v('order_date')], ['المورد', v('supplier')], ['المشروع', v('project')], ['الموقع', v('location')], ['المستلم', v('receiver')],
-      ['عدد الأصناف', String(filled.length)], ['الإجمالي', t('subTotal')], ['الضريبة 15%', t('vatTotal')], ['شامل الضريبة', t('totalWithVat')], ['الخصم', fmt(parseFloat(v('discount')) || 0)], ['المطلوب سداده', t('grandTotal') + ' ريال']];
+      ['عدد الأصناف', String(filled.length)], ['الإجمالي', t('subTotal')], [document.getElementById('vatLabel').textContent, document.getElementById('vatRow').hidden ? '—' : t('vatTotal')], ['العملة', document.getElementById('currencyField').options[document.getElementById('currencyField').selectedIndex].text], ['الخصم', fmt(parseFloat(v('discount')) || 0)], ['المطلوب سداده', t('grandTotal')]];
     rbody.textContent = '';
     pairs.forEach(([k, val], i) => { const d = mk('rv' + (i === pairs.length - 1 ? ' big' : '')); const a = document.createElement('small'); a.textContent = k; const b = document.createElement('b'); b.textContent = val; d.append(a, b); rbody.append(d); });
     const miss = filled.filter(tr => !(parseFloat(tr.querySelector('[name="item_qty"]').value) > 0) || !(parseFloat(tr.querySelector('[name="item_price"]').value) > 0)).length;

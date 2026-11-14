@@ -5,46 +5,48 @@
 <title>أمر شراء {{ order.PONumber }}</title>
 <style>
   * { box-sizing: border-box; }
-  body { font-family: "Segoe UI", Tahoma, Arial, sans-serif; color: #1f1f1d; margin: 0; padding: 24px; font-size: 12.5px; }
+  body { font-family: "Segoe UI", Tahoma, Arial, sans-serif; color: #000; margin: 0; padding: 24px; font-size: 12.5px; font-weight: 600; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .toolbar { margin-bottom: 16px; }
   .toolbar button {
     background: #1F3A5C; color: #fff; border: none; padding: 8px 16px;
     border-radius: 6px; font-size: 14px; cursor: pointer;
   }
   .doc { max-width: 760px; margin: 0 auto; }
-  .head-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+  .head-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
   .head-row .company { text-align: right; }
   .head-row .company .name { font-size: 15px; font-weight: 700; color: #1F3A5C; }
-  .head-row .company .dept { font-size: 12.5px; color: #333; margin-top: 2px; }
-  .head-row .title { text-align: center; padding-top: 14px; font-size: 20px; font-weight: 700; color: #1F3A5C; }
-  .head-row .logo img { width: 70px; height: 70px; border-radius: 50%; object-fit: cover; }
+  .head-row .company .dept { font-size: 12.5px; color: #000; margin-top: 2px; }
+  .head-row .title { text-align: center; font-size: 22px; font-weight: 800; color: #1F3A5C; }
+  .head-row .logo img { width: 108px; height: 108px; border-radius: 50%; object-fit: cover; }
   .divider { border-bottom: 2px solid #1F3A5C; margin-bottom: 12px; }
-  .info-rows div { display: flex; justify-content: space-between; padding: 2px 0; }
-  .info-rows .k { color: #444; }
+  .info-rows { display: inline-grid; grid-template-columns: auto auto; gap: 2px 10px; }      /* the label right next to its value */
+  .info-rows .k { color: #000; }
+  .info-rows b { font-weight: 800; }
   .to-row { margin: 10px 0 6px; display: flex; justify-content: space-between; }
   .ref-line { margin-bottom: 12px; text-align: right; }
   table.items { width: 100%; border-collapse: collapse; margin-bottom: 0; }
-  table.items th { padding: 6px; border: 0.5px solid #b9c4cf; background: #E8EDF2; color: #1F3A5C; }
-  table.items td { padding: 6px; border: 0.5px solid #ddd; text-align: center; }
+  table.items th { padding: 6px; border: 1px solid #000; background: #E8EDF2; color: #000; font-weight: 800; }
+  table.items td { padding: 6px; border: 1px solid #000; text-align: center; color: #000; }
   table.items td.name { text-align: right; }
-  .totals { border-left: 0.5px solid #ddd; border-right: 0.5px solid #ddd; }
-  .totals div { display: flex; justify-content: space-between; padding: 5px 8px; border-bottom: 0.5px solid #ddd; }
+  .totals { border-left: 1px solid #000; border-right: 1px solid #000; }
+  .totals div { display: flex; justify-content: space-between; padding: 5px 8px; border-bottom: 1px solid #000; }
   .grand-row {
     border: 1.5px solid #1F3A5C; border-top: none; display: flex; justify-content: space-between;
     padding: 8px; font-size: 14px; font-weight: 700; color: #1F3A5C;
   }
   .words-row {
     background: #EEF2F6; color: #1F3A5C; text-align: center; padding: 6px 8px;
-    font-size: 11.5px; margin-bottom: 14px; border: 0.5px solid #ddd; border-top: none;
+    font-size: 12px; font-weight: 700; margin-bottom: 14px; border: 1px solid #000; border-top: none;
   }
   .extra-notes { font-size: 12px; margin-bottom: 10px; }
   .extra-notes div { padding: 4px 2px; border-bottom: 0.5px dashed #ddd; }
-  .contact-box { border: 0.5px solid #ccc; margin-bottom: 12px; }
-  .contact-box .row { padding: 6px 10px; border-bottom: 0.5px solid #ccc; }
+  .contact-box { border: 1px solid #000; margin-bottom: 12px; }
+  .contact-box .row { padding: 6px 10px; border-bottom: 1px solid #000; }
   .contact-box .row:last-child { border-bottom: none; display: flex; justify-content: space-between; align-items: center; }
-  table.sigs { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 11.5px; text-align: center; }
-  table.sigs th { width: 25%; padding: 6px 4px; border: 0.5px solid #cfe0e6; background: #F0F6F8; color: #1F3A5C; word-wrap: break-word; }
-  table.sigs td { width: 25%; border: 0.5px solid #ddd; height: 50px; }
+  table.sigs { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12.5px; text-align: center; page-break-inside: avoid; }
+  table.sigs + table.sigs { margin-top: -1px; }
+  table.sigs th { padding: 8px 4px; border: 1px solid #000; background: #F0F6F8; color: #000; font-weight: 800; word-wrap: break-word; }
+  table.sigs td { border: 1px solid #000; height: 104px; vertical-align: bottom; padding-bottom: 6px; font-weight: 700; color: #000; }
   .wm { position: fixed; top: 38%; right: 0; left: 0; text-align: center; font-size: 46px; font-weight: 700; color: rgba(180, 60, 60, .16); transform: rotate(-18deg); pointer-events: none; z-index: 9; white-space: nowrap; }
   @page { size: A4; margin: 9mm; }
   @media print {
@@ -69,10 +71,11 @@
     <div class="divider"></div>
 
     <div class="info-rows">
-      <div><span class="k">رقم أمر الشراء :</span><span>{{ order.PONumber }}</span></div>
-      <div><span class="k">التاريخ :</span><span>{{ order.OrderDate.strftime('%d/%m/%Y') if order.OrderDate else '' }}</span></div>
-      {% if order.HijriDate %}<div><span class="k">الموافق :</span><span>{{ order.HijriDate }}</span></div>{% endif %}
-      {% if order.Location %}<div><span class="k">الموقع :</span><span>{{ order.Location }}</span></div>{% endif %}
+      <span class="k">رقم أمر الشراء :</span><b>{{ order.PONumber }}</b>
+      <span class="k">التاريخ :</span><b>{{ order.OrderDate.strftime('%d/%m/%Y') if order.OrderDate else '' }}</b>
+      {% if order.HijriDate %}<span class="k">الموافق :</span><b>{{ order.HijriDate }}</b>{% endif %}
+      {% if order.Location %}<span class="k">الموقع :</span><b>{{ order.Location }}</b>{% endif %}
+      {% if currency != 'SAR' %}<span class="k">العملة :</span><b>{{ currency_full }}</b>{% endif %}
     </div>
 
     <div class="to-row">
@@ -101,12 +104,18 @@
     </table>
 
     <div class="totals">
+      {% if vat_mode == 'incl' %}
+      <div><span>الإجمالي (الأسعار شاملة الضريبة)</span><b>{{ "%.2f"|format(total_with_vat) }}</b></div>
+      {% elif vat_mode == 'none' %}
       <div><span>الإجمالي</span><b>{{ "%.2f"|format(subtotal) }}</b></div>
-      <div><span>الضريبة (15%)</span><b>{{ "%.2f"|format(vat) }}</b></div>
+      {% else %}
+      <div><span>الإجمالي</span><b>{{ "%.2f"|format(subtotal) }}</b></div>
+      <div><span>الضريبة ({{ '%g' % vat_pct }}%)</span><b>{{ "%.2f"|format(vat) }}</b></div>
       <div><span>الإجمالي شامل الضريبة</span><b>{{ "%.2f"|format(total_with_vat) }}</b></div>
+      {% endif %}
       <div><span>الخصم</span><b>{{ "%.2f"|format(discount) }}</b></div>
     </div>
-    <div class="grand-row"><span>الإجمالي المطلوب سداده بعد الخصم</span><span>{{ "%.2f"|format(grand) }}</span></div>
+    <div class="grand-row"><span>الإجمالي المطلوب سداده بعد الخصم{% if currency != 'SAR' %} ({{ currency_name }}){% endif %}</span><span>{{ "%.2f"|format(grand) }}</span></div>
     <div class="words-row">{{ amount_words }}</div>
 
     {% if extra_notes %}
@@ -128,17 +137,12 @@
       {% endif %}
     </div>
 
+    {% for row in sign_rows %}
     <table class="sigs">
-      <thead>
-        <tr>
-          <th>مهندس العقود والمشتريات</th>
-          <th>مدير إدارة العقود والمشتريات</th>
-          <th>مدير عام المشاريع</th>
-          <th>المدير العام</th>
-        </tr>
-      </thead>
-      <tbody><tr><td></td><td></td><td></td><td></td></tr></tbody>
+      <thead><tr>{% for s in row %}<th>{{ s.title }}</th>{% endfor %}</tr></thead>
+      <tbody><tr>{% for s in row %}<td>{{ s.name }}</td>{% endfor %}</tr></tbody>
     </table>
+    {% endfor %}
   </div>
 </body>
 </html>
