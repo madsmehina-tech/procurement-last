@@ -1653,7 +1653,7 @@ def admin_wizard(selftest_out=None):
         problems = []
         try:
             root.update()
-            if len(nb.tabs()) != 5:
+            if len(nb.tabs()) != 6:
                 problems.append("tabs=%d" % len(nb.tabs()))
         except Exception as e:                                       # noqa: BLE001
             problems.append("%s: %s" % (type(e).__name__, e))
