@@ -86,17 +86,37 @@ def _noun_phrase(n, singular_alone, dual, plural, accusative_singular):
     return words + ' ' + accusative_singular
 
 
-def amount_to_words(amount):
-    """Full printed line for a SAR amount, e.g. 6999.98 ->
-    'فقط ستة آلاف وتسع مائة وتسعة وتسعون ريالاً وثمانية وتسعون هللة لا غير'."""
-    amount = round(float(amount or 0), 2)
+# code: (name shown in lists, (one, two, 3-10 plural, accusative), (sub one, two, plural, accusative) or None when the currency has no small unit)
+CURRENCIES = {
+    "SAR": ("ريال سعودي", ("ريال واحد", "ريالان", "ريالات", "ريالاً"), ("هللة واحدة", "هللتان", "هللات", "هللة")),
+    "USD": ("دولار أمريكي", ("دولار واحد", "دولاران", "دولارات", "دولاراً"), ("سنت واحد", "سنتان", "سنتات", "سنتاً")),
+    "EUR": ("يورو", ("يورو واحد", "اثنان يورو", "يورو", "يورو"), ("سنت واحد", "سنتان", "سنتات", "سنتاً")),
+    "GBP": ("جنيه إسترليني", ("جنيه واحد", "جنيهان", "جنيهات", "جنيهاً"), ("بنس واحد", "بنسان", "بنسات", "بنساً")),
+    "AED": ("درهم إماراتي", ("درهم واحد", "درهمان", "دراهم", "درهماً"), ("فلس واحد", "فلسان", "فلوس", "فلساً")),
+    "JPY": ("ين ياباني", ("ين واحد", "ينان", "ينات", "يناً"), None),
+    "CNY": ("يوان صيني", ("يوان واحد", "يوانان", "يوانات", "يواناً"), None),
+}
+SHORT = {"SAR": "ريال", "USD": "دولار", "EUR": "يورو", "GBP": "جنيه إسترليني", "AED": "درهم", "JPY": "ين", "CNY": "يوان"}
+
+
+def currency_code(code):
+    """A known currency code, SAR when empty or unknown."""
+    c = (code or "SAR").strip().upper()
+    return c if c in CURRENCIES else "SAR"
+
+
+def amount_to_words(amount, currency="SAR"):
+    """Full printed line for an amount, e.g. 6999.98 ->
+    'فقط ستة آلاف وتسع مائة وتسعة وتسعون ريالاً وثمانية وتسعون هللة لا غير'. Other currencies use their own nouns («دولاراً»، «سنتاً»)."""
+    _name, main, sub = CURRENCIES[currency_code(currency)]
+    amount = round(float(amount or 0), 2 if sub else 0)
     if not (0 <= amount < 1_000_000_000):
         raise ValueError("المبلغ خارج النطاق الذي يمكن كتابته بالحروف")
-    riyals = int(amount)
-    halalas = int(round((amount - riyals) * 100))
+    whole = int(amount)
+    small = int(round((amount - whole) * 100)) if sub else 0
     parts = []
-    if riyals or not halalas:                          # «صفر ريال» only when there is nothing else to say
-        parts.append(_noun_phrase(riyals, 'ريال واحد', 'ريالان', 'ريالات', 'ريالاً') if riyals else 'صفر ريال')
-    if halalas:
-        parts.append(_noun_phrase(halalas, 'هللة واحدة', 'هللتان', 'هللات', 'هللة'))
+    if whole or not small:                             # «صفر ريال» only when there is nothing else to say
+        parts.append(_noun_phrase(whole, *main) if whole else 'صفر ' + main[3].rstrip('اً'))
+    if small:
+        parts.append(_noun_phrase(small, *sub))
     return 'فقط ' + ' و'.join(parts) + ' لا غير'

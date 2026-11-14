@@ -6,10 +6,12 @@ from datetime import datetime
 
 from flask import flash, jsonify, redirect, render_template, request, send_file, url_for
 
+import arabic_numbers
 import archive
 import auth
 import contract_gen as cg
 import cycle_files
+import signatures
 import voucher_service as vs
 from routes import route
 
@@ -20,7 +22,7 @@ def _user():
 
 def _form_page(v, errors=None, voucher=None):
     return render_template("voucher_form.html", v=v, voucher=voucher, projects=vs.projects(), pay_methods=vs.PAY_METHODS, ref_types=vs.REF_TYPES, modes=vs.MODES,
-                           sign_fields=vs.SIGN_FIELDS, errors=errors or [])
+                           currencies=[(k, v[0]) for k, v in arabic_numbers.CURRENCIES.items()], suggested_no=vs.suggest_no(), errors=errors or [])
 
 
 def _show_data(d):
@@ -38,9 +40,14 @@ def vouchers_list():
     rows = vs.listing(status, q)
     allrows = vs.listing()
     kpi = {"count": len(allrows), "draft": sum(1 for r in allrows if r["Status"] == vs.ST_DRAFT), "approved": sum(1 for r in allrows if r["Status"] == vs.ST_APPROVED),
-           "net": round(sum(float(r.get("Net") or 0) for r in allrows if r["Status"] == vs.ST_APPROVED), 2)}
+           "net": round(sum(vs.net_sar(r) for r in allrows if r["Status"] == vs.ST_APPROVED), 2)}
+    import archive as _a
+    signed = {str(d["EntityKey"]): d for d in _a.list_documents_many("VOUCHER") if d.get("DocType") == vs.SIGNED_DOC} if rows else {}
+    for r in rows:
+        r["signed_doc"] = signed.get(str(r["VoucherID"]))
+        r["net_sar"] = vs.net_sar(r)
     return render_template("voucher_list.html", rows=rows, kpi=kpi, status=status, q=q, statuses=(vs.ST_DRAFT, vs.ST_APPROVED, vs.ST_CANCELLED),
-                           next_no="PR-%04d" % (vs.last_number() + 1), can_set_start=(kpi["count"] == 0))
+                           next_no=vs.suggest_no(), can_set_start=(kpi["count"] == 0), is_admin=bool((auth.current_user() or {}).get("IsAdmin")))
 
 
 @route("/vouchers/start-number", methods=["POST"])
@@ -66,6 +73,9 @@ def voucher_new():
         return _form_page(_show_data(d), errors)
     try:
         vid, number = vs.create(d, _user())
+    except vs.VoucherError as e:                             # a taken number: nothing was saved, everything typed is shown again
+        flash(str(e))
+        return _form_page(_show_data(d), [str(e)])
     except Exception as e:                                   # noqa
         logging.getLogger("po.error").exception("voucher save failed")
         flash("تعذّر حفظ أمر الصرف ولم يتغير شيء. السبب: %s" % " ".join(str(e).split())[:200])
@@ -84,13 +94,14 @@ def voucher_new():
 def _stored_to_form(v):
     import json
     items = json.loads(v.get("ItemsJson") or "[]")
-    sign = json.loads(v.get("SignJson") or "{}")
     return {"voucher_date": v["VoucherDate"].strftime("%Y-%m-%d") if v.get("VoucherDate") else "", "project_id": v.get("ProjectID") or "", "party_kind": "sup" if v.get("PartyKind") == "مورد" else "sub",
             "party_id": v.get("SupplierID") or v.get("SubcontractorID") or "", "party_name": v.get("PartyName"), "request_type": v.get("RequestType") or "", "department": v.get("Department") or "",
             "cost_center": v.get("CostCenter") or "", "pay_method": v.get("PayMethod"), "pay_statement": v.get("PayStatement") or "", "description": v.get("Description") or "",
             "amount_mode": v.get("AmountMode") or "incl", "vat_pct": "%d" % round(v.get("VatPct") or 0), "discount": v.get("Discount") or "",
             "show_totals": bool(v.get("ShowTotals")), "post_choice": v.get("PostChoice") or vs.NO,
-            "items": [{"desc": i["desc"], "qty": 1, "price": i.get("total", i["price"])} for i in items], "refs": json.loads(v.get("RefsJson") or "[]"), "notes": v.get("Notes") or "", "sign": sign}
+            "items": [{"desc": i["desc"], "qty": 1, "price": i.get("total", i["price"])} for i in items], "refs": json.loads(v.get("RefsJson") or "[]"), "notes": v.get("Notes") or "",
+            "sign": signatures.from_voucher(v.get("SignJson"), cg.company()), "voucher_no": v.get("VoucherNo") or "", "currency": arabic_numbers.currency_code(v.get("CurrencyCode")),
+            "exchange_rate": ("%g" % v["ExchangeRate"]) if v.get("ExchangeRate") and arabic_numbers.currency_code(v.get("CurrencyCode")) != "SAR" else ""}
 
 
 @route("/vouchers/<int:voucher_id>/edit", methods=["GET", "POST"])
@@ -114,7 +125,7 @@ def voucher_edit(voucher_id):
         vs.update(voucher_id, d, _user())
     except vs.VoucherError as e:
         flash(str(e))
-        return redirect(url_for("voucher_view", voucher_id=voucher_id))
+        return _form_page(_show_data(d), [str(e)], voucher=v)
     if request.form.get("action") == "approve" and auth.can("vouchers.approve"):
         try:
             msg = vs.approve(voucher_id, _user())
@@ -134,8 +145,8 @@ def voucher_view(voucher_id):
         flash("لم يتم العثور على أمر الصرف.")
         return redirect(url_for("vouchers_list"))
     ctx = vs.print_context(v, cg.company())
-    copies = [d for d in archive.list_documents("VOUCHER", voucher_id) if d.get("IsCurrent")]
-    return render_template("voucher_view.html", copy=copies[0] if copies else None, folder=archive.voucher_folder_rel(v["VoucherNo"], v.get("VoucherDate")), **ctx)
+    copies = [d for d in archive.list_documents("VOUCHER", voucher_id) if d.get("IsCurrent") and d.get("DocType") != vs.SIGNED_DOC]
+    return render_template("voucher_view.html", copy=copies[0] if copies else None, signed=vs.signed_copy(voucher_id), is_admin=bool((auth.current_user() or {}).get("IsAdmin")), folder=archive.voucher_folder_rel(v["VoucherNo"], v.get("VoucherDate")), **ctx)
 
 
 def _archive_copy(voucher_id):
@@ -188,6 +199,46 @@ def voucher_cancel(voucher_id):
     except vs.VoucherError as e:
         flash(str(e))
     return redirect(url_for("voucher_view", voucher_id=voucher_id))
+
+
+@route("/vouchers/preview", methods=["POST"])
+@auth.login_required
+def voucher_preview():
+    """«معاينة»: the printed form of what is typed, WITHOUT saving anything (opens in a new tab, marked as a preview)."""
+    d, errors = vs.parse(request.form)
+    if errors:
+        return render_template("error.html", code=400, title="لا يمكن عرض المعاينة بعد", text="؛ ".join(errors)), 400
+    ctx = vs.print_context(vs.preview_row(d, _user()), cg.company())
+    return render_template("voucher_print.html", watermark="معاينة — لم يُحفظ", **ctx)
+
+
+@route("/vouchers/<int:voucher_id>/signed", methods=["POST"])
+@auth.login_required
+def voucher_signed(voucher_id):
+    try:
+        row = vs.store_signed(voucher_id, request.files.get("signed_file"), _user())
+        flash("حُفظ أمر الصرف الموقّع: %s (في مجلد الأمر نفسه بالأرشيف)." % row["StoredName"])
+    except vs.VoucherError as e:
+        flash(str(e))
+    return redirect(request.form.get("back") if request.form.get("back") == "list" and False else url_for("voucher_view", voucher_id=voucher_id)) if request.form.get("back") != "list" else redirect(url_for("vouchers_list"))
+
+
+@route("/vouchers/<int:voucher_id>/delete", methods=["POST"])
+@auth.login_required
+def voucher_delete(voucher_id):
+    if not (auth.current_user() or {}).get("IsAdmin"):
+        flash("الحذف النهائي لمدير النظام فقط.")
+        return redirect(url_for("voucher_view", voucher_id=voucher_id))
+    try:
+        flash(vs.delete(voucher_id, _user(), request.form.get("reason")))
+    except vs.VoucherError as e:
+        flash(str(e))
+        return redirect(url_for("voucher_view", voucher_id=voucher_id))
+    except Exception as e:                                   # noqa - one transaction: nothing was removed
+        logging.getLogger("po.error").exception("voucher delete failed")
+        flash("تعذّر الحذف ولم يتغير شيء. السبب: %s" % " ".join(str(e).split())[:200])
+        return redirect(url_for("voucher_view", voucher_id=voucher_id))
+    return redirect(url_for("vouchers_list"))
 
 
 def _print_html(voucher_id):

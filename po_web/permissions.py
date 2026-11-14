@@ -131,6 +131,7 @@ ENDPOINT_PERMS = {
     "vouchers_list": "vouchers.view", "voucher_view": "vouchers.view", "voucher_print": "vouchers.view", "voucher_pdf": "vouchers.view",
     "voucher_new": "vouchers.create", "voucher_edit": "vouchers.create", "voucher_api_parties": "vouchers.create", "voucher_api_documents": "vouchers.create",
     "voucher_approve": "vouchers.approve", "voucher_cancel": "vouchers.approve", "voucher_start_no": "vouchers.approve",
+    "voucher_preview": "vouchers.create", "voucher_signed": "vouchers.create", "voucher_delete": "vouchers.approve",
     "supplier_statement": "suppliers.view", "supplier_statement_print": "suppliers.view", "supplier_statement_pdf": "suppliers.view",
     "supplier_entry_add": "suppliers.account", "supplier_entry_delete": "suppliers.account",
     "supplier_opening_save": "accounts.opening", "supplier_opening_clear": "accounts.opening", "sub_opening_save": "accounts.opening", "sub_opening_clear": "accounts.opening",

@@ -25,12 +25,17 @@ from textnorm import clean_spaces, norm_key
 ST_DRAFT, ST_APPROVED, ST_CANCELLED = "مسودة", "معتمد", "ملغي"
 PAY_METHODS = ["تحويل بنكي", "شيك", "نقداً", "مقاصة / تسوية"]
 REF_TYPES = ["فاتورة", "مستخلص", "أمر شراء", "عقد", "عرض سعر", "أخرى"]
+import re
+import signatures
+
 MODES = {"excl": "الأسعار غير شاملة الضريبة", "incl": "الأسعار شاملة الضريبة"}
 MAX_ITEMS, MAX_REFS = 40, 20
 SERIES_KEY = "PR"
 EPS = 0.005
 SIGN_FIELDS = (("contracts", "مدير العقود والمشتريات", "SignContracts"), ("projects", "مدير عام المشاريع", "SignProjects"), ("accounts", "مدير الحسابات", "SignAccounts"),
-               ("finance", "المدير المالي", "SignFinance"), ("gm", "المدير العام", "SignGM"))          # the order printed from the right
+               ("finance", "المدير المالي", "SignFinance"), ("gm", "المدير العام", "SignGM"))          # the five fixed boxes of the versions before 28.0
+NUMBER_RULE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9\-/_.]{0,29}$")
+AUTO_RULE = re.compile(r"^PR-(\d+)$", re.I)
 YES, NO = "نعم", "لا"
 
 
@@ -61,20 +66,37 @@ def compute(items, mode="excl", vat_pct=15.0, discount=0.0):
 
 
 # ----------------------------------------------------------------------------------------------------------------------------- numbering
+def _last_auto(rows, floor=0):
+    """The highest number among the vouchers numbered PR-<digits> (0 when there is none; `floor` = the start set before the first voucher)."""
+    nums = [int(m.group(1)) for m in (AUTO_RULE.match(str(r["VoucherNo"] or "").strip()) for r in rows) if m]
+    return max(nums) if nums else floor
+
+
 def next_no(tx):
-    row = tx.query("SELECT * FROM [NumberSeries] WHERE [SeriesKey] = ? AND [SeriesYear] = ?", (SERIES_KEY, 0))
-    n = (row[0]["LastNo"] if row else 0) or 0
-    taken = {r["VoucherNo"] for r in tx.query("SELECT [VoucherNo] FROM [PaymentVouchers]")}
-    while True:
-        n += 1
-        number = "PR-%04d" % n
-        if number not in taken:
-            break
-    if row:
-        tx.execute("UPDATE [NumberSeries] SET [LastNo] = ? WHERE [SeriesKey] = ? AND [SeriesYear] = ?", (n, SERIES_KEY, 0))
-    else:
-        tx.execute("INSERT INTO [NumberSeries] ([SeriesKey], [SeriesYear], [LastNo]) VALUES (?, ?, ?)", (SERIES_KEY, 0, n))
-    return number
+    """The automatic number: the LAST number in the list of vouchers + 1 (so the number of a deleted last voucher is given again).
+    Before the first voucher it follows «بداية الترقيم»."""
+    rows = tx.query("SELECT [VoucherNo] FROM [PaymentVouchers]")
+    series = tx.query("SELECT * FROM [NumberSeries] WHERE [SeriesKey] = ? AND [SeriesYear] = ?", (SERIES_KEY, 0))
+    floor = ((series[0]["LastNo"] if series else 0) or 0) if not rows else 0
+    return "PR-%04d" % (_last_auto(rows, floor) + 1)
+
+
+def suggest_no():
+    rows = db.query("SELECT [VoucherNo] FROM [PaymentVouchers]")
+    return "PR-%04d" % (_last_auto(rows, last_number() if not rows else 0) + 1)
+
+
+def _claim_no(tx, typed, own_id=None):
+    """The number a voucher is saved with: the typed one when it is free, else the automatic one. Raises VoucherError for a taken / bad number."""
+    typed = clean_spaces(typed).upper() if AUTO_RULE.match(clean_spaces(typed) or "") else clean_spaces(typed)
+    if not typed:
+        return next_no(tx)
+    if not NUMBER_RULE.match(typed):
+        raise VoucherError("رقم طلب الصرف: حروف إنجليزية وأرقام وشرطة فقط (حتى 30 خانة)، مثل PR-0027.")
+    for r in tx.query("SELECT [VoucherID], [VoucherNo] FROM [PaymentVouchers]"):
+        if str(r["VoucherNo"] or "").strip().lower() == typed.lower() and r["VoucherID"] != own_id:
+            raise VoucherError("الرقم %s مستعمل في أمر صرف آخر. اختر رقماً آخر (التلقائي %s)." % (typed, next_no(tx)))
+    return typed
 
 
 def last_number():
@@ -103,8 +125,8 @@ def defaults(company):
     c = company or {}
     return {"voucher_date": datetime.now().strftime("%Y-%m-%d"), "project_id": "", "party_kind": "sup", "party_id": "", "request_type": "", "department": c.get("VoucherDept") or "",
             "cost_center": "", "pay_method": PAY_METHODS[0], "pay_statement": "", "description": "", "amount_mode": "incl", "vat_pct": "15", "discount": "",
-            "items": [], "refs": [], "notes": "", "show_totals": False, "post_choice": NO,
-            "sign": {k: (c.get(col) or "") for k, _lab, col in SIGN_FIELDS}}
+            "items": [], "refs": [], "notes": "", "show_totals": False, "post_choice": NO, "voucher_no": suggest_no(), "currency": "SAR", "exchange_rate": "",
+            "sign": signatures.get(signatures.VOUCHER, c)}
 
 
 def _line_text(form, name, limit, label, required=False):
@@ -134,6 +156,19 @@ def parse(form):
         except VoucherError as e:
             d[key] = clean_spaces(form.get(name))
             errors.append(str(e))
+    d["voucher_no"] = clean_spaces(form.get("voucher_no"))[:30]
+    if d["voucher_no"] and not NUMBER_RULE.match(d["voucher_no"]):
+        errors.append("رقم طلب الصرف: حروف إنجليزية وأرقام وشرطة فقط (حتى 30 خانة)، مثل PR-0027.")
+    d["currency"] = arabic_numbers.currency_code(form.get("currency"))
+    d["exchange_rate"] = (form.get("exchange_rate") or "").strip()
+    d["rate"] = 1.0
+    if d["currency"] != "SAR":
+        try:
+            d["rate"] = float(mg.parse_money(d["exchange_rate"], allow_zero=False, label="سعر الصرف", decimals=6))
+            if not 0.0001 <= d["rate"] <= 100000:
+                raise mg.MoneyError("سعر الصرف خارج المعقول.")
+        except mg.MoneyError as e:
+            errors.append("سعر الصرف (كم ريالاً لوحدة العملة): %s" % e)
     d["notes"] = (form.get("notes") or "").strip()[:1000]
     d["pay_method"] = form.get("pay_method") if form.get("pay_method") in PAY_METHODS else ""
     if not d["pay_method"]:
@@ -195,7 +230,11 @@ def parse(form):
     except mg.MoneyError as e:
         d["discount"] = form.get("discount") or ""
         errors.append(str(e))
-    d["sign"] = {k: clean_spaces(form.get("sign_" + k))[:120] for k, _lab, _col in SIGN_FIELDS}
+    try:                                                       # (a form without the boxes - an older page still open - keeps the company's list)
+        d["sign"] = signatures.parse(form, signatures.VOUCHER) if form.getlist("voucher_sign_title") else signatures.get(signatures.VOUCHER)
+    except signatures.SignError as e:
+        d["sign"] = signatures.get(signatures.VOUCHER)
+        errors.append(str(e))
     d["show_totals"] = form.get("show_totals") == "1"
     d["post_choice"] = YES if form.get("post_choice") == "yes" else NO
     if not errors:
@@ -206,6 +245,9 @@ def parse(form):
             errors.append("الخصم (%s) أكبر من الإجمالي بعد الضريبة (%s)." % ("{:,.2f}".format(t["discount"]), "{:,.2f}".format(t["total"])))
         elif t["net"] <= EPS:
             errors.append("صافي أمر الصرف يجب أن يكون أكبر من صفر.")
+        t["net_sar"] = _r2(t["net"] * d["rate"])
+        if t["net_sar"] > mg.MAX_MONEY:
+            errors.append("المعادل بالريال كبير جداً؛ راجع سعر الصرف.")
         d["totals"] = t
     return d, errors
 
@@ -220,14 +262,15 @@ def _columns(d, totals):
             "Discount": totals["discount"], "Net": totals["net"],
             "ItemsJson": json.dumps([dict(i, total=t) for i, t in zip(d["items"], totals["lines"])], ensure_ascii=False),
             "RefsJson": json.dumps(d["refs"], ensure_ascii=False), "SignJson": json.dumps(d["sign"], ensure_ascii=False), "Notes": d["notes"] or None,
-            "ShowTotals": 1 if d.get("show_totals") else 0, "PostChoice": d.get("post_choice") or NO}
+            "ShowTotals": 1 if d.get("show_totals") else 0, "PostChoice": d.get("post_choice") or NO,
+            "CurrencyCode": d.get("currency") or "SAR", "ExchangeRate": float(d.get("rate") or 1), "NetSAR": totals.get("net_sar", totals["net"])}
 
 
 def create(d, user):
     totals = d["totals"]
     cols = _columns(d, totals)
     with db.transaction() as tx:
-        number = next_no(tx)
+        number = _claim_no(tx, d.get("voucher_no"))
         cols.update({"VoucherNo": number, "Status": ST_DRAFT, "CreatedBy": user, "CreatedAt": datetime.now(), "ModifiedAt": datetime.now()})
         names = ", ".join("[%s]" % c for c in cols)
         vid = tx.execute_insert("INSERT INTO [PaymentVouchers] (%s) VALUES (%s)" % (names, ", ".join("?" for _ in cols)), tuple(cols.values()))
@@ -243,7 +286,10 @@ def update(voucher_id, d, user):
         raise VoucherError("لا يُعدَّل أمر الصرف إلا وهو «مسودة».")
     cols = _columns(d, d["totals"])
     cols["ModifiedAt"] = datetime.now()
-    db.execute("UPDATE [PaymentVouchers] SET %s WHERE [VoucherID] = ?" % ", ".join("[%s] = ?" % c for c in cols), tuple(cols.values()) + (voucher_id,))
+    with db.transaction() as tx:
+        if d.get("voucher_no") and d["voucher_no"].lower() != str(v["VoucherNo"]).lower():          # a draft may be renumbered (the archive copy is made at approval)
+            cols["VoucherNo"] = _claim_no(tx, d["voucher_no"], own_id=voucher_id)
+        tx.execute("UPDATE [PaymentVouchers] SET %s WHERE [VoucherID] = ? AND [Status] = ?" % ", ".join("[%s] = ?" % c for c in cols), tuple(cols.values()) + (voucher_id, ST_DRAFT))
     audit.log("voucher_edit", "VOUCHER", v["VoucherNo"], "%s — %s" % (d["party_name"], "{:,.2f}".format(d["totals"]["net"])))
 
 
@@ -262,6 +308,13 @@ def listing(status="", q=""):
     return rows
 
 
+def net_sar(v):
+    """The net of a voucher in riyals: what goes to the accounts and what the lists add up."""
+    if v.get("NetSAR") is not None:
+        return _r2(v["NetSAR"])
+    return _r2((v.get("Net") or 0) * float(v.get("ExchangeRate") or 1))
+
+
 def _paid_refs(v):
     return json.loads(v.get("RefsJson") or "[]")
 
@@ -274,7 +327,7 @@ def _contractor_post(tx, v, user):
     import contracts_service as cs
     import ledger_service as ls
     from finance import ST_ENTERED, ST_PAID
-    sub_id, net = int(v["SubcontractorID"]), _r2(v["Net"])
+    sub_id, net = int(v["SubcontractorID"]), net_sar(v)
     _s, _c, certs, _p = cs.load()
     db.close_request_conn()                                       # the reading is done: no reader connection stays open while this transaction writes
     mine = {g["CertificateID"]: g for g in certs if g["SubcontractorID"] == sub_id}
@@ -316,7 +369,7 @@ def _contractor_post(tx, v, user):
 def _supplier_post(tx, v, user):
     import opening_service
     import supplier_account
-    supplier_id, net, when = int(v["SupplierID"]), _r2(v["Net"]), v.get("VoucherDate") or datetime.now()
+    supplier_id, net, when = int(v["SupplierID"]), net_sar(v), v.get("VoucherDate") or datetime.now()
     try:
         opening_service.guard_supplier_date(supplier_id, when, "أمر الصرف")
     except opening_service.OpeningError as e:
@@ -359,6 +412,85 @@ def cancel(voucher_id, user):
         raise VoucherError("هذا الأمر سُجّلت دفعته في كشف الحساب. أزل الدفعة من الكشف أولاً (المستخلص ← إلغاء تسجيل الصرف، أو احذف الدفعة المباشرة / دفعة المورد برقم %s) ثم ألغِ الأمر." % v["VoucherNo"])
     db.execute("UPDATE [PaymentVouchers] SET [Status] = ?, [CancelledBy] = ?, [CancelledAt] = ?, [ModifiedAt] = ? WHERE [VoucherID] = ?", (ST_CANCELLED, user, datetime.now(), datetime.now(), voucher_id))
     audit.log("voucher_cancel", "VOUCHER", v["VoucherNo"], "")
+
+
+def delete(voucher_id, user, reason):
+    """Removes a voucher for good (administrator only - the route checks it). What it had added to an account is taken out in the SAME transaction:
+    the supplier's payment line, the contractor's direct payment, or the certificates' payment records (the certificates go back to «مدخل»).
+    Its archive folder is moved to the trash area. The audit log keeps who, when and why. Returns the sentence to show."""
+    reason = clean_spaces(reason)
+    if len(reason) < 3:
+        raise VoucherError("اكتب سبب الحذف.")
+    v = get(voucher_id)
+    if not v:
+        raise VoucherError("أمر الصرف غير موجود.")
+    no, undone = v["VoucherNo"], ""
+    with db.transaction() as tx:
+        kind = v.get("PostedKind") if v.get("PostedAt") else None
+        if kind == "supplier":
+            n = len(tx.query("SELECT [EntryID] FROM [SupplierEntries] WHERE [SupplierID] = ? AND [BankRef] = ?", (v["SupplierID"], no)))
+            tx.execute("DELETE FROM [SupplierEntries] WHERE [SupplierID] = ? AND [BankRef] = ?", (v["SupplierID"], no))
+            undone = " أُزيلت دفعته من كشف حساب المورد (%d حركة)." % n
+        elif kind == "ledger":
+            rows = tx.query("SELECT [EntryID], [CycleID] FROM [LedgerEntries] WHERE [SubcontractorID] = ? AND [BankRef] = ?", (v["SubcontractorID"], no))
+            if any(r.get("CycleID") for r in rows):
+                raise VoucherError("دفعة هذا الأمر دخلت في دورة صرف؛ لا يُحذف.")
+            tx.execute("DELETE FROM [LedgerEntries] WHERE [SubcontractorID] = ? AND [BankRef] = ?", (v["SubcontractorID"], no))
+            undone = " أُزيلت دفعته المباشرة من كشف حساب المقاول (%d حركة)." % len(rows)
+        elif kind == "cert":
+            from finance import ST_ENTERED
+            ids = [int(x) for x in str(v.get("PostedRef") or "").split(",") if x.strip().isdigit()]
+            for cid in ids:
+                g = tx.query("SELECT [CertificateNo], [ClosedAt], [CycleID] FROM [Certificates] WHERE [CertificateID] = ?", (cid,))
+                if g and (g[0].get("ClosedAt") or g[0].get("CycleID")):
+                    raise VoucherError("المستخلص رقم %s أُقفلت معاملته أو دخل دورة صرف؛ أعد فتحه أولاً ثم احذف أمر الصرف." % g[0]["CertificateNo"])
+            for cid in ids:
+                tx.execute("DELETE FROM [Payments] WHERE [CertificateID] = ? AND [BankRef] = ?", (cid, no))
+                if not tx.query("SELECT [PaymentID] FROM [Payments] WHERE [CertificateID] = ?", (cid,)):
+                    tx.execute("UPDATE [Certificates] SET [Status] = ?, [PaymentDate] = NULL WHERE [CertificateID] = ?", (ST_ENTERED, cid))
+            undone = " أُلغي تسجيل صرف %d مستخلص وعاد إلى «مدخل»." % len(ids)
+        tx.execute("DELETE FROM [PaymentVouchers] WHERE [VoucherID] = ?", (voucher_id,))
+    import archive
+    moved = archive.trash_folder(archive.voucher_folder_rel(no, v.get("VoucherDate")))
+    archive.forget_documents("VOUCHER", voucher_id)
+    audit.log("voucher_delete", "VOUCHER", no, ("حذف نهائي — %s — %s — %s — السبب: %s" % (v.get("PartyName"), "{:,.2f}".format(v.get("Net") or 0), v.get("Status"), reason))[:250])
+    return "حُذف أمر الصرف %s نهائياً.%s%s" % (no, undone, " ملفاته نُقلت إلى سلة الأرشيف." if moved else "")
+
+
+SIGNED_DOC = "أمر صرف موقّع"
+
+
+def signed_copy(voucher_id):
+    """The current signed scan of a voucher (None until one is uploaded)."""
+    import archive
+    docs = [d for d in archive.list_documents("VOUCHER", voucher_id) if d.get("DocType") == SIGNED_DOC and d.get("IsCurrent")]
+    return docs[0] if docs else None
+
+
+def store_signed(voucher_id, file_storage, user):
+    """Saves the signed, scanned voucher next to the PDF the system made (same folder). A newer upload replaces it as the current one; the older stays as a version."""
+    import archive
+    v = get(voucher_id)
+    if not v:
+        raise VoucherError("أمر الصرف غير موجود.")
+    if v["Status"] != ST_APPROVED:
+        raise VoucherError("يُرفع الموقّع بعد اعتماد أمر الصرف.")
+    if not file_storage or not file_storage.filename:
+        raise VoucherError("اختر ملف المسح الضوئي (PDF أو صورة).")
+    ext = file_storage.filename.rsplit(".", 1)[-1].lower() if "." in file_storage.filename else ""
+    if ext not in ("pdf", "jpg", "jpeg", "png"):
+        raise VoucherError("الموقّع يُرفع PDF أو صورة (JPG / PNG).")
+    folder = archive.voucher_folder_rel(v["VoucherNo"], v.get("VoucherDate"))
+    try:
+        row = archive.store_document("VOUCHER", voucher_id, folder, SIGNED_DOC, file_storage, file_storage.filename, user=user, exact_name="%s موقّع.%s" % (v["VoucherNo"], ext))
+    except archive.UnsupportedFile:
+        raise VoucherError("صيغة الملف غير مدعومة.")
+    except archive.PathTooLong as e:
+        raise VoucherError(str(e))
+    except Exception as e:                                   # noqa - MismatchedFile and friends: say it plainly
+        raise VoucherError(" ".join(str(e).split())[:200] or "تعذّر حفظ الملف.")
+    audit.log("voucher_signed", "VOUCHER", v["VoucherNo"], row["StoredName"])
+    return row
 
 
 # ----------------------------------------------------------------------------------------------------------------------------- the lists the form is linked to
@@ -412,6 +544,15 @@ def print_context(v, company):
     """Everything the printed form needs, from the SAVED voucher (the figures are the stored ones, never recomputed differently)."""
     items = json.loads(v.get("ItemsJson") or "[]")
     refs = json.loads(v.get("RefsJson") or "[]")
-    sign = json.loads(v.get("SignJson") or "{}")
-    return {"v": v, "items": items, "refs": refs, "words": arabic_numbers.amount_to_words(v.get("Net") or 0),
-            "signs": [{"title": lab, "name": sign.get(k) or ""} for k, lab, _col in SIGN_FIELDS], "company": company or {}, "printed_at": datetime.now().strftime("%H:%M:%S ,%d/%m/%Y")}
+    signs = signatures.from_voucher(v.get("SignJson"), company)
+    cur = arabic_numbers.currency_code(v.get("CurrencyCode"))
+    return {"v": v, "items": items, "refs": refs, "words": arabic_numbers.amount_to_words(v.get("Net") or 0, cur), "currency": cur, "currency_name": arabic_numbers.SHORT[cur],
+            "net_sar": net_sar(v), "signs": signs, "sign_rows": signatures.rows(signs, signatures.PER_ROW[signatures.VOUCHER]), "company": company or {},
+            "printed_at": datetime.now().strftime("%H:%M:%S ,%d/%m/%Y")}
+
+
+def preview_row(d, user=""):
+    """A voucher that is NOT saved, shaped like a stored one, for «معاينة» (the same template prints it, with a watermark)."""
+    cols = _columns(d, d["totals"])
+    cols.update({"VoucherID": 0, "VoucherNo": d.get("voucher_no") or suggest_no(), "Status": ST_DRAFT, "CreatedBy": user})
+    return cols

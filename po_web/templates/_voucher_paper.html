@@ -23,15 +23,16 @@
 .vp-tot tr.net td { background:var(--vp-blue); color:#fff; font-weight:800; font-size:14px; }
 .vp-words { margin-top:30px; border:1.5px dashed #7C97BC; background:#F5F8FD; padding:9px 14px; border-radius:6px; }
 .vp-sign { display:flex; gap:0; margin-top:26px; border:1px solid var(--vp-line); }
-.vp-sign > div { flex:1; border-inline-start:1px solid var(--vp-line); padding:9px 8px 11px; text-align:center; min-height:92px; }
+.vp-sign > div { flex:1; border-inline-start:1px solid var(--vp-line); padding:9px 8px 11px; text-align:center; min-height:104px; color:#000; font-weight:700; }
 .vp-sign > div:first-child { border-inline-start:0; }
-.vp-sign b { display:block; margin-bottom:36px; font-size:13px; }
+.vp-sign b { display:block; margin-bottom:46px; font-size:13px; font-weight:800; color:#000; }
 .vp-sign i { display:block; border-top:1px solid #16202E; margin:0 6px 5px; }
 .vp-foot { margin-top:22px; padding-top:8px; border-top:3px solid var(--vp-blue); font-size:11.5px; color:#475569; }
 .vp-stamp { position:absolute; top:42%; right:18%; transform:rotate(-18deg); font-size:64px; font-weight:800; color:rgba(180,30,30,.22); border:6px solid rgba(180,30,30,.22); padding:0 22px; border-radius:12px; pointer-events:none; }
 </style>
 <div class="vp">
   {% if v.Status == 'ملغي' %}<div class="vp-stamp">ملغي</div>{% endif %}
+  {% if watermark %}<div class="vp-stamp" style="font-size:40px;">{{ watermark }}</div>{% endif %}
   <div class="vp-head">
     <div class="vp-co"><b>{{ company.get('LegalName') or 'شركة الهضب للتجارة والمقاولات' }}</b>{% if v.Department or company.get('VoucherDept') %}<span>{{ v.Department or company.get('VoucherDept') }}</span>{% endif %}</div>
     <img src="{{ company_logo }}" alt="شعار الشركة">
@@ -46,7 +47,7 @@
     <tr><td class="l">البيان</td><td class="v" colspan="3">{{ v.Description }}</td></tr>
   </tbody></table>
   <h4>بنود الطلب</h4>
-  <table class="vp-tbl"><thead><tr><th style="width:7%;">#</th><th>البيان</th><th style="width:22%;">المبلغ</th></tr></thead>
+  <table class="vp-tbl"><thead><tr><th style="width:7%;">#</th><th>البيان</th><th style="width:22%;">المبلغ{% if currency and currency != 'SAR' %} ({{ currency_name }}){% endif %}</th></tr></thead>
     <tbody>{% for i in items %}<tr><td>{{ loop.index }}</td><td>{{ i.desc }}</td><td class="n">{{ '{:,.2f}'.format(i.total) }}</td></tr>{% endfor %}</tbody></table>
   {% if v.ShowTotals %}<table class="vp-tot"><tbody>
     <tr><td>الإجمالي قبل الخصم</td><td class="n">{{ '{:,.2f}'.format(v.Subtotal) }}</td></tr>
@@ -57,6 +58,6 @@
   </tbody></table>{% endif %}
   <div class="vp-words"><b>المبلغ بالحروف:</b> {{ words }}</div>
   {% if v.Notes %}<div class="vp-words" style="border-style:solid; background:#fff; margin-top:8px;"><b>ملاحظات:</b> {{ v.Notes }}</div>{% endif %}
-  <div class="vp-sign">{% for s in signs %}<div><b>{{ s.title }}</b><i></i>{{ s.name or ' ' }}</div>{% endfor %}</div>
+  {% for row in sign_rows %}<div class="vp-sign"{% if not loop.first %} style="margin-top:0; border-top:0;"{% endif %}>{% for s in row %}<div><b>{{ s.title }}</b><i></i>{{ s.name or ' ' }}</div>{% endfor %}</div>{% endfor %}
   <div class="vp-foot">تاريخ ووقت الطباعة: {{ printed_at }}</div>
 </div>

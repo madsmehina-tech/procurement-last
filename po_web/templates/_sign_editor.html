@@ -1,0 +1,16 @@
+{# The signature boxes of a printed form: title + name per box, any number. A new box is added ABOVE the existing ones (it prints on the row above). #}
+{% macro editor(kind, items, hint='') %}
+<div class="sign-editor" data-sign-editor="{{ kind }}">
+  <button type="button" class="btn" data-sign-add>+ إضافة توقيع (مسمّى واسم)</button>
+  {% if hint %}<span class="set-hint" style="margin:0 8px;">{{ hint }}</span>{% endif %}
+  <div data-sign-rows style="margin-top:8px; display:flex; flex-direction:column; gap:6px;">
+    {% for s in items %}
+    <div class="sign-row" style="display:grid; grid-template-columns: 1fr 1fr auto; gap:6px; align-items:center;">
+      <input class="inp" name="{{ kind }}_sign_title" maxlength="60" value="{{ s.title }}" placeholder="المسمّى (مثال: المدير المالي)" aria-label="المسمّى">
+      <input class="inp" name="{{ kind }}_sign_name" maxlength="120" value="{{ s.name }}" placeholder="الاسم (اختياري)" aria-label="الاسم">
+      <span style="display:flex; gap:4px;"><button type="button" class="btn" data-sign-up title="للأعلى" aria-label="تحريك للأعلى">▲</button><button type="button" class="btn" data-sign-down title="للأسفل" aria-label="تحريك للأسفل">▼</button><button type="button" class="btn" data-sign-del style="color:var(--danger);">حذف</button></span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endmacro %}

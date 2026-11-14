@@ -28,8 +28,11 @@
     <tr style="cursor:pointer;" data-href="{{ url_for('voucher_view', voucher_id=r.VoucherID) }}">
       <td><b style="color:var(--accent);">{{ r.VoucherNo }}</b></td><td>{{ r.VoucherDate.strftime('%Y-%m-%d') if r.VoucherDate else '' }}</td>
       <td>{{ r.PartyName }} <small style="color:var(--text-secondary);">({{ r.PartyKind }})</small></td><td>{{ r.ProjectName }}</td><td>{{ r.Description }}</td>
-      <td><b>{{ '{:,.2f}'.format(r.Net or 0) }}</b></td><td><span class="badge {{ status_cls(r.Status) }}">{{ r.Status }}</span></td>
-      <td><a class="btn" href="{{ url_for('voucher_print', voucher_id=r.VoucherID) }}" target="_blank" onclick="event.stopPropagation();">طباعة</a></td></tr>
+      <td><b>{{ '{:,.2f}'.format(r.net_sar) }}</b>{% if r.CurrencyCode and r.CurrencyCode != 'SAR' %}<br><small style="color:var(--text-secondary);">{{ '{:,.2f}'.format(r.Net or 0) }} {{ r.CurrencyCode }}</small>{% endif %}</td><td><span class="badge {{ status_cls(r.Status) }}">{{ r.Status }}</span></td>
+      <td onclick="event.stopPropagation();" style="white-space:nowrap;"><a class="btn" href="{{ url_for('voucher_print', voucher_id=r.VoucherID) }}" target="_blank">طباعة</a>
+        {% if r.Status == 'معتمد' %}{% if r.signed_doc %}<a class="btn" href="{{ url_for('document_view', doc_id=r.signed_doc.DocID) }}" target="_blank">فتح الموقّع</a><a class="btn" href="{{ url_for('voucher_view', voucher_id=r.VoucherID) }}">استبدال</a>
+        {% elif can('vouchers.create') %}<a class="btn btn-primary" href="{{ url_for('voucher_view', voucher_id=r.VoucherID) }}">رفع الموقّع</a>{% endif %}{% endif %}
+        {% if is_admin %}<a class="btn" style="color:var(--danger);" href="{{ url_for('voucher_view', voucher_id=r.VoucherID) }}">حذف</a>{% endif %}</td></tr>
   {% else %}<tr><td colspan="8" style="text-align:center; color:var(--text-secondary); padding:34px;">لا توجد أوامر صرف{% if q or status %} مطابقة{% endif %} بعد.</td></tr>{% endfor %}</tbody>
 </table></div></div>
 {% if can('vouchers.approve') and can_set_start %}

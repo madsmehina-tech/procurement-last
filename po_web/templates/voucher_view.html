@@ -19,6 +19,24 @@
     {% else %}<b>نسخة الأرشيف:</b> <span class="set-hint" style="margin:0;">لم تُحفظ بعد. تُحفظ تلقائياً عند اعتماد الأمر، (المسار: الأرشيف / {{ folder }}).</span>{% endif %}</div>
   {% if v.Status != 'مسودة' and can('vouchers.approve') %}<form method="post" action="{{ url_for('voucher_archive', voucher_id=v.VoucherID) }}"><button class="btn" type="submit">{{ 'تحديث نسخة الأرشيف' if copy else 'حفظ نسخة في الأرشيف' }}</button></form>{% endif %}
 </div>
+{% if v.Status == 'معتمد' %}
+<div class="card" style="padding:12px 18px; max-width:860px; margin:0 auto 1rem; display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
+  <div><b>أمر الصرف بعد التوقيع:</b>
+    {% if signed %}<a class="btn" href="{{ url_for('document_view', doc_id=signed.DocID) }}" target="_blank">فتح الموقّع</a> <small class="set-hint" style="margin:0;">{{ signed.StoredName }} — في مجلد الأمر نفسه بالأرشيف</small>
+    {% else %}<span class="set-hint" style="margin:0;">لم يُرفع بعد. بعد الطباعة والتوقيع، امسحه ضوئياً وارفعه هنا (PDF أو صورة).</span>{% endif %}</div>
+  {% if can('vouchers.create') %}<form method="post" enctype="multipart/form-data" action="{{ url_for('voucher_signed', voucher_id=v.VoucherID) }}" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+    <input type="file" name="signed_file" accept=".pdf,.jpg,.jpeg,.png" required aria-label="ملف أمر الصرف الموقّع">
+    <button class="btn btn-primary" type="submit">{{ 'استبدال' if signed else 'رفع الموقّع' }}</button></form>{% endif %}
+</div>{% endif %}
 <div class="card" style="padding:22px; max-width:860px; margin:0 auto;">{% include "_voucher_paper.html" %}</div>
+{% if currency != 'SAR' %}<p class="set-hint" style="text-align:center;">العملة: {{ currency_name }} · سعر الصرف {{ '%g' % (v.ExchangeRate or 1) }} · المعادل بالريال <b>{{ '{:,.2f}'.format(net_sar) }}</b></p>{% endif %}
+{% if is_admin %}
+<details class="card" style="padding:12px 18px; max-width:860px; margin:1rem auto 0; border:1px solid var(--danger);"><summary style="cursor:pointer; font-weight:700; color:var(--danger);">حذف نهائي (لمدير النظام)</summary>
+  <p style="margin:8px 0;">يُحذف أمر الصرف {{ v.VoucherNo }} نهائياً. {% if v.PostedAt %}<b>تُزال دفعته من كشف الحساب تلقائياً.</b>{% endif %} تُنقل ملفاته إلى سلة الأرشيف، ويبقى سطر في سجل التدقيق باسمك والسبب. رقمه يصير متاحاً من جديد.</p>
+  <form method="post" action="{{ url_for('voucher_delete', voucher_id=v.VoucherID) }}" style="display:flex; gap:8px; align-items:end; flex-wrap:wrap;">
+    <div style="flex:1; min-width:220px;"><label class="set-lab" style="margin-top:0;" for="del-reason">سبب الحذف (إلزامي)</label><input class="inp" id="del-reason" name="reason" required minlength="3" maxlength="150" placeholder="مثال: أُدخل بالخطأ مرتين"></div>
+    <label style="display:flex; gap:6px; align-items:center;"><input type="checkbox" required> أؤكد الحذف النهائي</label>
+    <button class="btn" type="submit" style="color:var(--danger); border-color:var(--danger);">احذف نهائياً</button></form>
+</details>{% endif %}
 <p class="set-hint" style="text-align:center;">{% if v.PostChoice == 'نعم' %}هذا الأمر مضبوط على «إضافة الدفعة لكشف الحساب عند الاعتماد».{% else %}هذا الأمر للطباعة فقط ولا يسجّل صرفاً في أي كشف حساب.{% endif %}</p>
 {% endblock %}

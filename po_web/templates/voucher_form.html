@@ -3,6 +3,7 @@
 {% block title %}{{ ('تعديل ' ~ voucher.VoucherNo) if voucher else 'إنشاء أمر صرف عام' }}{% endblock %}
 {% block subtitle %}اختر المشروع ثم المستفيد؛ يسحب النظام مستنداته المستحقة، وتكمل بقية بيانات النموذج{% endblock %}
 {% block page_actions %}<a class="btn" href="{{ url_for('vouchers_list') }}">&rarr; أوامر الصرف</a>{% endblock %}
+{% from "_sign_editor.html" import editor %}
 {% block content %}
 <form method="post" id="vf" class="card" style="padding:22px 24px; max-width:980px;" novalidate>
   <h3 class="doc-title" style="margin:0 0 10px;">1 · المشروع والمستفيد</h3>
@@ -12,7 +13,7 @@
     <div><label class="set-lab" style="margin-top:0;">المستفيد هو</label>
       <div style="display:flex; gap:18px; padding-top:8px;"><label><input type="radio" name="party_kind" value="sup" {{ 'checked' if v.party_kind != 'sub' else '' }}> مورد</label><label><input type="radio" name="party_kind" value="sub" {{ 'checked' if v.party_kind == 'sub' else '' }}> مقاول</label></div></div>
     <div><label class="set-lab" style="margin-top:0;" for="party_id">اسم المستفيد</label>
-      <select class="inp" id="party_id" name="party_id" required data-selected="{{ v.party_id }}"><option value="">— اختر —</option></select></div>
+      <select class="inp" id="party_id" name="party_id" required data-selected="{{ v.party_id }}" data-search="اكتب جزءاً من اسم المستفيد للبحث…"><option value="">— اختر —</option></select></div>
   </div>
   <div id="docs-box" class="card" style="padding:12px 16px; margin-top:12px; background:var(--surface-2);" hidden>
     <b>مستندات مستحقة لهذا المستفيد على هذا المشروع</b> <small class="set-hint" style="margin:0;">علّم ما تريد صرفه الآن؛ يُضاف كبند ومستند مرجعي.</small>
@@ -20,10 +21,15 @@
 
   <h3 class="doc-title" style="margin:20px 0 10px;">2 · بيانات الطلب</h3>
   <div class="form-3">
+    <div><label class="set-lab" style="margin-top:0;" for="voucher_no">رقم طلب الصرف</label><input class="inp" id="voucher_no" name="voucher_no" maxlength="30" value="{{ v.voucher_no }}" dir="ltr" style="text-align:right;" autocomplete="off">
+      <small class="set-hint" style="margin:0;">التلقائي {{ suggested_no }} (آخر رقم في القائمة + 1). تستطيع تغييره، ويُرفض الرقم المكرر.</small></div>
     <div><label class="set-lab" style="margin-top:0;" for="voucher_date">التاريخ</label><input class="inp" type="date" id="voucher_date" name="voucher_date" value="{{ v.voucher_date }}" required></div>
     <div><label class="set-lab" style="margin-top:0;" for="request_type">نوع الطلب</label><input class="inp" id="request_type" name="request_type" maxlength="120" value="{{ v.request_type }}" placeholder="مثال: أعمال زراعة"></div>
     <div><label class="set-lab" style="margin-top:0;" for="department">القسم (يظهر تحت اسم الشركة)</label><input class="inp" id="department" name="department" maxlength="120" value="{{ v.department }}"></div>
     <div><label class="set-lab" for="cost_center">مركز التكلفة</label><input class="inp" id="cost_center" name="cost_center" maxlength="255" value="{{ v.cost_center }}" placeholder="افتراضياً اسم المشروع"></div>
+    <div><label class="set-lab" for="currency">العملة</label><select class="inp" id="currency" name="currency">{% for code, name in currencies %}<option value="{{ code }}" {{ 'selected' if v.currency == code else '' }}>{{ name }}</option>{% endfor %}</select></div>
+    <div id="rate-box" {{ '' if v.currency and v.currency != 'SAR' else 'hidden' }}><label class="set-lab" for="exchange_rate">سعر الصرف (كم ريالاً لوحدة العملة)</label><input class="inp" id="exchange_rate" name="exchange_rate" inputmode="decimal" value="{{ v.exchange_rate }}" placeholder="مثال: 3.75">
+      <small class="set-hint" style="margin:0;">يُحفظ مع الأمر. ما يُضاف لكشف الحساب يكون بالريال. <b id="t-sar"></b></small></div>
     <div><label class="set-lab" for="pay_method">طريقة السداد</label><select class="inp" id="pay_method" name="pay_method">{% for m in pay_methods %}<option {{ 'selected' if v.pay_method == m else '' }}>{{ m }}</option>{% endfor %}</select></div>
   </div>
   <label class="set-lab" for="description">البيان</label><input class="inp" id="description" name="description" maxlength="255" required value="{{ v.description }}" placeholder="مثال: سداد مستخلص أعمال زراعة">
@@ -58,10 +64,11 @@
   </section>
 
   <details style="margin-top:14px;"><summary style="cursor:pointer; font-weight:700;">التوقيعات والملاحظات (تُؤخذ من «بيانات الشركة» ويمكن تغييرها لهذا الأمر)</summary>
-    <div class="form-2" style="margin-top:8px;">{% for k, lab, col in sign_fields %}<div><label class="set-lab" style="margin-top:0;" for="sign_{{ k }}">{{ lab }}</label><input class="inp" id="sign_{{ k }}" name="sign_{{ k }}" maxlength="120" value="{{ v.sign.get(k, '') }}"></div>{% endfor %}</div>
+    <div style="margin-top:8px;">{{ editor('voucher', v.sign, 'الترتيب من اليمين كما يُطبع؛ الصف الأعلى يُطبع فوق.') }}</div>
     <label class="set-lab" for="notes">ملاحظات تظهر في الأمر</label><textarea class="inp" id="notes" name="notes" rows="2" maxlength="1000">{{ v.notes }}</textarea></details>
 
   <div style="margin-top:18px; display:flex; gap:10px; flex-wrap:wrap;">
+    <button class="btn btn-lg" type="submit" formaction="{{ url_for('voucher_preview') }}" formtarget="_blank" id="btn-preview">معاينة</button>
     <button class="btn btn-lg" type="submit">{{ 'حفظ التعديل' if voucher else 'حفظ كمسودة' }}</button>
     {% if can('vouchers.approve') %}<button class="btn btn-primary btn-lg" type="submit" name="action" value="approve" id="btn-approve">حفظ واعتماد</button>{% endif %}
     <a class="btn btn-lg" href="{{ url_for('vouchers_list') }}">إلغاء</a></div>
@@ -145,6 +152,18 @@
   partySel.addEventListener('change', loadDocs);
   if (!document.querySelector('#items tr')) add('tpl-item', 'items');
   loadParties(partySel.dataset.selected); recalc();
+})();
+</script>
+<script>
+(function () {   // the currency of the voucher: the rate box appears for anything but riyals, with the equivalent in riyals
+  var cur = document.getElementById('currency'), box = document.getElementById('rate-box'), rate = document.getElementById('exchange_rate'), sar = document.getElementById('t-sar'), net = document.getElementById('t-net');
+  if (!cur) return;
+  function show() {
+    box.hidden = cur.value === 'SAR';
+    var n = parseFloat((net.textContent || '').replace(/,/g, '')) || 0, r = parseFloat(rate.value) || 0;
+    sar.textContent = (cur.value !== 'SAR' && n && r) ? 'المعادل: ' + (n * r).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' ريال' : '';
+  }
+  cur.addEventListener('change', show); document.getElementById('vf').addEventListener('input', function () { setTimeout(show, 0); }); show();
 })();
 </script>
 {% endblock %}

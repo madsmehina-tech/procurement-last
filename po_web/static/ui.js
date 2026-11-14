@@ -114,3 +114,46 @@
     });
   });
 })();
+
+/* ---- v28.0: type-to-search on a long drop-down, and the signature-box editor (title + name rows) ---- */
+(function () {
+  function norm(s) { return String(s || "").toLowerCase().replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").replace(/[ً-ْ]/g, ""); }
+  // <select data-search="placeholder">: a box above it; typing hides the options that do not contain the words (the select stays the real field)
+  document.querySelectorAll("select[data-search]").forEach(function (sel) {
+    var box = document.createElement("input");
+    box.type = "search"; box.className = sel.className; box.placeholder = sel.dataset.search || "اكتب للبحث…"; box.autocomplete = "off";
+    box.setAttribute("aria-label", box.placeholder); box.style.marginBottom = "4px";
+    var note = document.createElement("small"); note.className = "set-hint"; note.style.margin = "0";
+    sel.parentNode.insertBefore(box, sel); sel.parentNode.appendChild(note);
+    function apply() {
+      var words = norm(box.value).split(/\s+/).filter(Boolean), shown = [];
+      [].forEach.call(sel.options, function (o) {
+        if (!o.value) { o.hidden = false; return; }
+        var t = norm(o.textContent), hit = words.every(function (w) { return t.indexOf(w) >= 0; });
+        o.hidden = !hit; o.disabled = !hit && !o.selected ? true : false; if (hit) shown.push(o);
+      });
+      [].forEach.call(sel.querySelectorAll("optgroup"), function (g) { g.hidden = ![].some.call(g.children, function (o) { return !o.hidden; }); });
+      if (!words.length) { note.textContent = ""; return; }
+      note.textContent = shown.length ? (shown.length + " نتيجة" + (shown.length === 1 ? " — اختيرت تلقائياً" : " — اختر من القائمة")) : "لا نتائج لما كتبته";
+      if (shown.length === 1 && sel.value !== shown[0].value) { sel.value = shown[0].value; sel.dispatchEvent(new Event("change", { bubbles: true })); }
+      if (shown.length > 1) sel.size = 1;
+    }
+    box.addEventListener("input", apply);
+    box.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); sel.focus(); } if (e.key === "ArrowDown") { e.preventDefault(); sel.focus(); } });
+    new MutationObserver(function () { if (box.value) apply(); }).observe(sel, { childList: true });
+  });
+
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-sign-add],[data-sign-del],[data-sign-up],[data-sign-down]"); if (!b) return;
+    var ed = b.closest("[data-sign-editor]"), rows = ed.querySelector("[data-sign-rows]"), row = b.closest(".sign-row"), kind = ed.dataset.signEditor;
+    if (b.hasAttribute("data-sign-add")) {
+      var d = document.createElement("div"); d.className = "sign-row"; d.style.cssText = "display:grid; grid-template-columns: 1fr 1fr auto; gap:6px; align-items:center;";
+      d.innerHTML = '<input class="inp" name="' + kind + '_sign_title" maxlength="60" placeholder="المسمّى (مثال: المدير المالي)" aria-label="المسمّى">' +
+        '<input class="inp" name="' + kind + '_sign_name" maxlength="120" placeholder="الاسم (اختياري)" aria-label="الاسم">' +
+        '<span style="display:flex; gap:4px;"><button type="button" class="btn" data-sign-up aria-label="تحريك للأعلى">▲</button><button type="button" class="btn" data-sign-down aria-label="تحريك للأسفل">▼</button><button type="button" class="btn" data-sign-del style="color:var(--danger);">حذف</button></span>';
+      rows.insertBefore(d, rows.firstChild); d.querySelector("input").focus();          // a new box goes ABOVE the existing ones
+    } else if (b.hasAttribute("data-sign-del")) { if (rows.children.length > 1) row.remove(); }
+    else if (b.hasAttribute("data-sign-up")) { if (row.previousElementSibling) rows.insertBefore(row, row.previousElementSibling); }
+    else if (b.hasAttribute("data-sign-down")) { if (row.nextElementSibling) rows.insertBefore(row.nextElementSibling, row); }
+  });
+})();
