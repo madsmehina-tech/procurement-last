@@ -190,10 +190,11 @@ def test_the_company_page_has_the_current_signatories_and_saves_them_into_new_vo
     for lab in ("مدير العقود والمشتريات", "مدير عام المشاريع", "مدير الحسابات", "المدير المالي", "المدير العام", "القسم (يظهر تحت اسم الشركة"):
         assert lab in html, lab
     assert "المحاسب" not in html
-    data = {"legalname": "شركة الهضب", "signcontracts": "م أول", "signprojects": "م ثاني", "signaccounts": "ثالث", "signfinance": "رابع", "signgm": "خامس", "voucherdept": "قسم تجريبي"}
+    data = {"legalname": "شركة الهضب", "voucherdept": "قسم تجريبي",                          # 28.0: the boxes are a list (title + name), any number
+            "voucher_sign_title": ["مدير العقود والمشتريات", "المدير العام"], "voucher_sign_name": ["م أول", "خامس"]}
     client.post("/settings/company", data=data)
     row = fake_db.query("SELECT * FROM [CompanyProfile] WHERE [ProfileID] = 1")[0]
-    assert (row["SignContracts"], row["SignProjects"], row["SignGM"], row["VoucherDept"]) == ("م أول", "م ثاني", "خامس", "قسم تجريبي")
+    assert row["VoucherDept"] == "قسم تجريبي" and "م أول" in row["VoucherSignsJson"]
     form = client.get("/vouchers/new").get_data(as_text=True)
     assert 'value="م أول"' in form and 'value="خامس"' in form and 'value="قسم تجريبي"' in form        # a new voucher starts with them
 
