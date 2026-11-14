@@ -215,6 +215,41 @@ def backup_now(app, runner=None):
     return run_tool(app, [os.path.join("tools", "backup_all.py")], runner=runner)
 
 
+
+def _excel(path):
+    path = (path or "").strip().strip('"')
+    if not path or not os.path.isfile(path):
+        raise AdminError("اختر ملف الإكسل القديم أولاً (PO_Tracker.xlsm).")
+    return path
+
+
+def excel_orders(app, xlsx, apply=False, only="", runner=None):
+    """Preview (nothing is written) or apply the completion of the orders from the old Excel tracker. Before applying, a dated copy of the database is taken; no copy = no import."""
+    args = [os.path.join("tools", "import_excel_orders.py"), _excel(xlsx)]
+    if (only or "").strip():
+        args += ["--only", only.strip()]
+    if not apply:
+        return run_tool(app, args, timeout=900, runner=runner)
+    code, out = run_tool(app, [os.path.join("tools", "backup_now.py")], timeout=1800, runner=runner)
+    if code != 0:
+        return code, "لم تُؤخذ نسخة احتياطية، فلم يبدأ النقل:\n" + out
+    code2, out2 = run_tool(app, args + ["--apply", "--yes"], timeout=1800, runner=runner)
+    return code2, out.strip() + "\n\n" + out2
+
+
+def excel_pdfs(app, xlsx, search="", apply=False, runner=None):
+    """Preview or apply the copy of the old tracker's PDF files into the archive (tools/import_legacy_pdfs.py). The old files are never moved or deleted."""
+    args = [os.path.join("tools", "import_legacy_pdfs.py"), _excel(xlsx)]
+    search = (search or "").strip().strip('"')
+    if search:
+        if not os.path.isdir(search):
+            raise AdminError("مجلد الملفات القديمة غير موجود: %s" % search)
+        args += ["--search", search]
+    if apply:
+        args += ["--apply", "--yes"]
+    return run_tool(app, args, timeout=3600, runner=runner)
+
+
 USER_CODE = r"""
 import json, os, re, sys
 import db

@@ -187,3 +187,35 @@ def test_a_python_under_program_files_is_found_although_its_path_has_a_space(tmp
     monkeypatch.setattr(ps, "candidate_pythons", lambda extra=None: [str(exe)])
     monkeypatch.setattr(ps.subprocess, "run", lambda *a, **k: P())
     assert ps.find_python(ps.Ctx(ps.Answers())) == str(exe)
+
+
+def test_excel_orders_previews_without_writing_and_backs_up_before_applying(app, tmp_path):
+    x = tmp_path / "PO Tracker.xlsm"
+    x.write_bytes(b"x")
+    with pytest.raises(ad.AdminError):
+        ad.excel_orders(app, str(tmp_path / "none.xlsm"))
+    calls = []
+    run = lambda cmd, cwd, env: (calls.append(cmd[1:]) or (0, "ok"))
+    ad.excel_orders(app, str(x), False, " PO-2026-445 ", runner=run)
+    assert calls == [[os.path.join("tools", "import_excel_orders.py"), str(x), "--only", "PO-2026-445"]]
+    calls.clear()
+    code, out = ad.excel_orders(app, str(x), True, runner=run)
+    assert code == 0 and calls == [[os.path.join("tools", "backup_now.py")], [os.path.join("tools", "import_excel_orders.py"), str(x), "--apply", "--yes"]]
+    calls.clear()
+    code, out = ad.excel_orders(app, str(x), True, runner=lambda cmd, cwd, env: (calls.append(cmd[1:]) or (1, "[!!] فشل النسخ")))
+    assert code == 1 and len(calls) == 1 and "لم يبدأ النقل" in out                      # no backup = no import
+
+
+def test_excel_pdfs_passes_the_old_folder_and_applies_only_when_asked(app, tmp_path):
+    x = tmp_path / "t.xlsm"
+    x.write_bytes(b"x")
+    old = tmp_path / "old"
+    old.mkdir()
+    calls = []
+    run = lambda cmd, cwd, env: (calls.append(cmd[1:]) or (0, "ok"))
+    ad.excel_pdfs(app, str(x), str(old), False, runner=run)
+    ad.excel_pdfs(app, str(x), "", True, runner=run)
+    tool = os.path.join("tools", "import_legacy_pdfs.py")
+    assert calls == [[tool, str(x), "--search", str(old)], [tool, str(x), "--apply", "--yes"]]
+    with pytest.raises(ad.AdminError):
+        ad.excel_pdfs(app, str(x), str(tmp_path / "nowhere"), False, runner=run)

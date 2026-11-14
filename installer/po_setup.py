@@ -1592,6 +1592,44 @@ def admin_wizard(selftest_out=None):
         job(run)
     ttk.Button(fc, text="صدّر الآن", command=do_export).grid(row=7, column=1, sticky="e", pady=4, padx=6)
 
+    # ---- completing the data from the old Excel tracker
+    fx = page("النقل من الإكسل")
+    ttk.Label(fx, text="يكمل النظام من ملف المتابعة القديم: يضيف الأوامر الناقصة بأصنافها، ويضيف أصناف أمر موجود بلا أصناف، ولا يمس غير ذلك.\n"
+                       "ابدأ دائماً بـ«معاينة»: لا تكتب شيئاً. «نفّذ» يأخذ نسخة احتياطية من القاعدة أولاً.", justify="right").grid(row=0, column=0, columnspan=3, sticky="e", pady=6)
+    v_xl, v_only, v_old = tk.StringVar(), tk.StringVar(), tk.StringVar()
+    ttk.Label(fx, text="ملف الإكسل القديم (PO_Tracker.xlsm):").grid(row=1, column=2, sticky="e", pady=3)
+    ttk.Entry(fx, textvariable=v_xl).grid(row=1, column=1, sticky="ew", padx=6)
+    ttk.Button(fx, text="استعراض…", command=lambda: v_xl.set((filedialog.askopenfilename(filetypes=[("Excel", "*.xlsm *.xlsx")]) or v_xl.get()).replace("/", "\\"))).grid(row=1, column=0)
+    ttk.Label(fx, text="أرقام محددة فقط (اختياري، بينها فاصلة):").grid(row=2, column=2, sticky="e", pady=3)
+    ttk.Entry(fx, textvariable=v_only).grid(row=2, column=1, sticky="ew", padx=6)
+
+    def excel_job(fn, title, confirm=None):
+        def go():
+            if confirm and not messagebox.askyesno("تأكيد", confirm):
+                return
+
+            def run():
+                code, out = fn()
+                return "%s %s\n%s" % ("✔" if code == 0 else "⚠", title, out.strip()[-6000:])
+            say("… " + title)
+            job(run)
+        return go
+    bx = ttk.Frame(fx)
+    bx.grid(row=3, column=1, sticky="e", pady=6, padx=6)
+    ttk.Button(bx, text="نفّذ نقل الأوامر", command=excel_job(lambda: admin.excel_orders(app(), v_xl.get(), True, v_only.get()), "نقل الأوامر من الإكسل",
+                                                              "هل راجعت المعاينة؟ ستُؤخذ نسخة احتياطية ثم تُضاف الأوامر والأصناف التي ظهرت في المعاينة.")).pack(side="left", padx=4)
+    ttk.Button(bx, text="معاينة الأوامر", command=excel_job(lambda: admin.excel_orders(app(), v_xl.get(), False, v_only.get()), "معاينة الأوامر (لم يُكتب شيء)")).pack(side="left", padx=4)
+    ttk.Separator(fx).grid(row=4, column=0, columnspan=3, sticky="ew", pady=10)
+    ttk.Label(fx, text="بعد نقل الأوامر: انسخ ملفاتها (PDF) من مجلد المرفقات القديم إلى الأرشيف. الملفات القديمة لا تُحذف ولا تُنقل، والمكرر لا يُنسخ مرتين.", justify="right").grid(row=5, column=0, columnspan=3, sticky="e")
+    ttk.Label(fx, text="مجلد المرفقات القديم:").grid(row=6, column=2, sticky="e", pady=3)
+    ttk.Entry(fx, textvariable=v_old).grid(row=6, column=1, sticky="ew", padx=6)
+    ttk.Button(fx, text="استعراض…", command=lambda: v_old.set((filedialog.askdirectory() or v_old.get()).replace("/", "\\"))).grid(row=6, column=0)
+    by = ttk.Frame(fx)
+    by.grid(row=7, column=1, sticky="e", pady=6, padx=6)
+    ttk.Button(by, text="نفّذ نسخ الملفات", command=excel_job(lambda: admin.excel_pdfs(app(), v_xl.get(), v_old.get(), True), "نسخ ملفات PDF",
+                                                              "هل راجعت معاينة الملفات؟ ستُنسخ الملفات إلى أرشيف النظام.")).pack(side="left", padx=4)
+    ttk.Button(by, text="معاينة الملفات", command=excel_job(lambda: admin.excel_pdfs(app(), v_xl.get(), v_old.get(), False), "معاينة الملفات (لم يُنسخ شيء)")).pack(side="left", padx=4)
+
     def load():
         try:
             s = admin.settings(app())
