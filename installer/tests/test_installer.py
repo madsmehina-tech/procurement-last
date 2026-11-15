@@ -388,3 +388,20 @@ def test_an_upgrade_keeps_the_boot_task_and_adds_no_sign_in_task(tmp_path, monke
     c2 = ps.Ctx(a, run=rec2)
     ps.step_autostart(c2)                                                                # no boot task: the «after sign-in» autostart as before
     assert any("install_autostart" in " ".join(map(str, cmd)) for cmd, _cwd, _env in rec2.calls)
+
+
+def test_paths_from_the_folder_dialogs_get_one_windows_spelling(tmp_path):
+    a = ps.Answers(share_folder="D:/PO_Archive", base="D:/PO/", db_existing="D:/PO/data/PurchaseSystem.accdb", backup_set_dir="E:/", export_dir="relative/x")
+    ps.win_paths(a)
+    assert (a.share_folder, a.base, a.db_existing, a.backup_set_dir, a.export_dir) == ("D:\\PO_Archive", "D:\\PO", "D:\\PO\\data\\PurchaseSystem.accdb", "E:\\", "relative/x")
+
+
+def test_an_existing_share_on_the_same_folder_is_fine_and_one_on_another_folder_is_named(tmp_path):
+    a = answers(tmp_path)
+    a.create_share = True
+    st, msg = ps.step_share(ps.Ctx(a, run=Recorder(out="EXISTS\nFPS=1")))
+    assert st == "ok" and "موجودة وتشير إلى" in msg
+    st, msg = ps.step_share(ps.Ctx(a, run=Recorder(out="OTHERPATH=E:\\Old")))
+    assert st == "warn" and "E:\\Old" in msg and "egoryInfo" not in msg
+    script = " ".join(map(str, ps.step_share.__code__.co_consts))
+    assert "TrimEnd" in script and "يوجد مشاركة" not in script                 # compared tolerant of «/» and a trailing «\»; no Arabic inside PowerShell

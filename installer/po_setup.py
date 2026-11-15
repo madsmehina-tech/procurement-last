@@ -504,7 +504,7 @@ def step_share(c):
     me = "%s\\%s" % (os.environ.get("USERDOMAIN", ""), os.environ.get("USERNAME", "")) if os.environ.get("USERNAME") else ""
     script = ("$ErrorActionPreference='Stop'; $team = " + team_group_ps(a.team_group) + "; $me = " + ps_quote(me) + "; "
               "$ex = Get-SmbShare -Name " + ps_quote(a.share_name) + " -ErrorAction SilentlyContinue; "
-              "if ($ex) { if ($ex.Path -ne " + ps_quote(a.share_folder) + ") { throw 'يوجد مشاركة بالاسم نفسه على مسار آخر: ' + $ex.Path } else { Write-Output 'EXISTS' } } "
+              "if ($ex) { if ($ex.Path.Replace('/', '\\').TrimEnd('\\') -ne " + ps_quote(a.share_folder) + ".Replace('/', '\\').TrimEnd('\\')) { Write-Output ('OTHERPATH=' + $ex.Path); exit 3 } else { Write-Output 'EXISTS' } } "
               "else { if ($me) { New-SmbShare -Name " + ps_quote(a.share_name) + " -Path " + ps_quote(a.share_folder) + " -ReadAccess $team -FullAccess $me | Out-Null } "
               "else { New-SmbShare -Name " + ps_quote(a.share_name) + " -Path " + ps_quote(a.share_folder) + " -ReadAccess $team | Out-Null }; Write-Output 'CREATED' }; "
               "icacls " + ps_quote(a.share_folder) + " /grant ($team + ':(OI)(CI)RX') | Out-Null; "
@@ -512,8 +512,13 @@ def step_share(c):
               "try { Set-NetFirewallRule -Group '@FirewallAPI.dll,-28502' -Profile Private,Domain -Enabled True -ErrorAction Stop; Write-Output 'FPS=1' } catch { Write-Output 'FPS=0' }; "
               "if ($me) { icacls " + ps_quote(a.share_folder) + " /grant ($me + ':(OI)(CI)F') | Out-Null }")
     code, out = c.run(ps(script))
+    other = re.search(r"OTHERPATH=(.+)", out or "")
+    if other:
+        return "warn", "توجد مشاركة باسم «%s» لكنها تشير إلى %s وليس إلى %s. غيّر «اسم المشاركة» أو احذف المشاركة القديمة." % (a.share_name, other.group(1).strip(), a.share_folder)
     if code != 0:
         return "warn", "تعذّر إنشاء المشاركة تلقائياً (%s). أنشئها يدوياً: كليك يمين على المجلد ← مشاركة متقدمة، قراءة فقط للفريق." % " ".join(out.split())[-160:]
+    if "EXISTS" in (out or ""):
+        return "ok", "المشاركة \\\\%s\\%s موجودة وتشير إلى %s" % (socket.gethostname(), a.share_name, a.share_folder)
     return "ok", "المشاركة \\\\%s\\%s (الفريق قراءة فقط: %s)" % (socket.gethostname(), a.share_name, a.team_group)
 
 
@@ -867,8 +872,21 @@ def step_preflight(c):
     return "ok", "الجهاز مناسب"
 
 
+PATH_FIELDS = ("share_folder", "base", "db_existing", "backup_db_dir", "backup_set_dir", "restore_package", "export_dir", "zip_path", "python_path")
+
+
+def win_paths(a):
+    """The folder dialogs return «D:/PO_Archive»; Windows (and its share list) says «D:\\PO_Archive». One spelling everywhere."""
+    for k in PATH_FIELDS:
+        v = getattr(a, k, "")
+        if isinstance(v, str) and re.match(r"^[A-Za-z]:[\\/]", v):
+            setattr(a, k, v.replace("/", "\\").rstrip("\\") if len(v) > 3 else v.replace("/", "\\"))
+    return a
+
+
 def run_install(answers, log, progress=None, dry=False, run=None, download=None, only=None):
     """Runs the steps in order. Returns (results list [(key, title, status, detail)], overall 'ok'|'warn'|'fail')."""
+    win_paths(answers)
     ctx = Ctx(answers, log=log, dry=dry, run=run, download=download)
     results, overall, stopped = [], "ok", False
     for key, title, fn in STEPS:
@@ -926,7 +944,7 @@ def summary_text(results, overall, a):
     if overall != "fail":
         lines += ["", "رابط النظام لأجهزة الفريق:  http://%s:%d   (أو بالعنوان الرقمي من ملف client_import.json)" % ((a.alias_name or socket.gethostname()), int(a.port)),
                   "مجلد البرنامج: %s   |   الأرشيف المشارك: %s   |   السجل: %s" % (a.app, a.share_folder, a.log_file),
-                  "التالي: ادخل بحساب المدير وأضف بقية الفريق (python po.bat tools\\add_user.py)، وضع backup_archive_dir في config.ini وشغّل deploy\\backup_all.bat مرة يدوياً."]
+                  "التالي (كله من PO_Setup.exe ← «لوحة الإدارة»، بلا أوامر ولا تعديل ملفات): تبويب «المستخدمون» لإضافة الفريق، وتبويب «النسخ الاحتياطي» لاختيار مجلدات النسخ ثم «احفظ الإعدادات» و«خذ نسخة كاملة الآن»."]
     return "\n".join(lines)
 
 
@@ -1172,8 +1190,8 @@ def ps_run(script, env=None, timeout=300):
 def admin_answers(app):
     """Answers describing an EXISTING installation (for the steps the panel re-uses)."""
     s = admin.settings(app)
-    return Answers(app_dir=app, base=os.path.dirname(os.path.abspath(app)), share_folder=s["archive"], backup_db_dir=s["backup_dir"], backup_set_dir=s["backup_archive_dir"],
-                   port=s["port"], python_path=admin.find_python(app))
+    return win_paths(Answers(app_dir=app, base=os.path.dirname(os.path.abspath(app)), share_folder=s["archive"], backup_db_dir=s["backup_dir"], backup_set_dir=s["backup_archive_dir"],
+                   port=s["port"], python_path=admin.find_python(app)))
 
 
 PY311_VERSION = "3.11.9"
