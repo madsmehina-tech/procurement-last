@@ -357,7 +357,19 @@ def verify_signature(ctx, path, publisher_contains):
     return code == 0 and out.strip().startswith("Valid") and publisher_contains.lower() in out.lower()
 
 
+def installed_python(app):
+    """The python.exe an installed system already runs on (deploy\\python_path.txt), when the file and the exe exist. '' otherwise."""
+    try:
+        with open(os.path.join(app, "deploy", "python_path.txt"), encoding="ascii", errors="replace") as f:
+            path = f.read().strip()
+    except OSError:
+        return ""
+    return path if path and os.path.isfile(path) else ""
+
+
 def step_python(c):
+    if c.a.replace_existing and not c.a.python_path and not c.a.skip_prereqs:
+        c.a.python_path = installed_python(c.a.app)          # an upgrade keeps the python the system (and its boot task) already runs on: e.g. the shared one
     if c.a.skip_prereqs:
         c.python = c.a.python_path or sys.executable
         return "ok", "تخطّي (skip_prereqs): %s" % c.python
@@ -567,10 +579,11 @@ def step_unpack(c):
         if not c.dry:
             os.rename(app, old)
             os.makedirs(app, exist_ok=True)
-            for name in ("config.ini", "instance"):
+            for name in ("config.ini", "instance", "po.bat", os.path.join("deploy", "python_path.txt")):
                 src = os.path.join(old, name)
                 if os.path.exists(src):
                     keep.append(name)
+                    os.makedirs(os.path.dirname(os.path.join(app, name)), exist_ok=True)
                     (shutil.copytree if os.path.isdir(src) else shutil.copy2)(src, os.path.join(app, name))
     if c.dry:
         return "ok", "سيُفك %s في %s" % (os.path.basename(zp), app)
@@ -582,6 +595,9 @@ def step_config(c):
     a = c.a
     path = os.path.join(a.app, "config.ini")
     if os.path.isfile(path) and not c.dry:
+        if c.python and not installed_python(a.app):
+            write_python_pointer(a.app, c.python)
+            return "ok", "config.ini موجود فلم يُستبدل (ترقية)؛ كُتب مسار بايثون: %s" % c.python
         return "ok", "config.ini موجود فلم يُستبدل (ترقية)"
     text = build_config(a, c.tesseract)
     c.log("write " + path)
@@ -765,9 +781,19 @@ def step_boot(c):
     return ("ok" if len(notes) == 2 else "warn"), "؛ ".join(notes)
 
 
+def boot_task_exists(c):
+    if c.dry or not IS_WINDOWS:
+        return False
+    code, out = c.run(ps("if (Get-ScheduledTask -TaskName %s -ErrorAction SilentlyContinue) { 'YES' }" % ps_quote(BOOT_TASK)))
+    return code == 0 and "YES" in (out or "")
+
+
 def step_autostart(c):
     if c.a.boot_start:
         return step_boot(c)
+    if c.a.replace_existing and boot_task_exists(c):
+        c.boot_task_kept = True
+        return "ok", "مهمة التشغيل عند الإقلاع (دون دخول أحد) موجودة وتبقى كما هي بحسابها؛ لم يُضف تشغيل «بعد الدخول»."
     if not c.a.autostart:
         return "skip", "لم يُطلب"
     code, out = c.run(ps("& " + ps_quote(os.path.join(c.a.app, "deploy", "install_autostart.ps1"))))
@@ -786,7 +812,7 @@ def step_start(c):
         return "warn", "المنفذ %d مشغول (ربما النظام يعمل بالفعل)." % a.port
     os.makedirs(a.logs, exist_ok=True)
     started_by_task = False
-    if a.boot_start:                                                               # let the TASK start it: the server then runs under the account it will always run under
+    if a.boot_start or getattr(c, "boot_task_kept", False):                        # let the TASK start it: the server then runs under the account it will always run under
         code, _o = c.run(ps("Start-ScheduledTask -TaskName %s" % ps_quote(BOOT_TASK)))
         started_by_task = code == 0
     if not started_by_task:

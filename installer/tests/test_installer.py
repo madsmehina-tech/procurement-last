@@ -339,3 +339,52 @@ def test_migrate_is_tried_again_once_when_the_driver_refuses_a_connection(monkey
     c = ps.Ctx(a, log=lambda m: None, dry=False, run=lambda cmd, **k: outs.pop(0), download=None)
     c.python = "python"
     assert ps.step_migrate(c)[0] == "fail" and outs == []
+
+
+def test_an_upgrade_keeps_the_python_the_system_runs_on_and_its_pointer_files(tmp_path, monkeypatch):
+    monkeypatch.setattr(ps, "find_python", lambda ctx: ctx.a.python_path)            # the first candidate is the one asked for (here: no real exe to run)
+    a = answers(tmp_path)
+    shared = tmp_path / "Program Files" / "Python312" / "python.exe"
+    shared.parent.mkdir(parents=True)
+    shared.write_text("exe")
+    os.makedirs(a.app + "/deploy")
+    open(a.app + "/serve.py", "w").write("# OLD")
+    open(a.app + "/config.ini", "w").write("[database]\npath = KEEP\n")
+    open(a.app + "/deploy/python_path.txt", "w").write(str(shared))
+    open(a.app + "/po.bat", "w").write('"%s" %%*' % shared)
+    a.replace_existing, a.python_path, a.skip_prereqs = True, "", False
+    assert ps.installed_python(a.app) == str(shared)
+    c = ps.Ctx(a, run=Recorder())
+    assert ps.step_python(c)[0] == "ok" and c.python == str(shared)
+    assert a.python_path == str(shared)                                          # the upgrade runs (pip, migrate) on the python the boot task uses
+    assert ps.step_unpack(ps.Ctx(a, run=Recorder()))[0] == "ok"
+    assert open(a.app + "/deploy/python_path.txt").read() == str(shared) and str(shared) in open(a.app + "/po.bat").read()
+    assert open(a.app + "/serve.py").read() == "# serve"
+
+
+def test_an_upgrade_without_a_pointer_file_gets_one_written(tmp_path):
+    a = answers(tmp_path)
+    os.makedirs(a.app + "/deploy")
+    open(a.app + "/config.ini", "w").write("[database]\npath = KEEP\n")
+    py = tmp_path / "python.exe"
+    py.write_text("exe")
+    c = ps.Ctx(a, run=Recorder())
+    c.python = str(py)
+    st, msg = ps.step_config(c)
+    assert st == "ok" and "كُتب مسار بايثون" in msg and open(a.app + "/deploy/python_path.txt").read() == str(py)
+    assert open(a.app + "/config.ini").read() == "[database]\npath = KEEP\n"          # the settings are never replaced
+
+
+def test_an_upgrade_keeps_the_boot_task_and_adds_no_sign_in_task(tmp_path, monkeypatch):
+    monkeypatch.setattr(ps, "IS_WINDOWS", True)
+    a = answers(tmp_path)
+    a.replace_existing, a.autostart, a.boot_start = True, True, False
+    rec = Recorder(out="YES")
+    c = ps.Ctx(a, run=rec)
+    st, msg = ps.step_autostart(c)
+    assert st == "ok" and "تبقى كما هي" in msg and c.boot_task_kept
+    assert not any("install_autostart" in " ".join(map(str, cmd)) for cmd, _cwd, _env in rec.calls)
+    rec2 = Recorder(out="")
+    c2 = ps.Ctx(a, run=rec2)
+    ps.step_autostart(c2)                                                                # no boot task: the «after sign-in» autostart as before
+    assert any("install_autostart" in " ".join(map(str, cmd)) for cmd, _cwd, _env in rec2.calls)

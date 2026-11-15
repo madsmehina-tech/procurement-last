@@ -243,6 +243,43 @@ jobs:
           Unregister-ScheduledTask -TaskName 'PO Web Server (Boot)' -Confirm:$false -ErrorAction SilentlyContinue
           Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object { $_.CommandLine -match 'serve.py' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
           if ($code -ne 0) { Write-Error 'an admin-panel operation failed'; exit 1 }
+      - name: UPGRADE in place (what the office does) - replace the program, keep data, python pointer and the boot task
+        shell: pwsh
+        run: |
+          Remove-Item D:\PO\data\*.laccdb -ErrorAction SilentlyContinue
+          $pyBefore = (Get-Content D:\PO\app\deploy\python_path.txt -Raw).Trim()
+          $cfgBefore = Get-Content D:\PO\app\config.ini -Raw
+          # the office has a start-at-boot task: make one like it (as SYSTEM here)
+          $bat = 'D:\PO\app\deploy\start_server_loop.bat'
+          $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/c "' + $bat + '"') -WorkingDirectory 'D:\PO\app'
+          $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+          Register-ScheduledTask -TaskName 'PO Web Server (Boot)' -Action $action -Trigger (New-ScheduledTaskTrigger -AtStartup) -Principal $principal -Force | Out-Null
+          Unregister-ScheduledTask -TaskName 'PO Web Server' -Confirm:$false -ErrorAction SilentlyContinue
+          $zip = Get-ChildItem po_web_v*.zip | Sort-Object { [version](($_.BaseName -replace 'po_web_v','') -replace '_','.') } -Descending | Select-Object -First 1
+          @{ share_folder='D:\PO_Archive'; base='D:\PO'; share_name='PO_Archive'; create_share=$true; team_group='Authenticated Users'; db_mode='existing';
+             db_existing='D:\PO\data\PurchaseSystem.accdb'; backup_db_dir='D:\PO_Backup\db'; backup_set_dir='D:\PO_BackupSet'; port=5000; install_tesseract=$false;
+             open_firewall=$true; autostart=$true; start_after=$true; replace_existing=$true; boot_start=$false; zip_path=$zip.FullName } | ConvertTo-Json | Out-File -Encoding utf8 answers_up.json
+          python installer\po_setup.py --silent --answers answers_up.json
+          $code = $LASTEXITCODE
+          Select-String -Path D:\PO\install_log.txt -Pattern '\[(OK|WARN|FAIL|SKIP)\]' | Select-Object -Last 25 | ForEach-Object { $_.Line }
+          if ($code -ne 0) { Write-Error 'upgrade failed'; exit 1 }
+          $pyAfter = (Get-Content D:\PO\app\deploy\python_path.txt -Raw).Trim()
+          "python before=$pyBefore after=$pyAfter"
+          if ($pyAfter -ne $pyBefore) { Write-Error 'the python pointer changed on upgrade'; exit 1 }
+          if ((Get-Content D:\PO\app\config.ini -Raw) -ne $cfgBefore) { Write-Error 'config.ini changed on upgrade'; exit 1 }
+          if (-not (Get-ChildItem D:\PO -Directory -Filter 'app_old_*')) { Write-Error 'the old program was not kept'; exit 1 }
+          if (-not (Get-ScheduledTask -TaskName 'PO Web Server (Boot)' -ErrorAction SilentlyContinue)) { Write-Error 'the boot task was removed'; exit 1 }
+          if (Get-ScheduledTask -TaskName 'PO Web Server' -ErrorAction SilentlyContinue) { Write-Error 'a second (sign-in) task was added'; exit 1 }
+          $ok = $false
+          for ($i = 0; $i -lt 30 -and -not $ok; $i++) { try { $ok = (Invoke-WebRequest http://127.0.0.1:5000/health -UseBasicParsing -TimeoutSec 3).Content -match '"status"' } catch { Start-Sleep 2 } }
+          if (-not $ok) { Write-Error 'the server does not answer after the upgrade'; exit 1 }
+          $v = (Invoke-WebRequest http://127.0.0.1:5000/health -UseBasicParsing).Content
+          "health: $v"
+          Stop-ScheduledTask -TaskName 'PO Web Server (Boot)' -ErrorAction SilentlyContinue
+          Unregister-ScheduledTask -TaskName 'PO Web Server (Boot)' -Confirm:$false -ErrorAction SilentlyContinue
+          Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object { $_.CommandLine -match 'serve.py' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+          Start-Sleep -Seconds 3
+          Remove-Item D:\PO\data\*.laccdb -ErrorAction SilentlyContinue
       - name: Acceptance check on COPIES of the fresh installation (real Access engine)
         continue-on-error: true
         timeout-minutes: 12
