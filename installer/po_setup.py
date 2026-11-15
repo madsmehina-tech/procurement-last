@@ -1639,7 +1639,7 @@ def admin_wizard(selftest_out=None):
     # ---- completing the data from the old Excel tracker
     fx = page("النقل من الإكسل")
     ttk.Label(fx, text="يكمل النظام من ملف المتابعة القديم: يضيف الأوامر الناقصة بأصنافها، ويضيف أصناف أمر موجود بلا أصناف، ولا يمس غير ذلك.\n"
-                       "ابدأ دائماً بـ«معاينة»: لا تكتب شيئاً. «نفّذ» يأخذ نسخة احتياطية من القاعدة أولاً.", justify="right").grid(row=0, column=0, columnspan=3, sticky="e", pady=6)
+                       "ابدأ دائماً بـ«معاينة»: لا تكتب شيئاً. «نفّذ» يأخذ نسخة احتياطية من القاعدة أولاً.", justify="right", wraplength=820).grid(row=0, column=0, columnspan=3, sticky="e", pady=6)
     v_xl, v_only, v_old = tk.StringVar(), tk.StringVar(), tk.StringVar()
     ttk.Label(fx, text="ملف الإكسل القديم (PO_Tracker.xlsm):").grid(row=1, column=2, sticky="e", pady=3)
     ttk.Entry(fx, textvariable=v_xl).grid(row=1, column=1, sticky="ew", padx=6)
@@ -1664,7 +1664,7 @@ def admin_wizard(selftest_out=None):
                                                               "هل راجعت المعاينة؟ ستُؤخذ نسخة احتياطية ثم تُضاف الأوامر والأصناف التي ظهرت في المعاينة.")).pack(side="left", padx=4)
     ttk.Button(bx, text="معاينة الأوامر", command=excel_job(lambda: admin.excel_orders(app(), v_xl.get(), False, v_only.get()), "معاينة الأوامر (لم يُكتب شيء)")).pack(side="left", padx=4)
     ttk.Separator(fx).grid(row=4, column=0, columnspan=3, sticky="ew", pady=10)
-    ttk.Label(fx, text="بعد نقل الأوامر: انسخ ملفاتها (PDF) من مجلد المرفقات القديم إلى الأرشيف. الملفات القديمة لا تُحذف ولا تُنقل، والمكرر لا يُنسخ مرتين.", justify="right").grid(row=5, column=0, columnspan=3, sticky="e")
+    ttk.Label(fx, text="بعد نقل الأوامر: انسخ ملفاتها (PDF) من مجلد المرفقات القديم إلى الأرشيف. الملفات القديمة لا تُحذف ولا تُنقل، والمكرر لا يُنسخ مرتين.", justify="right", wraplength=820).grid(row=5, column=0, columnspan=3, sticky="e")
     ttk.Label(fx, text="مجلد المرفقات القديم:").grid(row=6, column=2, sticky="e", pady=3)
     ttk.Entry(fx, textvariable=v_old).grid(row=6, column=1, sticky="ew", padx=6)
     ttk.Button(fx, text="استعراض…", command=lambda: v_old.set((filedialog.askdirectory() or v_old.get()).replace("/", "\\"))).grid(row=6, column=0)
