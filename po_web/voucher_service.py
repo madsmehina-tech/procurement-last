@@ -13,6 +13,7 @@ Money (the company rules):  the lines are added up (each line = qty x price, rou
 the discount is deducted AFTER the VAT (the owner's rule for purchase orders) -> net = total - discount.
 """
 import json
+import logging
 from datetime import datetime
 
 import arabic_numbers
@@ -22,6 +23,7 @@ import money_guards as mg
 import order_math
 from textnorm import clean_spaces, norm_key
 
+log = logging.getLogger(__name__)
 ST_DRAFT, ST_APPROVED, ST_CANCELLED = "مسودة", "معتمد", "ملغي"
 PAY_METHODS = ["تحويل بنكي", "شيك", "نقداً", "مقاصة / تسوية"]
 REF_TYPES = ["فاتورة", "مستخلص", "أمر شراء", "عقد", "عرض سعر", "أخرى"]
@@ -548,7 +550,17 @@ def print_context(v, company):
     cur = arabic_numbers.currency_code(v.get("CurrencyCode"))
     return {"v": v, "items": items, "refs": refs, "words": arabic_numbers.amount_to_words(v.get("Net") or 0, cur), "currency": cur, "currency_name": arabic_numbers.SHORT[cur],
             "net_sar": net_sar(v), "signs": signs, "sign_rows": signatures.rows(signs, signatures.PER_ROW[signatures.VOUCHER]), "company": company or {},
-            "printed_at": datetime.now().strftime("%H:%M:%S ,%d/%m/%Y")}
+            "printed_at": datetime.now().strftime("%H:%M:%S ,%d/%m/%Y"), "pk": _kit(v)}
+
+
+def _kit(v):
+    """29.0 print settings + QR + watermark from the voucher's real status (مسودة / ملغي; an approved voucher prints clean)."""
+    import print_settings
+    try:
+        return print_settings.kit("voucher", v.get("VoucherNo") or "", v.get("Net") or 0, v.get("VoucherDate"), v.get("PartyName") or "", state=v.get("Status"))
+    except Exception:                                   # noqa - the paper prints without the extras rather than not at all
+        log.exception("print kit failed")
+        return None
 
 
 def preview_row(d, user=""):

@@ -192,6 +192,11 @@ ENDPOINT_PERMS = {
     "role_delete": "settings.roles", "settings_groups": "settings.roles", "group_create": "settings.roles",
     "group_save": "settings.roles", "group_delete": "settings.roles",
     "settings_audit": "settings.audit", "settings_archive": "settings.system",
+    # 29.0: the look, the print settings, checking a printed paper
+    "settings_appearance": "settings.system", "settings_appearance_tokens": "settings.system", "settings_print": "settings.system",
+    "verify_document": None,
+    "supplier_rating_page": "suppliers.view", "supplier_rating_weights": "settings.system",
+    "notifications_page": None, "notifications_read": None, "settings_alerts": "settings.system",
     "settings_projects": "settings.projects", "project_add": "settings.projects", "project_rename": "settings.projects",
     "project_merge": "settings.projects", "project_toggle": "settings.projects",
 }

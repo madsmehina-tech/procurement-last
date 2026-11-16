@@ -83,6 +83,7 @@ def current_user():
         role = load_role(user.get("RoleID"))
         user["RoleName"] = role["name"] if role else ""
         user["IsAdmin"] = bool(role and role["key"] == permissions.ADMIN_KEY)
+        user["RoleKey"] = role["key"] if role else ""
         user["Perms"] = role["perms"] if role else set()
     g._po_user = user
     return user

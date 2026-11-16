@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}إعدادات التنبيهات{% endblock %}
+{% block subtitle %}لكل تنبيه: تشغيل أو إيقاف، موعده، ومن يصل إليه (بالدور و/أو بالاسم){% endblock %}
+{% block content %}
+{% include "_settings_nav.html" %}
+<style>
+  .al { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 14px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
+  .al:last-of-type { border-bottom: 0; }
+  @media (max-width: 900px) { .al { grid-template-columns: minmax(0, 1fr); } }
+  .al h3 { margin: 0 0 4px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  .al p { margin: 0; font-size: 13px; color: var(--text-secondary); }
+  .al-ck { display: flex; flex-wrap: wrap; gap: 6px; }
+  .al-ck label { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; padding: 3px 10px; border: 1px solid var(--border-strong); border-radius: 999px; cursor: pointer; }
+  .al-ck label:has(input:checked) { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .al-ck input, .al h3 input { accent-color: var(--accent); }
+  .al-users { max-height: 120px; overflow-y: auto; }
+  .al .lab2 { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin: 0 0 4px; display: block; }
+</style>
+<form method="post" class="card" style="padding:0;overflow:hidden;">
+  {% for k, r in rules.items() %}{% set c = cfg[k] %}
+  <div class="al">
+    <div>
+      <h3><input type="checkbox" id="on-{{ k }}" name="on_{{ k }}" value="1" {{ 'checked' if c.on else '' }}><label for="on-{{ k }}">{{ r[0] }}</label></h3>
+      <p>{{ r[1] }}</p>
+      {% if r[2] is not none %}<div style="display:flex;align-items:center;gap:8px;margin-top:8px;"><input class="inp" style="width:84px;" type="number" min="0" max="365" name="days_{{ k }}" value="{{ c.days }}" aria-label="عدد الأيام"><span style="font-size:13px;">{{ r[3] }}</span></div>{% endif %}
+    </div>
+    <div><span class="lab2">يصل إلى الأدوار</span>
+      <div class="al-ck">{% for ro in roles %}<label><input type="checkbox" name="roles_{{ k }}" value="{{ ro.RoleKey }}" {{ 'checked' if ro.RoleKey in c.roles else '' }}>{{ ro.RoleName }}</label>{% endfor %}</div></div>
+    <div><span class="lab2">و/أو أشخاص بالاسم</span>
+      <div class="al-ck al-users">{% for u in users %}<label><input type="checkbox" name="users_{{ k }}" value="{{ u.UserID }}" {{ 'checked' if u.UserID in c.users else '' }}>{{ u.FullName or u.Username }}</label>{% endfor %}</div></div>
+  </div>
+  {% endfor %}
+  <div style="padding:16px 18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+    <button class="btn btn-primary btn-lg" type="submit">حفظ</button>
+    <span class="set-hint">التنبيهات تظهر داخل النظام (الجرس أعلى كل صفحة). لا يرى أحد تنبيهاً عن صفحة لا تسمح له صلاحياته بفتحها.</span>
+  </div>
+</form>
+{% endblock %}

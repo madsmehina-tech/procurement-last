@@ -26,7 +26,7 @@ def client():
 
 
 def _form(po="PO-2026-900", **over):
-    f = {"po_number": po, "supplier": "مصنع اليمامية", "project": "حدائق الفرسان", "order_date": "2026-11-14", "discount": "0",
+    f = {"po_number": po, "supplier": "مصنع اليمامية", "project": "حدائق الفرسان", "order_date": "2026-11-14", "delivery_date": "2026-11-30", "discount": "0",
          "item_name": ["عمود إنارة"], "item_unit": ["عدد"], "item_qty": ["10"], "item_price": ["115"]}
     f.update(over)
     return f

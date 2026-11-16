@@ -3,6 +3,7 @@
 {% block title %}الموردون{% endblock %}
 {% block subtitle %}يُضاف المورد تلقائيًا عند أول أمر شراء له · Suppliers directory{% endblock %}
 {% block page_actions %}
+<a class="btn" href="{{ url_for('supplier_rating_page') }}">تقييم الموردين</a>
 <a class="btn" href="{{ url_for('suppliers_export_xlsx', **f) }}">تصدير Excel</a>
 <a class="btn" href="{{ url_for('suppliers_export_pdf', **f) }}" target="_blank">تصدير PDF</a>
 {% if can('suppliers.edit') %}<a class="btn btn-primary" href="{{ url_for('supplier_new') }}">+ مورد جديد</a>{% endif %}

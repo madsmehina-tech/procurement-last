@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}إعدادات الطباعة{% endblock %}
+{% block subtitle %}لكل مستند مطبوع إعداداته: الورق والهوامش والشعار والترويسة والخط والتذييل، والعلامة المائية ورمز QR{% endblock %}
+{% block content %}
+{% include "_settings_nav.html" %}
+<style>
+  .pr-docs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .pr-docs a { padding: 6px 14px; border: 1px solid var(--border-strong); border-radius: 999px; font-size: 13.5px; background: var(--surface); }
+  .pr-docs a.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+  .pr-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+  @media (max-width: 980px) { .pr-grid { grid-template-columns: minmax(0, 1fr); } }
+  .pr-ck { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 14px; }
+  .pr-ck input { width: 18px; height: 18px; accent-color: var(--accent); }
+  .pr-ex h3 { font-size: 15px; margin: 0 0 6px; } .pr-ex ul { margin: 6px 0 0; padding-inline-start: 18px; } .pr-ex li { margin-bottom: 4px; }
+</style>
+
+<nav class="pr-docs" aria-label="المستند">{% for k, d in docs.items() %}<a class="{{ 'on' if k == doc else '' }}" href="{{ url_for('settings_print', doc=k) }}">{{ d.name }}</a>{% endfor %}</nav>
+
+<div class="pr-grid">
+  <form method="post" class="card" style="padding:20px 22px;">
+    <input type="hidden" name="doc" value="{{ doc }}">
+    <h2 style="margin:0 0 4px;font-size:17px;">{{ docs[doc].name }}</h2>
+    <p class="set-hint" style="margin:0 0 6px;">«كما هو» = الورقة تُطبع كما كانت تماماً.</p>
+    <div class="form-2">
+      {% for key, (label, values) in opts.items() %}
+      <div><label class="set-lab" for="o-{{ key }}">{{ label }}</label>
+        <select class="inp" id="o-{{ key }}" name="{{ key }}">{% for v, t in values.items() %}<option value="{{ v }}" {{ 'selected' if s[key] == v else '' }}>{{ t }}</option>{% endfor %}</select></div>
+      {% endfor %}
+    </div>
+    <span class="set-lab">بيانات الترويسة (تُؤخذ من «بيانات الشركة»)</span>
+    {% for key in ('show_cr', 'show_vat', 'show_addr') %}<label class="pr-ck"><input type="checkbox" name="{{ key }}" value="1" {{ 'checked' if s[key] else '' }}> {{ flags[key] }}</label>{% endfor %}
+    <label class="set-lab" for="footer">نص التذييل (اختياري)</label>
+    <input class="inp" id="footer" name="footer" maxlength="200" value="{{ s.footer }}" placeholder="مثال: يُرجى ذكر رقم أمر الشراء في الفاتورة وسند التسليم.">
+    <span class="set-lab">الحماية</span>
+    {% if docs[doc].states %}<label class="pr-ck"><input type="checkbox" name="watermark" value="1" {{ 'checked' if s.watermark else '' }}> {{ flags.watermark }}</label>{% else %}<input type="hidden" name="watermark" value="{{ '1' if s.watermark else '' }}">{% endif %}
+    <label class="pr-ck"><input type="checkbox" name="qr" value="1" {{ 'checked' if s.qr else '' }}> {{ flags.qr }}</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
+      <button class="btn btn-primary btn-lg" type="submit">حفظ</button>
+      <button class="btn" type="submit" name="reset" value="1">رجوع للأصل</button>
+      {% if sample %}<a class="btn" href="{{ sample[0] }}" target="_blank" rel="noopener">معاينة على {{ sample[1] }}</a>{% endif %}
+    </div>
+    <p class="set-hint" style="margin-top:8px;">احفظ أولاً ثم اضغط «معاينة» لترى الإعدادات على ورقة حقيقية.</p>
+  </form>
+
+  <div class="card pr-ex" style="padding:20px 22px;">
+    {% if docs[doc].states %}
+    <h3>العلامة المائية</h3>
+    <ul>
+      <li>«مسودة» تظهر تلقائياً على المستند الذي لم يُعتمد بعد{% if doc == 'po' %} (معاينة أمر الشراء قبل حفظه){% endif %}.</li>
+      <li>«ملغى» بالأحمر على المستند الملغى.</li>
+      <li>المستند المعتمد يُطبع نظيفاً بلا علامة.</li>
+    </ul>
+    {% endif %}
+    <h3 style="margin-top:14px;">رمز QR ورمز التحقق</h3>
+    <ul>
+      <li>يمسحه أي جوال فيرى رقم المستند وتاريخه والطرف والمبلغ، دون إنترنت ودون الدخول على النظام.</li>
+      <li>بجانبه <b>رمز تحقق</b> من 6 خانات. لا يمكن صنعه لمبلغ آخر، فلو عُدّل المبلغ على الورقة لن يطابق.</li>
+      <li>للتأكد من ورقة: افتح <a href="{{ url_for('verify_document') }}" style="color:var(--accent);font-weight:700;">«التحقق من مستند»</a> واكتب رقمها ورمزها.</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}

@@ -28,7 +28,7 @@ import write_lock
 import pdfgen
 
 SNAPSHOT_FIELDS = ("PONumber", "OrderDate", "HijriDate", "SupplierName", "QuoteNo", "Project", "Location", "Receiver",
-                   "ReceiverPhone", "TotalAmount", "Discount", "ExtraNotes", "HideWarehouseNote", "VatMode", "VatPct", "CurrencyCode", "ExchangeRate", "TotalCurrency")
+                   "ReceiverPhone", "TotalAmount", "Discount", "ExtraNotes", "HideWarehouseNote", "VatMode", "VatPct", "CurrencyCode", "ExchangeRate", "TotalCurrency", "AgreedDeliveryDate")
 
 
 def print_context(order, items, watermark=None):
@@ -48,7 +48,25 @@ def print_context(order, items, watermark=None):
                 discount=discount, grand=grand, amount_words=arabic_numbers.amount_to_words(grand, cur),
                 vat_mode=t["mode"], vat_pct=t["pct"], currency=cur, currency_name=arabic_numbers.SHORT[cur], currency_full=arabic_numbers.CURRENCIES[cur][0],
                 signs=signs, sign_rows=signatures.rows(signs, signatures.PER_ROW[signatures.PO]),
-                extra_notes=extra_notes, watermark=watermark)
+                extra_notes=extra_notes, watermark=watermark, pk=_kit(order, grand, watermark))
+
+
+def _kit(order, grand, watermark):
+    """29.0 print settings + QR. An unsaved preview prints «مسودة»; an old saved version keeps its own «نسخة سابقة» line."""
+    import print_settings
+    try:
+        return print_settings.kit("po", order.get("PONumber") or "", grand, order.get("OrderDate"), order.get("SupplierName") or "",
+                                  state=None, preview=bool(watermark and "معاينة" in watermark))
+    except Exception:                                   # noqa - the paper prints without the extras rather than not at all
+        import logging
+        logging.getLogger(__name__).exception("print kit failed")
+        return None
+
+
+def grand_of(order, items):
+    """The amount printed at the bottom of the order (what its QR code is made from)."""
+    t = order_math.order_totals([(it["Qty"], it["UnitPrice"]) for it in items], order.get("Discount") or 0, order.get("VatMode"), order.get("VatPct"))
+    return t["grand"]
 
 
 def load_order(po_number):

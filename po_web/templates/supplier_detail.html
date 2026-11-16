@@ -4,6 +4,7 @@
 {% block title %}{{ supplier.Name }}{% endblock %}
 {% block subtitle %}ملف المورد وأوراقه · Supplier profile &amp; papers{% endblock %}
 {% block page_actions %}<a class="btn" href="{{ url_for('suppliers_list') }}">&rarr; الموردون</a>
+<a class="btn" href="{{ url_for('supplier_rating_page', id=supplier.SupplierID) }}">التقييم</a>
 {% if can('contractgen.create') %}<a class="btn btn-primary" href="{{ url_for('contract_generate', party='sup:%d' % supplier.SupplierID) }}">إنشاء اتفاقية توريد</a>{% endif %}
 <a class="btn" href="{{ url_for('orders_list', supplier=supplier.Name) }}">عرض في تاب المتابعة ←</a>
 <a class="btn" href="{{ url_for('supplier_statement', supplier_id=supplier.SupplierID) }}">كشف الحساب</a>{% endblock %}

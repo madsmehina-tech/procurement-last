@@ -1,0 +1,42 @@
+{# «إعدادات الطباعة» (29.0): what every printed document shares. `k` comes from print_settings.kit(...).
+   css(k)       - after the document's own <style>: paper, margins, print font, text size, logo size and place, watermark and QR styles
+   watermark(k) - «مسودة» / «ملغى» behind the content, on every page (from the document's real status)
+   info(k)      - commercial register / VAT number / address lines under the company name (only the ones switched on)
+   footer(k)    - the footer text + the QR code with its six-character verification code
+   The logo <img> gets class="pk-logo" and its flex box class="pk-logo-box"; with every setting on «كما هو» the paper is unchanged. #}
+{% macro css(k) %}{% set s = k.s %}<style>
+  {{ k.font_face|safe }}
+  {% if s.paper or s.orient or s.margin %}@page { {% if s.paper or s.orient %}size: {{ s.paper or 'A4' }} {{ s.orient }};{% endif %} {% if s.margin %}margin: {{ s.margin }};{% endif %} }{% endif %}
+  {% if k.page_zoom != 1 %}html { zoom: {{ k.page_zoom }}; }{% endif %}
+  {% if k.font %}body, body * { font-family: {{ k.font|safe }}, "Cairo", "Segoe UI", Tahoma, Arial, sans-serif !important; }{% endif %}
+  {% if s.logo_size %}img.pk-logo { zoom: {{ s.logo_size }}; }{% endif %}
+  {% if s.logo_pos == 'right' %}.pk-logo-box { order: -1; }{% elif s.logo_pos == 'left' %}.pk-logo-box { order: 99; }{% endif %}
+</style>{{ parts_css() }}{% endmacro %}
+
+{# the styles of the watermark / info / footer pieces only (safe inside a normal screen page: no @page, no zoom) #}
+{% macro parts_css() %}<style>
+  .pk-wm { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 50; }
+  .pk-wm span { transform: rotate(-30deg); font-size: 110px; font-weight: 800; letter-spacing: 8px; color: rgba(0, 0, 0, .085); white-space: nowrap; font-family: "Cairo", "Segoe UI", Tahoma, Arial, sans-serif; }
+  .pk-wm.local { position: absolute; }
+  .pk-wm.cancel span { color: rgba(185, 28, 28, .17); }
+  .pk-info { font-size: .86em; font-weight: 600; line-height: 1.5; margin-top: 2px; }
+  .pk-foot { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-top: 12px; padding-top: 6px; border-top: 1px solid #000; page-break-inside: avoid; break-inside: avoid; font-size: 11px; }
+  .pk-foot .pk-ftext { flex: 1; min-width: 0; }
+  .pk-qr { display: flex; align-items: flex-end; gap: 8px; flex-shrink: 0; }
+  .pk-qr svg { width: 25mm; height: 25mm; display: block; }
+  .pk-qr .pk-code { font-size: 10.5px; text-align: center; line-height: 1.5; }
+  .pk-qr .pk-code b { display: block; font-size: 13px; letter-spacing: 1.5px; font-family: Consolas, "Courier New", monospace; }
+</style>{% endmacro %}
+
+{% macro watermark(k, local=False) %}{% if k.watermark %}<div class="pk-wm{{ ' cancel' if k.cancel else '' }}{{ ' local' if local else '' }}" aria-hidden="true"><span>{{ k.watermark }}</span></div>{% endif %}{% endmacro %}
+
+{% macro info(k) %}{% if k.info %}<div class="pk-info">{% for line in k.info %}<div>{{ line }}</div>{% endfor %}</div>{% endif %}{% endmacro %}
+
+{% macro footer(k) %}{% if k.footer or k.code %}
+<div class="pk-foot">
+  <div class="pk-ftext">{{ k.footer }}</div>
+  {% if k.code %}<div class="pk-qr">
+    <div class="pk-code">رقم المستند: <span dir="ltr">{{ k.number }}</span><br>رمز التحقق<b>{{ k.code }}</b>للتأكد من صحة الورقة:<br>«التحقق من مستند» في النظام</div>
+    {{ k.qr_svg|safe }}
+  </div>{% endif %}
+</div>{% endif %}{% endmacro %}

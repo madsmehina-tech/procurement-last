@@ -1,9 +1,9 @@
 {# the paper statement (كشف دورة الصرف): the preview on the export screen AND the printed / PDF sheet #}
-{% set lg = logo_src or company_logo %}
+{% set lg = logo_src or company_logo %}{% import "_print_kit.html" as pkit %}{{ pkit.parts_css() }}
 <div class="cs-paper">
   <div class="cs-top">
-    {% if lg %}<img class="cs-logo" src="{{ lg }}" alt="شعار الشركة">{% endif %}
-    <div class="cs-mid"><div class="cs-co">شركة الهضب للتجارة والمقاولات</div><div class="cs-title">كشف دورة الصرف رقم {{ d.cycle.CycleNo }}</div><div class="cs-sub">{{ sub_title }}</div></div>
+    {% if lg %}<img class="cs-logo pk-logo pk-logo-box" src="{{ lg }}" alt="شعار الشركة">{% endif %}
+    <div class="cs-mid"><div class="cs-co">شركة الهضب للتجارة والمقاولات</div>{% if pk %}{{ pkit.info(pk) }}{% endif %}<div class="cs-title">كشف دورة الصرف رقم {{ d.cycle.CycleNo }}</div><div class="cs-sub">{{ sub_title }}</div></div>
     <div class="cs-meta">التاريخ: <bdi dir="ltr">{{ (d.cycle.CycleDate or d.cycle.CreatedAt).strftime('%Y-%m-%d') }}</bdi><br>عدد البنود: {{ d.totals.n_all }}</div>
   </div>
   <table class="cs-table">
@@ -19,4 +19,5 @@
     <div><b>مدير العقود والمشتريات</b><i></i></div>
     <div><b>مدير عام المشاريع</b><i></i></div><div><b>المدير العام</b><i></i></div>
   </div>
+  {% if pk %}{{ pkit.footer(pk) }}{% endif %}
 </div>

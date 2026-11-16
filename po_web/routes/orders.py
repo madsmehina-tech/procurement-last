@@ -9,6 +9,7 @@ from flask import abort, flash, redirect, render_template, request, send_file, u
 
 import archive
 import attention
+import supplier_rating
 import audit
 import auth
 import ui_helpers
@@ -138,11 +139,13 @@ def order_detail(po_number):
                                 "WHERE [PONumber] = ?", (po_number,)), key=lambda r: r["RevNo"], reverse=True)
     return render_template(
         "order_detail.html", order=o, items=order_math.with_line_totals(items), revisions=revisions, version=len(revisions) + 1,
-        gen=po_files.generated_docs(po_number), pdf_ready=pdfgen.available(),
+        gen=po_files.generated_docs(po_number), pdf_ready=pdfgen.available(), delivery=supplier_rating.delivery_state(o),
         docs=archive.panel("PO", po_number, archive.PO_DOC_TYPES), folder=folder,
         folder_exists=bool(o.get("ArchiveFolder")), network=archive.network_path(folder),
     )
 
+
+RECEIPT_QUALITY = ("سليم", "بملاحظات", "مرفوض جزئياً")         # 29.0: chosen when the goods are received (the supplier rating reads it)
 
 STATUS_OPTIONS = {
     "receipt": (["لم يبدأ", "استلام جزئي", "مكتمل"], "ReceiptStatus"),
@@ -166,10 +169,14 @@ def update_status(po_number):
     _old = db.query("SELECT [%s] AS v FROM [PurchaseOrders] WHERE [PONumber] = ?" % column, (po_number,))
     audit.detail("%s: %s ← %s" % (kind, (_old[0]["v"] if _old else "") or "—", value))
     if kind == "receipt":
+        quality = request.form.get("quality", "")
+        quality = quality if quality in RECEIPT_QUALITY and value != "لم يبدأ" else None
+        if quality:
+            audit.detail("جودة الاستلام: " + quality)
         db.execute(
-            "UPDATE [PurchaseOrders] SET [ReceiptStatus] = ?, [ReceiptDate] = ?, [ReceiptNote] = ?, "
+            "UPDATE [PurchaseOrders] SET [ReceiptStatus] = ?, [ReceiptDate] = ?, [ReceiptNote] = ?, [ReceiptQuality] = ?, "
             "[ModifiedAt] = ? WHERE [PONumber] = ?",
-            (value, now, note, now, po_number),
+            (value, now, note, quality, now, po_number),
         )
     elif kind == "invoice" and value == "تم الإصدار":
         due = now + timedelta(days=30)
@@ -248,7 +255,7 @@ def order_preview():
     """Shows the printed form for what is typed in the form RIGHT NOW. Nothing is saved or created."""
     form = _form_to_dict()
     v, line_items, _errors = _read_order(form, editing=form.get("po_number"), create_project=False)
-    order = {"PONumber": v["po_number"] or "(بلا رقم)", "OrderDate": v["order_date"], "HijriDate": hijri_display(v["order_date"]),
+    order = {"PONumber": v["po_number"] or "(بلا رقم)", "OrderDate": v["order_date"], "AgreedDeliveryDate": v.get("delivery_date"), "HijriDate": hijri_display(v["order_date"]),
              "SupplierName": v["supplier"], "QuoteNo": v["quote_no"], "Project": v["project"], "Location": v["location"],
              "Receiver": v["receiver"], "ReceiverPhone": v["phone"], "Discount": v["discount"],
              "ExtraNotes": v["extra_notes"], "HideWarehouseNote": v["hide_warehouse_note"],
@@ -350,6 +357,16 @@ def _read_order(form, editing=None, create_project=True):
         "phone": form.get("phone", "").strip(), "order_date": _parse_date(form.get("order_date", "").strip()),
         "extra_notes": form.get("extra_notes", "").strip(), "hide_warehouse_note": bool(form.get("hide_warehouse_note")),
     }
+    raw_delivery = form.get("delivery_date", "").strip()
+    try:
+        v["delivery_date"] = datetime.strptime(raw_delivery, "%Y-%m-%d") if raw_delivery else None
+    except ValueError:
+        v["delivery_date"] = None
+        errors.append("تاريخ التوريد المتفق عليه غير صحيح.")
+    if not editing and not raw_delivery:                 # 29.0: required on a NEW order (the supplier rating measures lateness from it)
+        errors.append("تاريخ التوريد المتفق عليه مطلوب: اكتب التاريخ الذي التزم فيه المورد بالتوريد.")
+    elif v["delivery_date"] and v["order_date"] and v["delivery_date"].date() < v["order_date"].date():
+        errors.append("تاريخ التوريد المتفق عليه قبل تاريخ الأمر؛ راجعه.")
     if not po_number:
         errors.append("رقم أمر الشراء مطلوب.")
     elif not editing and not re.fullmatch(r"[\w\-./ ]{1,40}", po_number):          # letters, digits, - _ . / and space only (a quote or < > could be used to attack a page)
@@ -464,11 +481,11 @@ def order_new():
                 "INSERT INTO [PurchaseOrders] ([PONumber], [OrderDate], [HijriDate], [SupplierName], [QuoteNo], [Project], "
                 "[Location], [Receiver], [ReceiverPhone], [TotalAmount], [Discount], [ExtraNotes], [HideWarehouseNote], "
                 "[ReceiptStatus], [InvoiceStatus], [PaymentStatus], [CreatedAt], [ModifiedAt], [SupplierID], [ProjectID], [SiteID], "
-                "[VatMode], [VatPct], [CurrencyCode], [ExchangeRate], [TotalCurrency]) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'لم يبدأ', 'معلق', 'معلق', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "[VatMode], [VatPct], [CurrencyCode], [ExchangeRate], [TotalCurrency], [AgreedDeliveryDate]) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'لم يبدأ', 'معلق', 'معلق', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (v["po_number"], v["order_date"], hijri_display(v["order_date"]), supplier, v["quote_no"], project,
                  site or v["location"], v["receiver"], v["phone"], v["total"], v["discount"], v["extra_notes"], v["hide_warehouse_note"], now, now,
-                 sup_id, proj_id, site_id, v["vat_mode"], v["vat_pct"], v["currency"], v["rate"], v["total_currency"]),
+                 sup_id, proj_id, site_id, v["vat_mode"], v["vat_pct"], v["currency"], v["rate"], v["total_currency"], v["delivery_date"]),
             )
             _save_items(v["po_number"], line_items, tx)
     except Exception as e:                                # noqa - shown to the person, form kept, nothing half-saved
@@ -559,6 +576,7 @@ def order_edit(po_number):
                 "exchange_rate": ("%g" % old["ExchangeRate"]) if old.get("ExchangeRate") and arabic_numbers.currency_code(old.get("CurrencyCode")) != "SAR" else "",
                 "hide_warehouse_note": bool(old.get("HideWarehouseNote")),
                 "order_date": old["OrderDate"].strftime("%Y-%m-%d") if old.get("OrderDate") else "",
+                "delivery_date": old["AgreedDeliveryDate"].strftime("%Y-%m-%d") if old.get("AgreedDeliveryDate") else "",
                 "item_name": [i["ItemName"] for i in old_items], "item_unit": [i["Unit"] or "" for i in old_items],
                 "item_qty": [i["Qty"] for i in old_items], "item_price": [i["UnitPrice"] for i in old_items],
                 "loaded_version": str(_version(old))}
@@ -598,12 +616,12 @@ def order_edit(po_number):
                 "UPDATE [PurchaseOrders] SET [OrderDate] = ?, [HijriDate] = ?, [SupplierName] = ?, [QuoteNo] = ?, [Project] = ?, "
                 "[Location] = ?, [Receiver] = ?, [ReceiverPhone] = ?, [TotalAmount] = ?, [Discount] = ?, [ExtraNotes] = ?, "
                 "[HideWarehouseNote] = ?, [ModifiedAt] = ?, [SupplierID] = ?, [ProjectID] = ?, [SiteID] = ?, "
-                "[VatMode] = ?, [VatPct] = ?, [CurrencyCode] = ?, [ExchangeRate] = ?, [TotalCurrency] = ?, "
+                "[VatMode] = ?, [VatPct] = ?, [CurrencyCode] = ?, [ExchangeRate] = ?, [TotalCurrency] = ?, [AgreedDeliveryDate] = ?, "
                 "[RowVersion] = IIF([RowVersion] IS NULL, 1, [RowVersion] + 1) "
                 "WHERE [PONumber] = ? AND IIF([RowVersion] IS NULL, 0, [RowVersion]) = ?",
                 (v["order_date"], hijri_display(v["order_date"]), supplier, v["quote_no"], project, v["location"], v["receiver"],
                  v["phone"], v["total"], v["discount"], v["extra_notes"], v["hide_warehouse_note"], datetime.now(), sup_id, proj_id, site_id,
-                 v["vat_mode"], v["vat_pct"], v["currency"], v["rate"], v["total_currency"], po_number, int(sent)),
+                 v["vat_mode"], v["vat_pct"], v["currency"], v["rate"], v["total_currency"], v["delivery_date"], po_number, int(sent)),
             )
             if changed != 1:                                                         # nothing matched: another save got in between -> undo everything above
                 raise EditConflict()

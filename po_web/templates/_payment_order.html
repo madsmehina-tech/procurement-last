@@ -1,8 +1,9 @@
 {# one payment order (PAY-12-02) - used alone and, repeated, for «طباعة أوامر الصرف» #}
 <article class="po-sheet">
+  {% if o.pk %}{{ pkit.watermark(o.pk, local=True) }}{% endif %}
   <div class="bar">
-    <div><h1>أمر صرف</h1><small>شركة الهضب للتجارة والمقاولات · إدارة العقود والمشتريات</small></div>
-    <div style="text-align:center;"><img src="{{ logo_src or company_logo }}" alt="شعار الشركة"></div>
+    <div><h1>أمر صرف</h1><small>شركة الهضب للتجارة والمقاولات · إدارة العقود والمشتريات</small>{% if o.pk %}{{ pkit.info(o.pk) }}{% endif %}</div>
+    <div class="pk-logo-box" style="text-align:center;"><img class="pk-logo" src="{{ logo_src or company_logo }}" alt="شعار الشركة"></div>
   </div>
   <p class="no">رقم: {{ o.order_no }}<br>التاريخ: <bdi dir="ltr">{{ (o.cycle.ApprovedAt or o.cycle.CycleDate or o.cycle.CreatedAt).strftime('%Y-%m-%d') }}</bdi></p>
   <p class="to">إلى: الإدارة المالية</p>
@@ -17,4 +18,5 @@
     <div class="sig"><b>مدير المشتريات والعقود</b><i></i></div><div class="sig"><b>المدير المالي</b><i></i></div>
     <div class="sig"><b>المدير العام</b><i></i></div>
   </div>
+  {% if o.pk %}{{ pkit.footer(o.pk) }}{% endif %}
 </article>

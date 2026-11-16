@@ -15,7 +15,7 @@ import time
 from datetime import timedelta
 from logging.handlers import RotatingFileHandler
 
-from flask import Flask, g, render_template, request, session
+from flask import Flask, g, render_template, request, session, url_for
 
 import audit
 import auth
@@ -23,6 +23,8 @@ import config
 import db
 import ttl_cache
 import ui_helpers
+import ui_theme
+import alerts
 
 
 def _setup_logging(app):
@@ -67,7 +69,8 @@ def create_app():
         return {"current_user": user, "can": auth.can, "pending_users": pending,
                 "staging": config.ENVIRONMENT == "staging", "company_logo": cycle_files.logo(),
                 "flash_kind": ui_helpers.flash_kind, "status_cls": ui_helpers.status_cls,
-                "asset_v": config.APP_VERSION}
+                "asset_v": config.APP_VERSION, "theme_css": ui_theme.css(), "theme_extra_font": ui_theme.font_css_needed(),
+                "my_alerts": (lambda: alerts.for_user(user, auth.can, url_for)) if user else (lambda: [])}
 
     # ONE WRITER AT A TIME. The database is Access (it cannot lock rows) and numbers (purchase orders, cycles, payments, contracts) are
     # "read the last number, add one, insert": two saves at the same instant could take the same number. The server is a single process,
@@ -99,6 +102,7 @@ def create_app():
     def _after(resp):
         if request.method not in ("GET", "HEAD", "OPTIONS"):
             ttl_cache.clear()                       # anything may have changed: the cached home-page figures are dropped
+            alerts.clear_cache()                    # ... and the alerts are recomputed on the next page
         ms = (time.perf_counter() - getattr(g, "_t0", time.perf_counter())) * 1000
         if not request.path.startswith("/static/"):
             user = session.get("user_id", "-")

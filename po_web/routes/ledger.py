@@ -142,13 +142,18 @@ def statement_view(sub_id):
     return render_template("statement.html", d=data, f=f, sub=data["sub"])
 
 
+def _stmt_kit(sub_id, data):
+    import print_settings
+    return print_settings.statement_kit("statement", sub_id, data["sub"].get("Name") or "", data.get("balance") or 0)
+
+
 @route("/subcontractors/<int:sub_id>/statement/print")
 @auth.login_required
 def statement_print(sub_id):
     data, f = _read(sub_id)
     if not data:
         return redirect(url_for("subcontractors_list"))
-    return render_template("statement_print.html", d=data, f=f, sub=data["sub"], now=datetime.now().strftime("%Y-%m-%d %H:%M"))
+    return render_template("statement_print.html", d=data, f=f, sub=data["sub"], now=datetime.now().strftime("%Y-%m-%d %H:%M"), pk=_stmt_kit(sub_id, data))
 
 
 @route("/subcontractors/<int:sub_id>/statement/export.pdf")
@@ -157,7 +162,7 @@ def statement_pdf(sub_id):
     data, f = _read(sub_id)
     if not data:
         return redirect(url_for("subcontractors_list"))
-    html = render_template("statement_print.html", d=data, f=f, sub=data["sub"], now=datetime.now().strftime("%Y-%m-%d %H:%M"))
+    html = render_template("statement_print.html", d=data, f=f, sub=data["sub"], now=datetime.now().strftime("%Y-%m-%d %H:%M"), pk=_stmt_kit(sub_id, data))
     try:
         pdf = cycle_files._pdf_bytes(html)
     except cycle_files.pdfgen.PdfError as e:

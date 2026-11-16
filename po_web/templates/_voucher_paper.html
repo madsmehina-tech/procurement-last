@@ -1,4 +1,5 @@
 {# The printed form «طلب صرف» (the company's simplified layout) - the same markup is shown on screen (voucher_view) and printed (voucher_print). #}
+{% import "_print_kit.html" as pkit %}{{ pkit.parts_css() }}
 <style>
 .vp { --vp-blue:#1F5FAE; --vp-line:#C9D6E6; --vp-soft:#EAF1FA; direction: rtl; font-family: "Segoe UI", Tahoma, Arial, sans-serif; color:#16202E; font-size:13px; line-height:1.55; background:#fff; position:relative; }
 .vp * { box-sizing: border-box; }
@@ -31,11 +32,11 @@
 .vp-stamp { position:absolute; top:42%; right:18%; transform:rotate(-18deg); font-size:64px; font-weight:800; color:rgba(180,30,30,.22); border:6px solid rgba(180,30,30,.22); padding:0 22px; border-radius:12px; pointer-events:none; }
 </style>
 <div class="vp">
-  {% if v.Status == 'ملغي' %}<div class="vp-stamp">ملغي</div>{% endif %}
+  {% if v.Status == 'ملغي' and not (in_print and pk and pk.watermark) %}<div class="vp-stamp">ملغي</div>{% endif %}
   {% if watermark %}<div class="vp-stamp" style="font-size:40px;">{{ watermark }}</div>{% endif %}
   <div class="vp-head">
-    <div class="vp-co"><b>{{ company.get('LegalName') or 'شركة الهضب للتجارة والمقاولات' }}</b>{% if v.Department or company.get('VoucherDept') %}<span>{{ v.Department or company.get('VoucherDept') }}</span>{% endif %}</div>
-    <img src="{{ company_logo }}" alt="شعار الشركة">
+    <div class="vp-co"><b>{{ company.get('LegalName') or 'شركة الهضب للتجارة والمقاولات' }}</b>{% if v.Department or company.get('VoucherDept') %}<span>{{ v.Department or company.get('VoucherDept') }}</span>{% endif %}{% if pk %}{{ pkit.info(pk) }}{% endif %}</div>
+    <img class="pk-logo pk-logo-box" src="{{ company_logo }}" alt="شعار الشركة">
   </div>
   <div class="vp-mid">
     <div class="vp-title">طلب صرف</div>
@@ -59,5 +60,6 @@
   <div class="vp-words"><b>المبلغ بالحروف:</b> {{ words }}</div>
   {% if v.Notes %}<div class="vp-words" style="border-style:solid; background:#fff; margin-top:8px;"><b>ملاحظات:</b> {{ v.Notes }}</div>{% endif %}
   {% for row in sign_rows %}<div class="vp-sign"{% if not loop.first %} style="margin-top:0; border-top:0;"{% endif %}>{% for s in row %}<div><b>{{ s.title }}</b><i></i>{{ s.name or ' ' }}</div>{% endfor %}</div>{% endfor %}
+  {% if pk %}{{ pkit.footer(pk) }}{% endif %}
   <div class="vp-foot">تاريخ ووقت الطباعة: {{ printed_at }}</div>
 </div>

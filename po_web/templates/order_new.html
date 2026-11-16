@@ -25,6 +25,9 @@
         <div class="f f-1"><label>التاريخ (ميلادي)</label>
           <input class="inp" type="date" name="order_date" value="{{ form.order_date or today_iso }}">
           {% if hijri_today %}<small class="hint">الموافق (هجري): {{ hijri_today }}</small>{% endif %}</div>
+        <div class="f f-1"><label for="delivery_date">تاريخ التوريد المتفق عليه{% if not edit_po %} <span style="color:var(--danger)">*</span>{% endif %}</label>
+          <input class="inp" type="date" id="delivery_date" name="delivery_date" value="{{ form.delivery_date or '' }}" {{ '' if edit_po else 'required' }}>
+          <small class="hint">التاريخ الذي التزم فيه المورد بالتوريد (يُحسب منه تقييم الالتزام بالموعد)</small></div>
         <div class="f f-1"><label>رقم عرض السعر</label>
           <input class="inp" type="text" maxlength="{{ limits.quote_no }}" name="quote_no" value="{{ form.quote_no or '' }}"></div>
         <div class="f f-1"><label>الموقع</label>
@@ -398,7 +401,7 @@ for (let i = 0; i < 3; i++) addRow();
     const v = n => (form.elements[n] && form.elements[n].value || '').trim() || '—';
     const filled = rows().filter(tr => tr.querySelector('.it-name').value.trim());
     const t = id => document.getElementById(id).textContent;
-    const pairs = [['رقم الأمر', v('po_number')], ['التاريخ', v('order_date')], ['المورد', v('supplier')], ['المشروع', v('project')], ['الموقع', v('location')], ['المستلم', v('receiver')],
+    const pairs = [['رقم الأمر', v('po_number')], ['التاريخ', v('order_date')], ['تاريخ التوريد', v('delivery_date')], ['المورد', v('supplier')], ['المشروع', v('project')], ['الموقع', v('location')], ['المستلم', v('receiver')],
       ['عدد الأصناف', String(filled.length)], ['الإجمالي', t('subTotal')], [document.getElementById('vatLabel').textContent, document.getElementById('vatRow').hidden ? '—' : t('vatTotal')], ['العملة', document.getElementById('currencyField').options[document.getElementById('currencyField').selectedIndex].text], ['الخصم', fmt(parseFloat(v('discount')) || 0)], ['المطلوب سداده', t('grandTotal')]];
     rbody.textContent = '';
     pairs.forEach(([k, val], i) => { const d = mk('rv' + (i === pairs.length - 1 ? ' big' : '')); const a = document.createElement('small'); a.textContent = k; const b = document.createElement('b'); b.textContent = val; d.append(a, b); rbody.append(d); });

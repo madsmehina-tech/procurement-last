@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}المظهر{% endblock %}
+{% block subtitle %}ألوان النظام وخطّه وحجم الكتابة: يختارها مدير النظام وتظهر لكل المستخدمين{% endblock %}
+{% block content %}
+{% include "_settings_nav.html" %}
+<link rel="stylesheet" href="{{ url_for('static', filename='fonts-extra.css', v=asset_v) }}">
+<style>
+  .ap-grid { display: grid; grid-template-columns: minmax(280px, 420px) minmax(0, 1fr); gap: 18px; align-items: start; }
+  @media (max-width: 980px) { .ap-grid { grid-template-columns: minmax(0, 1fr); } }
+  .ap-presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .ap-preset { position: relative; display: grid; gap: 6px; padding: 10px; border: 1.5px solid var(--border-strong); border-radius: 12px; cursor: pointer; background: var(--surface); }
+  .ap-preset input { position: absolute; opacity: 0; }
+  .ap-preset:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+  .ap-preset:has(input:focus-visible) { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .ap-sw { display: flex; gap: 4px; } .ap-sw i { width: 22px; height: 22px; border-radius: 6px; border: 1px solid rgba(0,0,0,.08); }
+  .ap-preset b { font-size: 13px; }
+  .ap-seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .ap-seg label { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border: 1px solid var(--border-strong); border-radius: 999px; cursor: pointer; font-size: 13px; background: var(--surface); }
+  .ap-seg label:has(input:checked) { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); font-weight: 700; }
+  .ap-seg input { accent-color: var(--accent); }
+  .ap-note { font-size: 12.5px; padding: 3px 10px; border-radius: 999px; display: inline-block; }
+  .ap-prev .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .ap-dirty { display: none; } .ap-dirty.on { display: inline-block; }
+</style>
+
+<form method="post" class="ap-grid" id="apForm">
+  <div class="card" style="padding:20px 22px;">
+    <label class="set-lab" style="margin-top:0;">القالب</label>
+    <div class="ap-presets" role="radiogroup" aria-label="القالب">
+      {% for p in presets %}
+      <label class="ap-preset"><input type="radio" name="preset" value="{{ p.key }}" {{ 'checked' if s.preset == p.key else '' }}>
+        <span class="ap-sw">{% for k in ('--sidebar-bg', '--accent', '--gold', '--bg') %}<i style="background:{{ p.tokens[k] }}"></i>{% endfor %}</span>
+        <b>{{ p.name }}</b></label>
+      {% endfor %}
+    </div>
+
+    <div id="brandBox" {{ '' if s.preset == 'brand' else 'hidden' }}>
+      <label class="set-lab" for="brand">لون شعار الشركة</label>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <input type="color" id="brand" name="brand" value="{{ s.brand or '#7A3E2C' }}" style="width:52px;height:36px;border:1px solid var(--border-strong);border-radius:8px;background:none;padding:2px;">
+        <span class="ap-note badge neutral" id="brandNote">النظام يحسب درجات اللون تلقائياً</span>
+      </div>
+    </div>
+
+    <label class="set-lab" for="font">الخط</label>
+    <select class="inp" id="font" name="font">
+      {% for k, f in fonts.items() %}<option value="{{ k }}" {{ 'selected' if s.font == k else '' }}>{{ f[0] }}{{ ' (الحالي)' if k == 'cairo' else '' }}</option>{% endfor %}
+    </select>
+
+    <span class="set-lab">حجم الكتابة على الشاشة</span>
+    <div class="ap-seg">{% for k, v in sizes.items() %}<label><input type="radio" name="size" value="{{ k }}" {{ 'checked' if s.size == k else '' }}>{{ v[0] }}</label>{% endfor %}</div>
+
+    <span class="set-lab">كثافة الجداول</span>
+    <div class="ap-seg">{% for k, v in density.items() %}<label><input type="radio" name="density" value="{{ k }}" {{ 'checked' if s.density == k else '' }}>{{ v[0] }}{{ ' (صفوف أكثر في الشاشة)' if k == 'compact' else '' }}</label>{% endfor %}</div>
+
+    <p class="set-hint" style="margin-top:14px;">التغيير يظهر على هذه الصفحة فوراً للمعاينة، ولا يصل للمستخدمين إلا بعد «احفظ للجميع». الأوراق المطبوعة لها إعداداتها في «إعدادات الطباعة».</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;">
+      <button class="btn btn-primary btn-lg" type="submit">احفظ للجميع</button>
+      <button class="btn" type="submit" name="reset" value="1" formnovalidate>رجوع للمظهر الأصلي</button>
+      <span class="badge warning ap-dirty" id="dirty">معاينة لم تُحفظ بعد</span>
+    </div>
+  </div>
+
+  <div class="ap-prev" aria-label="معاينة">
+    <div class="kpi-grid">
+      <div class="kpi-card"><p class="kpi-label">عدد أوامر الشراء</p><p class="kpi-value">119</p></div>
+      <div class="kpi-card"><p class="kpi-label">إجمالي القيمة (ريال)</p><p class="kpi-value">6,412,380.00</p></div>
+      <div class="kpi-card"><p class="kpi-label">بانتظار السداد</p><p class="kpi-value" style="color:var(--gold)">52</p></div>
+    </div>
+    <div class="card" style="margin-top:14px;padding:0;overflow:hidden;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:14px 16px;">
+        <b>مثال: متابعة أوامر الشراء</b>
+        <span style="display:flex;gap:6px;flex-wrap:wrap;"><span class="btn">تصدير Excel</span><span class="btn btn-primary">+ أمر شراء جديد</span></span>
+      </div>
+      <div style="overflow-x:auto;">
+      <table class="list">
+        <thead><tr><th>رقم الأمر</th><th>المورد</th><th>الإجمالي</th><th>الاستلام</th><th>السداد</th></tr></thead>
+        <tbody>
+          <tr><td><a href="#" onclick="return false" style="color:var(--accent);font-weight:700;">PO-2026-491</a></td><td>مصنع إشراقة الغد</td><td>8,880.30</td><td><span class="badge warning">لم يبدأ</span></td><td><span class="badge warning">معلق</span></td></tr>
+          <tr><td><a href="#" onclick="return false" style="color:var(--accent);font-weight:700;">PO-2026-485</a></td><td>شجرة المطاط</td><td>45,281.25</td><td><span class="badge success">مكتمل</span></td><td><span class="badge warning">معلق</span></td></tr>
+          <tr><td><a href="#" onclick="return false" style="color:var(--accent);font-weight:700;">PO-2026-446</a></td><td>شركة عنوان الفولاذ للتجارة</td><td>23,174.80</td><td><span class="badge success">مكتمل</span></td><td><span class="badge success">تم السداد</span></td></tr>
+          <tr><td><a href="#" onclick="return false" style="color:var(--accent);font-weight:700;">PO-2026-445</a></td><td>الخضراء العربية</td><td>248,503.50</td><td><span class="badge danger">متأخر 6 أيام</span></td><td><span class="badge warning">معلق</span></td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+</form>
+
+<script>
+(function () {
+  var form = document.getElementById("apForm"), root = document.documentElement, dirty = document.getElementById("dirty");
+  var url = "{{ url_for('settings_appearance_tokens') }}", saved = new URLSearchParams(new FormData(form)).toString();
+  var timer = null;
+  function apply() {
+    var fd = new FormData(form);
+    document.getElementById("brandBox").hidden = fd.get("preset") !== "brand";
+    var q = new URLSearchParams();
+    ["preset", "brand", "font", "size", "density"].forEach(function (k) { q.set(k, fd.get(k) || ""); });
+    dirty.classList.toggle("on", q.toString() !== saved);
+    fetch(url + "?" + q.toString(), { credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+      if (!d) return;
+      Object.keys(d.tokens).forEach(function (k) { root.style.setProperty(k, d.tokens[k]); });
+      var n = document.getElementById("brandNote");
+      if (d.note) { n.textContent = d.note; n.className = "ap-note badge " + (d.note.indexOf("غُمِّق") === 0 ? "warning" : "success"); }
+    }).catch(function () {});
+  }
+  form.addEventListener("change", apply);
+  form.addEventListener("input", function (e) { if (e.target.type === "color") { clearTimeout(timer); timer = setTimeout(apply, 120); } });
+  apply();
+})();
+</script>
+{% endblock %}

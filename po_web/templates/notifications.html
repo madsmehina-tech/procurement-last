@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}التنبيهات{% endblock %}
+{% block subtitle %}ما يحتاج تصرّفك: تصل كل نوع منها إلى من حدده مدير النظام{% endblock %}
+{% block page_actions %}{% if can('settings.system') %}<a class="btn" href="{{ url_for('settings_alerts') }}">إعدادات التنبيهات</a>{% endif %}{% endblock %}
+{% block content %}
+<style>
+  .ntf { display: grid; grid-template-columns: 12px 1fr auto; gap: 12px; align-items: start; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .ntf:last-child { border-bottom: 0; } .ntf.read { opacity: .6; }
+  .ntf small { display: block; color: var(--text-secondary); font-size: 12px; }
+  .ntf form { margin: 0; }
+</style>
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+  <span class="badge {{ 'danger' if n_unread else 'success' }}">{{ n_unread }} غير مقروء</span>
+  {% if show_read %}<a class="btn" href="{{ url_for('notifications_page') }}">إخفاء المقروء</a>{% elif n_read %}<a class="btn" href="{{ url_for('notifications_page', all=1) }}">عرض المقروء أيضاً ({{ n_read }})</a>{% endif %}
+  {% if n_unread %}<form method="post" action="{{ url_for('notifications_read') }}" style="margin:0;"><input type="hidden" name="all" value="1"><button class="btn btn-primary" type="submit">تعليم الكل كمقروء</button></form>{% endif %}
+</div>
+<div class="card" style="padding:0;overflow:hidden;">
+  {% for a in items %}
+  <div class="ntf {{ 'read' if a.read else '' }}">
+    <i class="dot {{ a.level }}" aria-hidden="true"></i>
+    <a href="{{ a.url }}"><small>{{ a.title }}</small>{{ a.text }}</a>
+    {% if not a.read %}<form method="post" action="{{ url_for('notifications_read') }}"><input type="hidden" name="key" value="{{ a.key }}"><input type="hidden" name="next" value="{{ request.full_path }}"><button class="btn" type="submit" title="لن يظهر مرة أخرى إلا إذا تغيّر">تم</button></form>{% else %}<span class="badge neutral">مقروء</span>{% endif %}
+  </div>
+  {% else %}
+  <p style="padding:20px;margin:0;color:var(--success);">✓ لا توجد تنبيهات{{ '' if show_read else ' جديدة' }}.</p>
+  {% endfor %}
+</div>
+<p class="set-hint" style="margin-top:10px;">«تم» تُخفي التنبيه عنك فقط. إن بقي الأمر قائماً وتغيّرت حالته (مثلاً مرّ أسبوع آخر على مستخلص متوقف) يظهر من جديد.</p>
+{% endblock %}

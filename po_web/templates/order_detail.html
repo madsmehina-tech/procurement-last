@@ -15,6 +15,9 @@
       {% endfor %}
     </select>
     <span class="status-extra" style="display:{{ 'inline-flex' if current not in ['لم يبدأ', 'معلق'] else 'none' }}; gap:6px; margin-top:6px; align-items:center;">
+      {% if kind == 'receipt' %}<select name="quality" class="search-box" style="width:auto; padding:6px 8px;" aria-label="حالة الاستلام" title="حالة البضاعة عند الاستلام (يدخل في تقييم المورد)">
+        {% for q in ('سليم', 'بملاحظات', 'مرفوض جزئياً') %}<option value="{{ q }}" {{ 'selected' if order.ReceiptQuality == q else '' }}>{{ q }}</option>{% endfor %}
+      </select>{% endif %}
       <input class="search-box" style="width:160px; padding:6px 8px;" type="text" name="note" placeholder="ملاحظة (اختياري)" value="{{ note or '' }}">
       <button type="submit" class="btn" style="padding:6px 10px; font-size:12.5px;">حفظ</button>
     </span>
@@ -34,6 +37,10 @@
   <div class="detail-item"><p class="label">المورد</p><p class="value">{{ order.SupplierName }}</p></div>
   <div class="detail-item"><p class="label">المشروع</p><p class="value">{{ order.Project }}</p></div>
   {% if order.Location %}<div class="detail-item"><p class="label">الموقع</p><p class="value">{{ order.Location }}</p></div>{% endif %}
+  {% if order.AgreedDeliveryDate %}<div class="detail-item"><p class="label">تاريخ التوريد المتفق عليه</p>
+    <p class="value">{{ order.AgreedDeliveryDate.strftime('%Y-%m-%d') }}</p>
+    {% if delivery %}<span class="badge {{ delivery[1] }}">{{ delivery[0] }}</span>{% endif %}
+    {% if order.ReceiptQuality %}<span class="badge neutral">الاستلام: {{ order.ReceiptQuality }}</span>{% endif %}</div>{% endif %}
   <div class="detail-item">
     <p class="label">تاريخ الأمر</p>
     <p class="value">{{ order.OrderDate.strftime('%Y-%m-%d') if order.OrderDate else '' }}</p>

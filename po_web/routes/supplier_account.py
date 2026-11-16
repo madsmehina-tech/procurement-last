@@ -69,7 +69,12 @@ def _print_html(supplier_id):
     if not data:
         return None
     return render_template("supplier_statement_print.html", d=data, f=f, supplier=data["supplier"], now=datetime.now().strftime("%Y-%m-%d %H:%M"),
-                           company=cg.company())
+                           company=cg.company(), pk=_stmt_kit(supplier_id, data))
+
+
+def _stmt_kit(supplier_id, data):
+    import print_settings
+    return print_settings.statement_kit("supplier_statement", supplier_id, data["supplier"].get("Name") or "", data.get("balance") or 0)
 
 
 @route("/suppliers/<int:supplier_id>/statement/print")

@@ -217,6 +217,13 @@ def contract_edit(contract_id):
         db.execute("UPDATE [Contracts] SET [ContractNo] = ?, [Status] = ?, [ContractValue] = ?, [RetentionPct] = ?, [AdvancePct] = ?, "
                    "[Notes] = ? WHERE [ContractID] = ?",
                    (contract_no or None, status, value, retention, advance, request.form.get("notes", "").strip(), contract_id))
+        if "retention_due" in request.form:                  # 29.0: only the contract page sends it (the other forms leave it as it is)
+            raw = request.form.get("retention_due", "").strip()
+            try:
+                due = datetime.strptime(raw, "%Y-%m-%d") if raw else None
+                db.execute("UPDATE [Contracts] SET [RetentionDueDate] = ? WHERE [ContractID] = ?", (due, contract_id))
+            except ValueError:
+                flash("موعد استرداد المحتجز غير صحيح، فلم يُحفظ.")
         saved = _store_contract_files(contract_id, _files_of("contract_file"), "العقد الموقّع") + _store_contract_files(contract_id, _files_of("extra_files"), "مرفق إضافي")
         flash("تم حفظ بيانات العقد%s." % (" ورُفع %d ملف" % saved if saved else ""))
     return _back(sub_id)

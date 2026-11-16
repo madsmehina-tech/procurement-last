@@ -28,6 +28,8 @@
       {% if not gen %}<div><label class="set-lab">نسبة الاستقطاع (المحتجز) %</label><input class="search-box" style="width:100%;" name="retention_pct" value="{{ contract.RetentionPct if contract.RetentionPct is not none else '' }}" {{ ro }}></div>
       <div><label class="set-lab">نسبة الدفعة المقدمة % (مرجعية)</label><input class="search-box" style="width:100%;" name="advance_pct" value="{{ contract.AdvancePct if contract.AdvancePct is not none else '' }}" {{ ro }}></div>{% endif %}
     </div>
+    <div class="form-2"><div><label class="set-lab" for="retention_due">موعد استرداد المحتجز (اختياري)</label><input class="search-box" style="width:100%;" type="date" id="retention_due" name="retention_due" value="{{ contract.RetentionDueDate.strftime('%Y-%m-%d') if contract.RetentionDueDate else '' }}" {{ ro }}>
+      <small class="set-hint">يصل تنبيه «استرداد المحتجز» قبل هذا الموعد.</small></div></div>
     <label class="set-lab">ملاحظات</label><textarea class="search-box" style="width:100%; height:60px;" name="notes" {{ ro }}>{{ contract.Notes or '' }}</textarea>
   </form>
   <div class="card set-card">

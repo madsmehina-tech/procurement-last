@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}التحقق من مستند{% endblock %}
+{% block subtitle %}تأكد أن ورقة مطبوعة صادرة من النظام ولم يُعدَّل مبلغها{% endblock %}
+{% block content %}
+<form method="post" class="card" style="padding:20px 22px;max-width:720px;">
+  <div class="form-3">
+    <div><label class="set-lab" style="margin-top:0;" for="no">رقم المستند</label><input class="inp" id="no" name="no" value="{{ no }}" required placeholder="PO-2026-446" dir="ltr"></div>
+    <div><label class="set-lab" style="margin-top:0;" for="code">رمز التحقق (6 خانات)</label><input class="inp" id="code" name="code" value="{{ code }}" required maxlength="6" placeholder="7F3A2C" dir="ltr" style="text-transform:uppercase;letter-spacing:2px;"></div>
+    <div><label class="set-lab" style="margin-top:0;" for="amount">المبلغ المطبوع</label><input class="inp" id="amount" name="amount" value="{{ request.values.get('amount', '') }}" inputmode="decimal" dir="ltr" placeholder="للكشوف وأوامر صرف المستخلصات"></div>
+  </div>
+  <p class="set-hint">الرقم والرمز مكتوبان أسفل الورقة بجانب رمز QR. المبلغ مطلوب لكشوف الحساب وأوامر صرف المستخلصات فقط.</p>
+  <button class="btn btn-primary btn-lg" type="submit">تحقّق</button>
+</form>
+{% if result %}
+<div class="card" style="padding:18px 22px;max-width:720px;margin-top:14px;border-inline-start:5px solid {{ 'var(--success)' if result.ok else 'var(--danger)' }};">
+  {% if result.ok %}
+  <h2 style="margin:0 0 8px;font-size:18px;color:var(--success);">✔ مستند صحيح صادر من النظام</h2>
+  {% elif result.found %}
+  <h2 style="margin:0 0 8px;font-size:18px;color:var(--danger);">✘ الرمز لا يطابق هذا المستند</h2>
+  <p>المستند موجود في النظام، لكن رمز التحقق المكتوب لا يطابقه. قد يكون المبلغ أو الرقم عُدّل على الورقة، أو كُتب الرمز خطأ. قارن الورقة ببيانات النظام:</p>
+  {% else %}
+  <h2 style="margin:0 0 8px;font-size:18px;color:var(--danger);">✘ لا يوجد مستند بهذا الرقم والرمز</h2>
+  <p>تأكد من كتابة الرقم كما هو مطبوع. إن كان كشف حساب أو أمر صرف مستخلص فاكتب المبلغ المطبوع أيضاً.</p>
+  {% endif %}
+  {% if result.found %}
+  <table class="list" style="margin-top:6px;"><tbody>
+    <tr><td style="width:30%;">نوع المستند</td><td><b>{{ result.doc_name }}</b></td></tr>
+    <tr><td>الرقم</td><td><b dir="ltr">{{ result.number }}</b></td></tr>
+    {% if result.date %}<tr><td>التاريخ</td><td>{{ result.date }}</td></tr>{% endif %}
+    {% if result.party %}<tr><td>الطرف</td><td>{{ result.party }}</td></tr>{% endif %}
+    {% if result.amount %}<tr><td>المبلغ في النظام</td><td><b>{{ '{:,.2f}'.format(result.amount) }}</b></td></tr>{% endif %}
+    {% if result.state %}<tr><td>الحالة الآن</td><td>{{ result.state }}</td></tr>{% endif %}
+  </tbody></table>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

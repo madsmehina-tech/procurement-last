@@ -11,9 +11,11 @@
   .toolbar { text-align: center; padding: 10px; } .toolbar button { font: inherit; padding: 8px 22px; cursor: pointer; }
   @media print { .toolbar { display: none; } }
 </style>
+{% import "_print_kit.html" as pkit2 %}{% if pk %}{{ pkit2.css(pk) }}{% endif %}
 </head>
 <body>
 <div class="toolbar"><button onclick="window.print()">طباعة / حفظ PDF</button></div>
+{% set in_print = true %}{% if pk %}{{ pkit2.watermark(pk) }}{% endif %}
 {% include "_voucher_paper.html" %}
 </body>
 </html>

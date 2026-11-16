@@ -87,8 +87,10 @@ def sheet_context(data, mode, cols):
     shown = [(k, h, round(w / total_w * 100, 2)) for k, h, w in picked]
     blank = mode == "blank"
     sub = {cy.ST_DRAFT: "مرحلة الإنشاء", cy.ST_WAITING: "مرحلة قرار الإدارة", cy.ST_APPROVED: "المرحلة النهائية · تنفيذ التحويل", cy.ST_DONE: "الدورة مغلقة"}.get(data["cycle"]["Status"], "")
+    c = data["cycle"]
     return {"d": data, "mode": mode, "cols": shown, "rows": sheet_rows(data, mode, cols), "blank": blank,
-            "total_all": _n(t["all"]), "total_approved": _n(t["approved"]), "sub_title": sub}
+            "total_all": _n(t["all"]), "total_approved": _n(t["approved"]), "sub_title": sub,
+            "pk": _kit("cycle", c.get("CycleNo") or "", 0, c.get("CycleDate") or c.get("CreatedAt"), c.get("Title") or "", c.get("Status"))}
 
 
 def sheet_html(data, mode=None, cols=None, pdf=False):
@@ -102,7 +104,19 @@ def order_context(data, sub_id):
     if not gp or gp["payable"] <= cy.EPS:
         return None
     return {"group": gp, "cycle": data["cycle"], "order_no": gp["order_no"], "iban_masked": cy.mask_iban(gp["iban"]), "amount": gp["payable"],
-            "statement": gp["statement"], "words": arabic_numbers.amount_to_words(gp["payable"])}
+            "statement": gp["statement"], "words": arabic_numbers.amount_to_words(gp["payable"]),
+            "pk": _kit("payorder", gp["order_no"], gp["payable"], data["cycle"].get("ApprovedAt") or data["cycle"].get("CycleDate"), gp["name"], data["cycle"].get("Status"))}
+
+
+def _kit(doc, number, amount, when, party, state):
+    """29.0 print settings + QR + watermark (from the cycle's real status: approved / done print clean)."""
+    import print_settings
+    try:
+        return print_settings.kit(doc, number, amount, when, party, state=state)
+    except Exception:                                   # noqa - the paper prints without the extras rather than not at all
+        import logging
+        logging.getLogger(__name__).exception("print kit failed")
+        return None
 
 
 def order_html(data, sub_id, pdf=False):

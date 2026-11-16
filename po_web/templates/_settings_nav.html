@@ -5,6 +5,9 @@
   <a class="{{ 'on' if tab == 'groups' else '' }}" href="{{ url_for('settings_groups') }}">المجموعات</a>{% endif %}
   {% if can('settings.projects') %}<a class="{{ 'on' if tab == 'projects' else '' }}" href="{{ url_for('settings_projects') }}">المشاريع</a>{% endif %}
   {% if can('settings.projects') %}<a class="{{ 'on' if tab == 'sites' else '' }}" href="{{ url_for('settings_sites') }}">المواقع</a>{% endif %}
+  {% if can('settings.system') %}<a class="{{ 'on' if tab == 'appearance' else '' }}" href="{{ url_for('settings_appearance') }}">المظهر</a>
+  <a class="{{ 'on' if tab == 'print' else '' }}" href="{{ url_for('settings_print') }}">إعدادات الطباعة</a>
+  <a class="{{ 'on' if tab == 'alerts' else '' }}" href="{{ url_for('settings_alerts') }}">التنبيهات</a>{% endif %}
   {% if can('settings.system') %}<a class="{{ 'on' if tab == 'archive' else '' }}" href="{{ url_for('settings_archive') }}">صحة الأرشيف</a>{% endif %}
   {% if can('settings.audit') %}<a class="{{ 'on' if tab == 'audit' else '' }}" href="{{ url_for('settings_audit') }}">سجل التدقيق</a>{% endif %}
 </div>
