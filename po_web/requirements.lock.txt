@@ -19,3 +19,4 @@ pyodbc==5.1.0; sys_platform == "win32"
 pywin32==311; sys_platform == "win32"
 pymupdf==2.0
 hijridate==2.6.0
+segno==1.6.1
