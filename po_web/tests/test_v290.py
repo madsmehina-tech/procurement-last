@@ -114,7 +114,7 @@ def test_a_printed_order_carries_its_qr_and_the_code_verifies_it(client):
     print_settings.save("po", dict(print_settings.DEFAULT, show_cr=True, footer="تذييل تجريبي", paper="A5"))
     fake_db.execute("UPDATE [CompanyProfile] SET [CR] = '1010999' WHERE [ProfileID] = 1")
     html = client.get("/orders/PO-2026-900/print").get_data(as_text=True)
-    code = re.search(r"رمز التحقق<b>([0-9A-F]{6})</b>", html).group(1)
+    code = re.search(r'data-code="([0-9A-F]{6})"', html).group(1)
     assert "<svg" in html and "تذييل تجريبي" in html and "1010999" in html and "size: A5" in html and "html { zoom: 0.72; }" in html
     assert "pk-wm" not in html.split("</style>")[-1]                                         # a saved order prints clean
     ok = client.post("/verify", data={"no": "PO-2026-900", "code": code}).get_data(as_text=True)
@@ -128,7 +128,7 @@ def test_every_setting_on_as_it_is_keeps_the_paper_unchanged_except_the_qr(clien
     html = client.get("/orders/PO-2026-901/print").get_data(as_text=True)
     assert "@page { size" not in html.split("{% ")[0].split("@page { size: A4; margin: 9mm; }")[1] and "html { zoom" not in html
     print_settings.save("po", dict(print_settings.DEFAULT, qr=False))
-    assert "رمز التحقق<b>" not in client.get("/orders/PO-2026-901/print").get_data(as_text=True)
+    assert 'data-code="' not in client.get("/orders/PO-2026-901/print").get_data(as_text=True)
 
 
 def test_a_draft_and_a_cancelled_voucher_carry_their_watermark_an_approved_one_does_not(client):
@@ -137,9 +137,9 @@ def test_a_draft_and_a_cancelled_voucher_carry_their_watermark_an_approved_one_d
     client.post("/vouchers/new", data=_form("sup", s, 100, choice="no"))
     vid = fake_db.scalar("SELECT [VoucherID] FROM [PaymentVouchers] ORDER BY [VoucherID] DESC")
     html = client.get("/vouchers/%d/print" % vid).get_data(as_text=True)
-    assert 'class="pk-wm"' in html and "<span>مسودة</span>" in html and "رمز التحقق<b>" in html
+    assert 'class="pk-wm"' in html and "<span>مسودة</span>" in html and 'data-code="' in html
     no = fake_db.scalar("SELECT [VoucherNo] FROM [PaymentVouchers] WHERE [VoucherID] = ?", (vid,))
-    code = re.search(r"رمز التحقق<b>([0-9A-F]{6})</b>", html).group(1)
+    code = re.search(r'data-code="([0-9A-F]{6})"', html).group(1)
     assert "مستند صحيح" in client.post("/verify", data={"no": no, "code": code}).get_data(as_text=True)
     fake_db.execute("UPDATE [PaymentVouchers] SET [Status] = 'معتمد' WHERE [VoucherID] = ?", (vid,))
     assert 'class="pk-wm' not in client.get("/vouchers/%d/print" % vid).get_data(as_text=True)
@@ -153,8 +153,8 @@ def test_statements_carry_a_code_checked_with_the_printed_balance(client):
     import helpers as h
     sub = h.add_sub("مقاول ق")
     html = client.get("/subcontractors/%d/statement/print" % sub).get_data(as_text=True)
-    no = re.search(r'رقم المستند: <span dir="ltr">(ST-C%d-\d{8})</span>' % sub, html)
-    code = re.search(r"رمز التحقق<b>([0-9A-F]{6})</b>", html).group(1)
+    no = re.search(r'data-number="(ST-C%d-\d{8})"' % sub, html)
+    code = re.search(r'data-code="([0-9A-F]{6})"', html).group(1)
     assert no and "مستند صحيح" in client.post("/verify", data={"no": no.group(1), "code": code, "amount": "0"}).get_data(as_text=True)
     assert "مستند صحيح" not in client.post("/verify", data={"no": no.group(1), "code": code, "amount": "5000"}).get_data(as_text=True)
 

@@ -35,8 +35,5 @@
 {% macro footer(k) %}{% if k.footer or k.code %}
 <div class="pk-foot">
   <div class="pk-ftext">{{ k.footer }}</div>
-  {% if k.code %}<div class="pk-qr">
-    <div class="pk-code">رقم المستند: <span dir="ltr">{{ k.number }}</span><br>رمز التحقق<b>{{ k.code }}</b>للتأكد من صحة الورقة:<br>«التحقق من مستند» في النظام</div>
-    {{ k.qr_svg|safe }}
-  </div>{% endif %}
+  {% if k.code %}<div class="pk-qr" data-number="{{ k.number }}" data-code="{{ k.code }}">{{ k.qr_svg|safe }}</div>{% endif %}
 </div>{% endif %}{% endmacro %}

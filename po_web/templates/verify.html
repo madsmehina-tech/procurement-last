@@ -8,7 +8,7 @@
     <div><label class="set-lab" style="margin-top:0;" for="code">رمز التحقق (6 خانات)</label><input class="inp" id="code" name="code" value="{{ code }}" required maxlength="6" placeholder="7F3A2C" dir="ltr" style="text-transform:uppercase;letter-spacing:2px;"></div>
     <div><label class="set-lab" style="margin-top:0;" for="amount">المبلغ المطبوع</label><input class="inp" id="amount" name="amount" value="{{ request.values.get('amount', '') }}" inputmode="decimal" dir="ltr" placeholder="لكشوف الحساب فقط"></div>
   </div>
-  <p class="set-hint">الرقم والرمز مكتوبان أسفل الورقة بجانب رمز QR. المبلغ مطلوب لكشوف الحساب فقط.</p>
+  <p class="set-hint">امسح رمز QR الذي في أسفل الورقة بكاميرا الجوال: يظهر فيه «رقم المستند» و«رمز التحقق». المبلغ مطلوب لكشوف الحساب فقط.</p>
   <button class="btn btn-primary btn-lg" type="submit">تحقّق</button>
 </form>
 {% if result %}
