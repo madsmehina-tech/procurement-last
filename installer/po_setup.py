@@ -1768,13 +1768,179 @@ def export_text(app_dir, dest_dir, progress=None):
             % (r["package"], r["bytes"] / (1 << 20), c.get("db", 0), c.get("archive", 0), c.get("legacy", 0), c.get("instance", 0), r["package_sha256"]))
 
 
+# ------------------------------------------------------------------------------------------------------------- one-click update (29.0)
+UPDATE_STEPS = ("python", "ace", "folders", "share", "unpack", "config", "pip", "migrate", "checks", "network", "firewall", "lanfile", "autostart", "start")
+# what an update does NOT do: install Tesseract again, or touch the database file (it stays where config.ini says, untouched)
+
+
+def installed_version(app):
+    """The version of an installed program (config.py APP_VERSION), '' when unknown."""
+    try:
+        m = re.search(r'^APP_VERSION\s*=\s*"([^"]+)"', open(os.path.join(app, "config.py"), encoding="utf-8").read(), re.M)
+        return m.group(1) if m else ""
+    except OSError:
+        return ""
+
+
+def package_version(zip_path):
+    try:
+        with zipfile.ZipFile(zip_path) as z:
+            name = next((n for n in z.namelist() if n.endswith("/config.py") or n == "config.py"), None)
+            m = re.search(r'^APP_VERSION\s*=\s*"([^"]+)"', z.read(name).decode("utf-8"), re.M) if name else None
+            return m.group(1) if m else ""
+    except (OSError, zipfile.BadZipFile, KeyError):
+        return ""
+
+
+def find_installed_app():
+    """The program folder of this PC: the one this tool remembers, else <drive>:\PO\app on any fixed disk. '' when none."""
+    cands = [lan.load_state().get("app_dir", "")] + [os.path.join(d + "\\", "PO", "app") for d, _f, _t in fixed_drives()]
+    for c in cands:
+        if c and os.path.isfile(os.path.join(c, "serve.py")) and os.path.isfile(os.path.join(c, "config.ini")):
+            return c
+    return ""
+
+
+def update_answers(app):
+    """The installation as it is (read from its config.ini and this tool's memory), with «replace the program» on."""
+    s = admin.settings(app)
+    hosts = lan.load_state().get("hosts") or []
+    return win_paths(Answers(app_dir=app, base=os.path.dirname(os.path.abspath(app)), share_folder=s["archive"], share_name=lan_share_name(app) or "PO_Archive",
+                             create_share=True, db_mode="existing", db_existing=s["db"], backup_db_dir=s["backup_dir"], backup_set_dir=s["backup_archive_dir"],
+                             port=s["port"], install_tesseract=False, open_firewall=True, autostart=True, start_after=True, replace_existing=True,
+                             boot_start=False, set_private=True, alias_name=hosts[0] if hosts else ""))
+
+
+def backup_dest(app):
+    s = admin.settings(app)
+    root = s["backup_archive_dir"] or s["backup_dir"] or os.path.join(os.path.dirname(os.path.abspath(app)), "backups")
+    return os.path.join(root, "قبل التحديث")
+
+
+def run_update(app, log=print, ps=None, export=None, install=None, stop=None, zip_path=""):
+    """THE update, in order, stopping at the first problem with the system left running:
+    1. a full backup package (database + archive + everything) into the backup folder, checked file by file
+    2. the server stopped cleanly   3. the program replaced (settings, Python, start-at-boot task kept), the database migrated
+    4. the server started again and asked for its version.   Returns (ok, text)."""
+    ps = ps or ps_run
+    export = export or transfer.export_package
+    install = install or run_install
+    stop = stop or admin.stop_server
+    zp = zip_path or find_zip(Answers())
+    if not app or not os.path.isfile(os.path.join(app, "serve.py")):
+        return False, "✘ لم أجد البرنامج المثبَّت على هذا الجهاز. اختر مجلده (الذي فيه serve.py)."
+    if not zp:
+        return False, "✘ لم أجد حزمة البرنامج بجانب هذه الأداة."
+    old_v, new_v = installed_version(app), package_version(zp)
+    lines = ["التحديث: من النسخة %s إلى النسخة %s" % (old_v or "؟", new_v or "؟"), "مجلد البرنامج: %s" % app]
+    log(lines[0])
+    port = admin.settings(app)["port"]
+    was_running = admin.port_listening(port)
+    log("… إيقاف الخادم")
+    if was_running and not stop(app, ps):
+        return False, "\n".join(lines + ["✘ لم يتوقف الخادم، فلم يبدأ التحديث ولم يتغير شيء."])
+    lock = os.path.splitext(admin.settings(app)["db"])[0] + ".laccdb"
+    if os.path.exists(lock):
+        try:
+            os.remove(lock)                                        # left by the stopped server (a live one cannot be removed)
+        except OSError:
+            pass
+    dest = backup_dest(app)
+    log("… نسخة احتياطية كاملة قبل التحديث (قد تأخذ دقائق)")
+    try:
+        os.makedirs(dest, exist_ok=True)
+        r = export(app, dest)
+    except (transfer.TransferError, OSError) as e:
+        if was_running:
+            admin.start_server(app, ps)
+        return False, "\n".join(lines + ["✘ تعذّرت النسخة الاحتياطية، فلم يبدأ التحديث ولم يتغير شيء (أُعيد تشغيل الخادم): %s" % e])
+    lines.append("✔ نسخة احتياطية كاملة: %s" % r["package"])
+    a = update_answers(app)
+    a.zip_path = zp
+    log("… استبدال البرنامج وتحديث القاعدة")
+    res, overall, _c = install(a, make_logger(a.log_file), progress=lambda k, t, st, d: log("%s %s" % ({"running": "…", "ok": "✔", "warn": "⚠", "fail": "✘", "skip": "–"}[st], t)) if st != "running" else None,
+                               only=set(UPDATE_STEPS))
+    icon = {"ok": "✔", "warn": "⚠", "fail": "✘", "skip": "–"}
+    for key, title, st, detail in res:
+        lines.append("%s %s — %s" % (icon.get(st, "?"), title, detail))
+    if overall == "fail":
+        lines.append("✘ توقف التحديث. بياناتك سليمة: البرنامج القديم في مجلد app_old_… والنسخة الاحتياطية في %s. صوّر هذه الشاشة وأرسلها." % dest)
+        return False, "\n".join(lines)
+    got = ""
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:%d/health" % int(port), timeout=10) as h:
+            got = json.loads(h.read().decode("utf-8")).get("version", "")
+    except (OSError, ValueError):
+        pass
+    lines.append(("✔ النظام يعمل الآن بالنسخة %s." % got) if got else "⚠ لم يُجب الخادم بعد. انتظر دقيقة ثم افتح الرابط؛ إن لم يفتح: لوحة الإدارة ← الخادم ← تشغيل.")
+    lines.append("الزملاء: لا يُثبَّت عندهم شيء. يكفي فتح الرابط والضغط على Ctrl + F5 مرة واحدة.")
+    return True, "\n".join(lines)
+
+
+def update_wizard(selftest_out=None):
+    import tkinter as tk
+    from tkinter import filedialog, messagebox, ttk
+    import threading
+    root = tk.Tk()
+    root.title("تحديث نظام المشتريات والمقاولين")
+    root.geometry("760x600")
+    f = ttk.Frame(root, padding=16)
+    f.pack(fill="both", expand=True)
+    v_app = tk.StringVar(value=find_installed_app())
+    zp = find_zip(Answers())
+    ttk.Label(f, text="تحديث النظام على هذا الجهاز (الجهاز الرئيسي)", font=("", 14, "bold")).pack(anchor="e")
+    info = ttk.Label(f, text="", justify="right", wraplength=700)
+    info.pack(anchor="e", pady=6)
+    row = ttk.Frame(f)
+    row.pack(fill="x")
+    ttk.Button(row, text="استعراض…", command=lambda: (v_app.set((filedialog.askdirectory() or v_app.get()).replace("/", "\\")), refresh())).pack(side="left")
+    ttk.Entry(row, textvariable=v_app).pack(side="left", fill="x", expand=True, padx=6)
+    ttk.Label(row, text="مجلد البرنامج:").pack(side="right")
+    ttk.Label(f, text="ماذا سيحدث: نسخة احتياطية كاملة ← إيقاف الخادم ← استبدال البرنامج (الإعدادات والبيانات وتشغيل الإقلاع تبقى كما هي) ← تحديث القاعدة ← تشغيل الخادم.\n"
+                      "لا تُغلق هذه النافذة حتى تظهر النتيجة. اطلب من الزملاء حفظ عملهم قبل البدء.", justify="right", wraplength=700).pack(anchor="e", pady=8)
+    btn = ttk.Button(f, text="حدّث الآن")
+    btn.pack(fill="x", ipady=10, pady=6)
+    box = tk.Text(f, height=18, wrap="word")
+    box.pack(fill="both", expand=True)
+
+    def say(t):
+        box.insert("end", str(t) + "\n")
+        box.see("end")
+
+    def refresh():
+        app = v_app.get().strip()
+        old_v = installed_version(app) if app else ""
+        info.configure(text=("البرنامج المثبَّت: %s — النسخة %s\nالنسخة الجديدة في هذا الملف: %s" % (app, old_v or "؟", package_version(zp) or "؟")) if app and old_v
+                       else "لم أجد البرنامج تلقائياً. اضغط «استعراض…» واختر مجلده (مثل D:\\PO\\app).")
+    refresh()
+
+    def go():
+        app = v_app.get().strip()
+        if not messagebox.askyesno("تأكيد", "سيُحدَّث النظام في:\n%s\n\nسيتوقف النظام عن الزملاء دقائق قليلة. متابعة؟" % app):
+            return
+        btn.state(["disabled"])
+
+        def work():
+            ok, text = run_update(app, log=lambda t: root.after(0, say, t))
+            root.after(0, lambda: (say("\n" + text), say("\n" + ("✔ اكتمل التحديث." if ok else "✘ لم يكتمل التحديث.")), btn.state(["!disabled"])))
+        threading.Thread(target=work, daemon=True).start()
+    btn.configure(command=go)
+    if selftest_out:
+        root.update()
+        root.destroy()
+        open(selftest_out, "w", encoding="utf-8").write("OK\n")
+        return 0
+    root.mainloop()
+    return 0
+
+
 def launcher(selftest_out=None):
     """The first screen of the one tool: what is this PC?"""
     import tkinter as tk
     from tkinter import ttk, messagebox
     root = tk.Tk()
     root.title("نظام المشتريات والمقاولين — الإعداد")
-    root.geometry("640x500")
+    root.geometry("640x560")
     f = ttk.Frame(root, padding=20)
     f.pack(fill="both", expand=True)
     ttk.Label(f, text="ما هو دور هذا الجهاز؟", font=("", 14, "bold")).pack(pady=10)
@@ -1783,6 +1949,7 @@ def launcher(selftest_out=None):
     def pick(role):
         choice["role"] = role
         root.destroy()
+    ttk.Button(f, text="تحديث النظام على هذا الجهاز (بضغطة واحدة: نسخة احتياطية ثم تحديث)", command=lambda: pick("update")).pack(fill="x", pady=6, ipady=10)
     ttk.Button(f, text="الجهاز الرئيسي (يحمل القاعدة والأرشيف — تثبيت كامل)", command=lambda: pick("host")).pack(fill="x", pady=6, ipady=8)
     ttk.Button(f, text="جهاز عضو في الفريق (يفتح النظام من الجهاز الرئيسي)", command=lambda: pick("client")).pack(fill="x", pady=6, ipady=8)
     ttk.Button(f, text="لوحة الإدارة: النسخ الاحتياطي، الخادم، المستخدمون، الشبكة، الفحص (بلا أوامر)", command=lambda: pick("admin")).pack(fill="x", pady=6, ipady=8)
@@ -1853,6 +2020,8 @@ def main(argv=None):
     ap.add_argument("--dest", help="export: where the package is written")
     ap.add_argument("--verify-package", help="checks every file of a PO_Export package against its SHA-256")
     ap.add_argument("--admin-test", action="store_true", help="(for the automatic tests) runs the admin-panel operations for real on --app, backups into --dest, and prints each result")
+    ap.add_argument("--zip", help="update: the program package (default: next to this tool)")
+    ap.add_argument("--update", action="store_true", help="one-click update of the installed program in --app (or the one found on this PC): full backup, stop, replace, migrate, start")
     ap.add_argument("--remove-lan", action="store_true", help="removes what this tool added to the network settings (firewall rules, hosts lines, shortcuts); never touches program or data")
     ap.add_argument("--out")
     args = ap.parse_args(argv)
@@ -1882,6 +2051,10 @@ def main(argv=None):
         return 0
     if args.admin_test:
         return admin_test(args.app or "", args.dest or "")
+    if args.update:
+        ok, text = run_update(args.app or find_installed_app(), zip_path=args.zip or "")
+        print(text)
+        return 0 if ok else 1
     if args.export:
         text = export_text(args.app or "", args.dest or "")
         print(text)
@@ -1914,7 +2087,7 @@ def main(argv=None):
         out = args.out or os.path.join(os.environ.get("TEMP", "."), "po_gui_selftest.txt")
         parts = []
         rc = 0
-        for name, fn in (("launcher", lambda o: launcher(selftest_out=o) or 0), ("host", lambda o: wizard(a, selftest_out=o)), ("client", lambda o: client_wizard(None, selftest_out=o)), ("export", lambda o: export_wizard(selftest_out=o)), ("admin", lambda o: admin_wizard(selftest_out=o))):
+        for name, fn in (("launcher", lambda o: launcher(selftest_out=o) or 0), ("host", lambda o: wizard(a, selftest_out=o)), ("client", lambda o: client_wizard(None, selftest_out=o)), ("export", lambda o: export_wizard(selftest_out=o)), ("admin", lambda o: admin_wizard(selftest_out=o)), ("update", lambda o: update_wizard(selftest_out=o))):
             o = out + "." + name
             try:
                 rc |= int(fn(o) or 0)
@@ -1942,6 +2115,9 @@ def main(argv=None):
         return 0
     if role == "admin":
         admin_wizard()
+        return 0
+    if role == "update":
+        update_wizard()
         return 0
     if role == "client":
         client_wizard(lan.ClientAnswers(import_file=args.import_file or "", server=args.server or "", alias=args.alias or ""))

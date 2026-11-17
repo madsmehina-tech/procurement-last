@@ -280,6 +280,26 @@ jobs:
           Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object { $_.CommandLine -match 'serve.py' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
           Start-Sleep -Seconds 3
           Remove-Item D:\PO\data\*.laccdb -ErrorAction SilentlyContinue
+      - name: ONE-CLICK UPDATE (29.0) - backup package, stop, replace, migrate, start, version answered
+        shell: pwsh
+        run: |
+          Remove-Item D:\PO\data\*.laccdb -ErrorAction SilentlyContinue
+          $olds = @(Get-ChildItem D:\PO -Directory -Filter 'app_old_*').Count
+          $start = Get-Date
+          $zip = Get-ChildItem po_web_v*.zip | Sort-Object { [version](($_.BaseName -replace 'po_web_v','') -replace '_','.') } -Descending | Select-Object -First 1
+          python installer\po_setup.py --update --app D:\PO\app --zip $zip.FullName
+          $code = $LASTEXITCODE
+          if ($code -ne 0) { Get-Content D:\PO\install_log.txt -Tail 60; Write-Error 'the one-click update failed'; exit 1 }
+          $pkg = Get-ChildItem -Path D:\ -Recurse -Filter 'PO_Export_*.zip' -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -gt $start } | Select-Object -First 1
+          if (-not $pkg) { Write-Error 'no backup package was made before the update'; exit 1 }
+          "backup: $($pkg.FullName)"
+          if (@(Get-ChildItem D:\PO -Directory -Filter 'app_old_*').Count -le $olds) { Write-Error 'the program was not replaced'; exit 1 }
+          $h = (Invoke-WebRequest http://127.0.0.1:5000/health -UseBasicParsing).Content
+          "health: $h"
+          if ($h -notmatch '"version"') { Write-Error 'the server does not answer after the update'; exit 1 }
+          Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object { $_.CommandLine -match 'serve.py' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+          Start-Sleep -Seconds 3
+          Remove-Item D:\PO\data\*.laccdb -ErrorAction SilentlyContinue
       - name: Acceptance check on COPIES of the fresh installation (real Access engine)
         continue-on-error: true
         timeout-minutes: 12

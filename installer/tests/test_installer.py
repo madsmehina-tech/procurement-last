@@ -405,3 +405,57 @@ def test_an_existing_share_on_the_same_folder_is_fine_and_one_on_another_folder_
     assert st == "warn" and "E:\\Old" in msg and "egoryInfo" not in msg
     script = " ".join(map(str, ps.step_share.__code__.co_consts))
     assert "TrimEnd" in script and "يوجد مشاركة" not in script                 # compared tolerant of «/» and a trailing «\»; no Arabic inside PowerShell
+
+
+# ---------------------------------------------------------------- one-click update (29.0)
+def _installed(tmp_path, version="28.0"):
+    app = tmp_path / "PO" / "app"
+    (app / "deploy").mkdir(parents=True)
+    (app / "serve.py").write_text("# old")
+    (app / "config.py").write_text('APP_VERSION = "%s"\n' % version)
+    (tmp_path / "PO" / "data").mkdir()
+    (tmp_path / "PO" / "data" / "PurchaseSystem.accdb").write_bytes(b"DB")
+    (app / "config.ini").write_text("[database]\npath = %s\n[storage]\narchive_root = %s\nbackup_dir = %s\nbackup_archive_dir = %s\n[server]\nport = 5999\n"
+                                    % (tmp_path / "PO" / "data" / "PurchaseSystem.accdb", tmp_path / "Archive", tmp_path / "bk", tmp_path / "set"), encoding="utf-8")
+    return str(app)
+
+
+def test_the_update_reads_the_installation_as_it_is(tmp_path, monkeypatch):
+    app = _installed(tmp_path)
+    monkeypatch.setattr(ps.lan, "load_state", lambda path=None: {"hosts": ["alhadab.procurement"]})
+    a = ps.update_answers(app)
+    assert a.app == app and a.replace_existing and not a.boot_start and not a.install_tesseract and a.port == 5999
+    assert a.share_folder == str(tmp_path / "Archive") and a.alias_name == "alhadab.procurement" and a.db_existing.endswith("PurchaseSystem.accdb")
+    assert ps.installed_version(app) == "28.0" and ps.backup_dest(app) == os.path.join(str(tmp_path / "set"), "قبل التحديث")
+    assert "database" not in ps.UPDATE_STEPS and "tesseract" not in ps.UPDATE_STEPS and "unpack" in ps.UPDATE_STEPS
+
+
+def test_the_update_backs_up_first_and_stops_at_a_failed_backup(tmp_path, monkeypatch):
+    app = _installed(tmp_path)
+    zp = tmp_path / "po_web_v29_0.zip"
+    import zipfile as zf
+    with zf.ZipFile(zp, "w") as z:
+        z.writestr("po_web/config.py", 'APP_VERSION = "29.0"\n')
+    monkeypatch.setattr(ps, "find_zip", lambda a: str(zp))
+    monkeypatch.setattr(ps.admin, "port_listening", lambda port, host="127.0.0.1": False)
+    order = []
+    ok, text = ps.run_update(app, log=lambda t: None, export=lambda a, d: (order.append("export"), (_ for _ in ()).throw(ps.transfer.TransferError("القرص ممتلئ")))[1],
+                             install=lambda *a, **k: order.append("install"), stop=lambda a, p: True)
+    assert not ok and order == ["export"] and "لم يبدأ التحديث ولم يتغير شيء" in text and "28.0" in text and "29.0" in text
+    order.clear()
+    calls = {}
+
+    def fake_install(a, log, progress=None, only=None):
+        calls["only"], calls["a"] = only, a
+        return [("unpack", "فك البرنامج", "ok", "تم")], "ok", None
+    ok, text = ps.run_update(app, log=lambda t: None, export=lambda a, d: (order.append("export"), {"package": os.path.join(d, "PO_Export_x.zip")})[1],
+                             install=fake_install, stop=lambda a, p: True)
+    assert ok and order == ["export"] and calls["only"] == set(ps.UPDATE_STEPS) and calls["a"].replace_existing and "PO_Export_x.zip" in text
+
+
+def test_the_installed_program_is_found(tmp_path, monkeypatch):
+    app = _installed(tmp_path)
+    monkeypatch.setattr(ps.lan, "load_state", lambda path=None: {"app_dir": app})
+    assert ps.find_installed_app() == app
+    monkeypatch.setattr(ps.lan, "load_state", lambda path=None: {})
+    assert ps.find_installed_app() == ""                     # (no Windows drives here)
