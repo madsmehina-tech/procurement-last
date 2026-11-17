@@ -1,0 +1,15 @@
+{# 29.0: every paper printed from the system (Print or PDF) carries «تاريخ ووقت الطباعة» at the bottom right of EVERY page.
+   It is a page-margin box: when a page defines one, Chrome / Edge (131+) no longer add their own header and footer
+   (the page title, the address and their date), which is what we want. The time is refreshed at the moment «طباعة» is pressed. #}
+<style id="print-stamp">@page { @bottom-right { content: "تاريخ ووقت الطباعة: {{ print_stamp_text }}"; font-family: "Segoe UI", Tahoma, Arial, sans-serif; font-size: 8.5pt; color: #333; } }</style>
+<script>
+(function () {
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+  window.addEventListener("beforeprint", function () {
+    var d = new Date(), el = document.getElementById("print-stamp");
+    if (!el) return;
+    var t = pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + "/" + d.getFullYear() + " - " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+    el.textContent = el.textContent.replace(/الطباعة: [^"]*"/, "الطباعة: " + t + "\"");
+  });
+})();
+</script>

@@ -24,7 +24,6 @@ log = logging.getLogger(__name__)
 DOCS = {
     "po": {"name": "أمر شراء", "states": True},
     "voucher": {"name": "أمر صرف عام", "states": True},
-    "payorder": {"name": "أمر صرف مستخلص", "states": True},
     "cycle": {"name": "كشف دورة الصرف", "states": True},
     "statement": {"name": "كشف حساب مقاول", "states": False},
     "supplier_statement": {"name": "كشف حساب مورد", "states": False},
@@ -290,7 +289,7 @@ def verify(number, given_code, amount=None):
             return {"ok": True, "found": True, "doc_name": DOCS[doc]["name"], "number": no, "amount": float(amt or 0), "date": _fmt_date(when),
                     "party": party, "state": state}
     if amount not in (None, ""):
-        for doc in ("statement", "supplier_statement", "payorder"):
+        for doc in ("statement", "supplier_statement"):
             if code(doc, number, amount) == given:
                 return {"ok": True, "found": True, "doc_name": DOCS[doc]["name"], "number": number, "amount": float(amount), "date": "", "party": "", "state": ""}
     if hits:

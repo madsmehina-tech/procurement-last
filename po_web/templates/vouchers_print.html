@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ papers|map(attribute='v.VoucherNo')|join('، ') }} — أوامر صرف</title>
+<style>
+  @page { size: A4 portrait; margin: 10mm; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  body { padding: 0 2mm; }
+  .vp-page { position: relative; page-break-after: always; break-after: page; }
+  .vp-page:last-child { page-break-after: auto; break-after: auto; }
+  .toolbar { text-align: center; padding: 10px; } .toolbar button { font: inherit; padding: 8px 22px; cursor: pointer; }
+  @media print { .toolbar { display: none; } }
+</style>
+{% import "_print_kit.html" as pkit2 %}{% if papers[0].pk %}{{ pkit2.css(papers[0].pk) }}{% endif %}
+{% include "_print_stamp.html" %}
+</head>
+<body>
+<div class="toolbar"><button onclick="window.print()">طباعة / حفظ PDF</button></div>
+{% set in_print = true %}
+{% for p in papers %}{% with v=p.v, items=p['items'], refs=p.refs, words=p.words, currency=p.currency, currency_name=p.currency_name, net_sar=p.net_sar, signs=p.signs, sign_rows=p.sign_rows, company=p.company, printed_at=p.printed_at, pk=p.pk %}
+<div class="vp-page">{% if pk %}{{ pkit2.watermark(pk, local=True) }}{% endif %}{% include "_voucher_paper.html" %}</div>
+{% endwith %}{% endfor %}
+</body>
+</html>

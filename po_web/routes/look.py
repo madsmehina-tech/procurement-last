@@ -72,13 +72,11 @@ def _sample(doc):
         if doc == "voucher":
             r = db.query("SELECT TOP 1 [VoucherID], [VoucherNo] FROM [PaymentVouchers] ORDER BY [VoucherID] DESC")
             return (url_for("voucher_print", voucher_id=r[0]["VoucherID"]), "أمر الصرف " + r[0]["VoucherNo"]) if r else None
-        if doc in ("cycle", "payorder"):
+        if doc == "cycle":
             r = db.query("SELECT TOP 1 [CycleID], [CycleNo] FROM [PaymentCycles] ORDER BY [CycleID] DESC")
             if not r:
                 return None
-            if doc == "cycle":
-                return url_for("cycle_print", cycle_id=r[0]["CycleID"]), "كشف الدورة رقم %s" % r[0]["CycleNo"]
-            return url_for("cycle_orders_print", cycle_id=r[0]["CycleID"]), "أوامر صرف الدورة رقم %s" % r[0]["CycleNo"]
+            return url_for("cycle_print", cycle_id=r[0]["CycleID"]), "كشف الدورة رقم %s" % r[0]["CycleNo"]
         if doc == "statement":
             r = db.query("SELECT TOP 1 [SubcontractorID], [Name] FROM [Subcontractors] ORDER BY [SubcontractorID]")
             return (url_for("statement_print", sub_id=r[0]["SubcontractorID"]), "كشف حساب " + r[0]["Name"]) if r else None

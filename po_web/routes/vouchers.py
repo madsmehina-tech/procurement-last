@@ -9,6 +9,7 @@ from flask import flash, jsonify, redirect, render_template, request, send_file,
 import arabic_numbers
 import archive
 import auth
+import db
 import contract_gen as cg
 import cycle_files
 import signatures
@@ -33,6 +34,9 @@ def _show_data(d):
     return out
 
 
+FROM_CYCLE = "أمر الصرف هذا صادر من دورة صرف: أرقامه وحالته تتبع الدورة (يُعتمد مع اعتمادها ويُعدَّل بتعديل قراراتها)."
+
+
 @route("/vouchers")
 @auth.login_required
 def vouchers_list():
@@ -43,9 +47,12 @@ def vouchers_list():
            "net": round(sum(vs.net_sar(r) for r in allrows if r["Status"] == vs.ST_APPROVED), 2)}
     import archive as _a
     signed = {str(d["EntityKey"]): d for d in _a.list_documents_many("VOUCHER") if d.get("DocType") == vs.SIGNED_DOC} if rows else {}
+    cycles = {c["CycleID"]: c["CycleNo"] for c in db.query("SELECT [CycleID], [CycleNo] FROM [PaymentCycles]")} if any(r.get("SourceRef") for r in rows) else {}
     for r in rows:
         r["signed_doc"] = signed.get(str(r["VoucherID"]))
         r["net_sar"] = vs.net_sar(r)
+        ref = r.get("SourceRef") or ""
+        r["cycle"] = (int(ref.split(":")[1]), cycles.get(int(ref.split(":")[1]))) if ref.startswith("CYCLE:") and ref.split(":")[1].isdigit() else None
     return render_template("voucher_list.html", rows=rows, kpi=kpi, status=status, q=q, statuses=(vs.ST_DRAFT, vs.ST_APPROVED, vs.ST_CANCELLED),
                            next_no=vs.suggest_no(), can_set_start=(kpi["count"] == 0), is_admin=bool((auth.current_user() or {}).get("IsAdmin")))
 
@@ -114,6 +121,9 @@ def voucher_edit(voucher_id):
     if v["Status"] != vs.ST_DRAFT:
         flash("لا يُعدَّل أمر الصرف إلا وهو «مسودة».")
         return redirect(url_for("voucher_view", voucher_id=voucher_id))
+    if v.get("SourceRef"):
+        flash(FROM_CYCLE)
+        return redirect(url_for("voucher_view", voucher_id=voucher_id))
     if request.method == "GET":
         return _form_page(_stored_to_form(v), voucher=v)
     d, errors = vs.parse(request.form)
@@ -146,7 +156,8 @@ def voucher_view(voucher_id):
         return redirect(url_for("vouchers_list"))
     ctx = vs.print_context(v, cg.company())
     copies = [d for d in archive.list_documents("VOUCHER", voucher_id) if d.get("IsCurrent") and d.get("DocType") != vs.SIGNED_DOC]
-    return render_template("voucher_view.html", copy=copies[0] if copies else None, signed=vs.signed_copy(voucher_id), is_admin=bool((auth.current_user() or {}).get("IsAdmin")), folder=archive.voucher_folder_rel(v["VoucherNo"], v.get("VoucherDate")), **ctx)
+    import cycle_vouchers
+    return render_template("voucher_view.html", src=cycle_vouchers.cycle_of(v), copy=copies[0] if copies else None, signed=vs.signed_copy(voucher_id), is_admin=bool((auth.current_user() or {}).get("IsAdmin")), folder=archive.voucher_folder_rel(v["VoucherNo"], v.get("VoucherDate")), **ctx)
 
 
 def _archive_copy(voucher_id):
@@ -179,6 +190,10 @@ def voucher_archive(voucher_id):
 @route("/vouchers/<int:voucher_id>/approve", methods=["POST"])
 @auth.login_required
 def voucher_approve(voucher_id):
+    v = vs.get(voucher_id)
+    if v and v.get("SourceRef"):
+        flash(FROM_CYCLE)
+        return redirect(url_for("voucher_view", voucher_id=voucher_id))
     try:
         msg = vs.approve(voucher_id, _user())
         flash(msg + _archive_copy(voucher_id))

@@ -104,8 +104,7 @@ def order_context(data, sub_id):
     if not gp or gp["payable"] <= cy.EPS:
         return None
     return {"group": gp, "cycle": data["cycle"], "order_no": gp["order_no"], "iban_masked": cy.mask_iban(gp["iban"]), "amount": gp["payable"],
-            "statement": gp["statement"], "words": arabic_numbers.amount_to_words(gp["payable"]),
-            "pk": _kit("payorder", gp["order_no"], gp["payable"], data["cycle"].get("ApprovedAt") or data["cycle"].get("CycleDate"), gp["name"], data["cycle"].get("Status"))}
+            "statement": gp["statement"], "words": arabic_numbers.amount_to_words(gp["payable"])}
 
 
 def _kit(doc, number, amount, when, party, state):
@@ -119,14 +118,28 @@ def _kit(doc, number, amount, when, party, state):
         return None
 
 
-def order_html(data, sub_id, pdf=False):
-    ctx = order_context(data, sub_id)
-    return render_template("payment_order.html", logo_src=logo() if pdf else "", pdf_mode=pdf, orders=[ctx], **ctx) if ctx else None
+def order_html(data, sub_id, pdf=False, user=""):
+    """29.0: the payment order of a contractor IS a general voucher (أمر صرف): made at its first print, printed on the voucher's form."""
+    import cycle_vouchers
+    vid = cycle_vouchers.ensure(data, sub_id, user)
+    return vouchers_html([vid], pdf) if vid else None
 
 
-def all_orders_html(data, pdf=False):
-    ctxs = [c for c in (order_context(data, gp["sub_id"]) for gp in data["groups"]) if c]
-    return render_template("payment_order.html", logo_src=logo() if pdf else "", pdf_mode=pdf, orders=ctxs, **(ctxs[0] if ctxs else {})) if ctxs else None
+def all_orders_html(data, pdf=False, user=""):
+    import cycle_vouchers
+    ids = cycle_vouchers.ensure_all(data, user)
+    return vouchers_html(ids, pdf) if ids else None
+
+
+def vouchers_html(ids, pdf=False):
+    """One HTML with the given vouchers, one per page, on the voucher's form."""
+    import contract_gen as cg
+    import voucher_service as vs
+    company = cg.company()
+    papers = [vs.print_context(v, company) for v in (vs.get(i) for i in ids) if v]
+    if not papers:
+        return None
+    return render_template("vouchers_print.html", papers=papers, logo_src=logo() if pdf else "", pdf_mode=pdf, **papers[0])
 
 
 def _pdf_bytes(html):
@@ -167,9 +180,12 @@ def save_order(cycle_id, sub_id, user=""):
     if not ctx:
         return None, "لا مبلغ معتمد للصرف لهذا المقاول"
     try:
+        import cycle_vouchers
+        import voucher_service as vs
+        vid = cycle_vouchers.ensure(data, sub_id, user)
         folder = archive.ensure_cycle_folder(cycle_id)
-        pdf = _pdf_bytes(order_html(data, sub_id, pdf=True))
-        name = "%s - %s.pdf" % (ctx["order_no"], ctx["group"]["name"])
+        pdf = _pdf_bytes(vouchers_html([vid], pdf=True))
+        name = "%s - %s.pdf" % (vs.get(vid)["VoucherNo"], ctx["group"]["name"])
         return archive.store_generated("CYCLE", cycle_id, archive.cycle_doc_folder_rel(folder, T_ORDER), T_ORDER, pdf, name, user), ""
     except pdfgen.PdfError as e:
         return None, str(e)

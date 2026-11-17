@@ -12,7 +12,7 @@ import secrets
 import threading
 import os
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta
 from logging.handlers import RotatingFileHandler
 
 from flask import Flask, g, render_template, request, session, url_for
@@ -70,6 +70,7 @@ def create_app():
                 "staging": config.ENVIRONMENT == "staging", "company_logo": cycle_files.logo(),
                 "flash_kind": ui_helpers.flash_kind, "status_cls": ui_helpers.status_cls,
                 "asset_v": config.APP_VERSION, "theme_css": ui_theme.css(), "theme_extra_font": ui_theme.font_css_needed(),
+                "print_stamp_text": datetime.now().strftime("%d/%m/%Y - %H:%M"),
                 "my_alerts": (lambda: alerts.for_user(user, auth.can, url_for)) if user else (lambda: [])}
 
     # ONE WRITER AT A TIME. The database is Access (it cannot lock rows) and numbers (purchase orders, cycles, payments, contracts) are

@@ -330,11 +330,11 @@ def cycle_xlsx(cycle_id):
     return send_file(buf, as_attachment=True, download_name="cycle_%s.xlsx" % c["CycleNo"], mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
-# --------------------------------------------------------------------------- payment orders (kept as they are - to be discussed before launch)
+# --------------------------------------------------------------------------- payment orders = general vouchers (29.0, see cycle_vouchers.py)
 @route("/cycles/<int:cycle_id>/subs/<int:sub_id>/order")
 @auth.login_required
 def cycle_order(cycle_id, sub_id):
-    html = cycle_files.order_html(_get(cycle_id), sub_id)
+    html = cycle_files.order_html(_get(cycle_id), sub_id, user=_user())
     if not html:
         flash("لا مبلغ معتمد للصرف لهذا المقاول.")
         return redirect(url_for("cycle_detail", cycle_id=cycle_id))
@@ -344,7 +344,7 @@ def cycle_order(cycle_id, sub_id):
 @route("/cycles/<int:cycle_id>/orders")
 @auth.login_required
 def cycle_orders_print(cycle_id):
-    html = cycle_files.all_orders_html(_get(cycle_id))
+    html = cycle_files.all_orders_html(_get(cycle_id), user=_user())
     if not html:
         flash("لا أوامر صرف في هذه الدورة بعد.")
         return redirect(url_for("cycle_detail", cycle_id=cycle_id))

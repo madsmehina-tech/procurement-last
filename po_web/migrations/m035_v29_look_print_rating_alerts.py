@@ -7,6 +7,7 @@ m035_v29_look_print_rating_alerts - what version 29.0 stores:
                      بملاحظات / مرفوض جزئياً, chosen when the goods are received). Old orders stay empty: the rating uses what exists.
  * Contracts         RetentionDueDate (when the retention of a subcontract is due back: the alert «استرداد المحتجز» reads it)
  * NotificationReads which alert each person has already seen (UserID + the alert's key)
+ * PaymentVouchers   SourceRef: a voucher made by the system from a payment cycle («CYCLE:<cycle>:<contractor>»); empty = typed by a person
 Nothing existing is changed.
 """
 import db
@@ -26,6 +27,8 @@ def main():
     if db.table_exists("PurchaseOrders"):
         add_column("PurchaseOrders", "AgreedDeliveryDate", "DATETIME")
         add_column("PurchaseOrders", "ReceiptQuality", "TEXT(30)")
+    if db.table_exists("PaymentVouchers"):
+        add_column("PaymentVouchers", "SourceRef", "TEXT(40)")
     if db.table_exists("Contracts"):
         add_column("Contracts", "RetentionDueDate", "DATETIME")
     for name, sql in TABLES.items():

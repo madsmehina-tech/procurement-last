@@ -56,6 +56,7 @@
   }
 </style>
 {% if pk %}{{ kit.css(pk) }}{% endif %}
+{% include "_print_stamp.html" %}
 </head>
 <body>
 {% if pk and pk.watermark %}{{ kit.watermark(pk) }}{% elif watermark %}<div class="wm">{{ watermark }}</div>{% endif %}
