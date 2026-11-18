@@ -816,6 +816,12 @@ def step_start(c):
     if not port_free(a.port):
         return "warn", "المنفذ %d مشغول (ربما النظام يعمل بالفعل)." % a.port
     os.makedirs(a.logs, exist_ok=True)
+    stale = os.path.join(a.app, "instance", "stop.flag")         # a «stop» request left from before the update would end the new server at once
+    if os.path.exists(stale):
+        try:
+            os.remove(stale)
+        except OSError:
+            pass
     started_by_task = False
     if a.boot_start or getattr(c, "boot_task_kept", False):                        # let the TASK start it: the server then runs under the account it will always run under
         code, _o = c.run(ps("Start-ScheduledTask -TaskName %s" % ps_quote(BOOT_TASK)))
@@ -1866,12 +1872,20 @@ def run_update(app, log=print, ps=None, export=None, install=None, stop=None, zi
     if overall == "fail":
         lines.append("✘ توقف التحديث. بياناتك سليمة: البرنامج القديم في مجلد app_old_… والنسخة الاحتياطية في %s. صوّر هذه الشاشة وأرسلها." % dest)
         return False, "\n".join(lines)
-    got = ""
-    try:
-        with urllib.request.urlopen("http://127.0.0.1:%d/health" % int(port), timeout=10) as h:
-            got = json.loads(h.read().decode("utf-8")).get("version", "")
-    except (OSError, ValueError):
-        pass
+    def version_now():
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:%d/health" % int(port), timeout=10) as h:
+                return json.loads(h.read().decode("utf-8")).get("version", "")
+        except (OSError, ValueError):
+            return ""
+    got = version_now()
+    if not got:                                                     # the first start right after the update can be late: one more start, as «الخادم ← تشغيل» does
+        log("… محاولة تشغيل ثانية للخادم")
+        try:
+            admin.start_server(app, ps, wait=90)
+        except Exception:                                           # noqa: BLE001
+            pass
+        got = version_now()
     lines.append(("✔ النظام يعمل الآن بالنسخة %s." % got) if got else "⚠ لم يُجب الخادم بعد. انتظر دقيقة ثم افتح الرابط؛ إن لم يفتح: لوحة الإدارة ← الخادم ← تشغيل.")
     lines.append("الزملاء: لا يُثبَّت عندهم شيء. يكفي فتح الرابط والضغط على Ctrl + F5 مرة واحدة.")
     return True, "\n".join(lines)

@@ -438,6 +438,7 @@ def test_the_update_backs_up_first_and_stops_at_a_failed_backup(tmp_path, monkey
         z.writestr("po_web/config.py", 'APP_VERSION = "29.0"\n')
     monkeypatch.setattr(ps, "find_zip", lambda a: str(zp))
     monkeypatch.setattr(ps.admin, "port_listening", lambda port, host="127.0.0.1": False)
+    monkeypatch.setattr(ps.admin, "start_server", lambda app, run, wait=40, sleeper=None: True)
     order = []
     ok, text = ps.run_update(app, log=lambda t: None, export=lambda a, d: (order.append("export"), (_ for _ in ()).throw(ps.transfer.TransferError("القرص ممتلئ")))[1],
                              install=lambda *a, **k: order.append("install"), stop=lambda a, p: True)
@@ -459,3 +460,33 @@ def test_the_installed_program_is_found(tmp_path, monkeypatch):
     assert ps.find_installed_app() == app
     monkeypatch.setattr(ps.lan, "load_state", lambda path=None: {})
     assert ps.find_installed_app() == ""                     # (no Windows drives here)
+
+
+def test_the_update_starts_the_server_a_second_time_when_the_first_start_is_late(tmp_path, monkeypatch):
+    app = _installed(tmp_path)
+    zp = tmp_path / "po_web_v29_0.zip"
+    import zipfile as zf
+    with zf.ZipFile(zp, "w") as z:
+        z.writestr("po_web/config.py", 'APP_VERSION = "29.0"\n')
+    monkeypatch.setattr(ps.admin, "port_listening", lambda port, host="127.0.0.1": False)
+    starts = []
+    monkeypatch.setattr(ps.admin, "start_server", lambda app, run, wait=40, sleeper=None: starts.append(wait) or True)
+    ok, text = ps.run_update(app, log=lambda t: None, zip_path=str(zp), export=lambda a, d: {"package": "x.zip"},
+                             install=lambda *a, **k: ([("start", "تشغيل الخادم", "warn", "لم يستجب")], "warn", None), stop=lambda a, p: True)
+    assert ok and starts == [90]                                    # (no real server here, so the version stays unknown and the text says what to do)
+    assert "لم يُجب الخادم بعد" in text
+
+
+def test_a_stale_stop_request_is_removed_before_the_start(tmp_path, monkeypatch):
+    a = answers(tmp_path)
+    a.start_after, a.port = True, 5999
+    os.makedirs(os.path.join(a.app, "instance"), exist_ok=True)
+    flag = os.path.join(a.app, "instance", "stop.flag")
+    open(flag, "w").write("stop")
+    monkeypatch.setattr(ps, "port_free", lambda port: True)
+    monkeypatch.setattr(ps.subprocess, "Popen", lambda *a, **k: None)
+    monkeypatch.setattr(ps.time, "sleep", lambda s: None)
+    c = ps.Ctx(a, run=Recorder())
+    c.python = "python"
+    ps.step_start(c)
+    assert not os.path.exists(flag)
