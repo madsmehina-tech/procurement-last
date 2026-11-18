@@ -142,16 +142,18 @@ def _fmt_date(d):
     return str(d or "")
 
 
+DOC_EN = {"po": "Purchase Order", "voucher": "Payment Request", "cycle": "Payment Cycle", "statement": "Contractor Statement",
+          "supplier_statement": "Supplier Statement"}
+
+
 def qr_text(doc, number, amount, when=None, party="", state="", company=""):
-    lines = [company or "شركة الهضب للتجارة والمقاولات", "%s: %s" % (DOCS[doc]["name"], number)]
+    """What the QR code carries: SHORT and in Latin letters only, so that the code stays coarse enough to be read from paper by any phone
+    (the Arabic names made it 61x61 tiny squares that phones could not read once printed). The verification code is what matters."""
+    lines = ["AL-HADAB", "%s: %s" % (DOC_EN.get(doc, doc), number)]
     if when:
-        lines.append("التاريخ: %s" % _fmt_date(when))
-    if party:
-        lines.append("الطرف: %s" % party)
-    lines.append("المبلغ: {:,.2f} ريال".format(float(amount or 0)))
-    if state:
-        lines.append("الحالة: %s" % state)
-    lines.append("رمز التحقق: %s" % code(doc, number, amount))
+        lines.append("Date: %s" % _fmt_date(when))
+    lines.append("Amount: {:,.2f} SAR".format(float(amount or 0)))
+    lines.append("Code: %s" % code(doc, number, amount))
     return "\n".join(lines)
 
 
@@ -164,8 +166,9 @@ def qr_svg(text):
     try:
         q = segno.make(text, error="m", micro=False)
         out = io.BytesIO()
-        q.save(out, kind="svg", scale=1, border=0, xmldecl=False, svgns=False, omitsize=True, nl=False)
-        return out.getvalue().decode("utf-8")
+        # border=4: the white margin of 4 squares every reader needs around the code; light=white so it stays white on any paper setting
+        q.save(out, kind="svg", scale=1, border=4, dark="#000", light="#fff", xmldecl=False, svgns=False, omitsize=True, nl=False)
+        return out.getvalue().decode("utf-8").replace("<svg ", '<svg shape-rendering="crispEdges" ', 1)
     except Exception:                                           # noqa - a QR problem must never stop a paper from printing
         log.exception("QR failed")
         return ""

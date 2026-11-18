@@ -105,8 +105,19 @@ def test_the_verification_code_depends_on_number_and_amount():
     assert re.fullmatch(r"[0-9A-F]{6}", c) and c == print_settings.code("po", "po-1", "23174.8")
     assert c != print_settings.code("po", "PO-1", 23175.80) and c != print_settings.code("po", "PO-2", 23174.80) and c != print_settings.code("voucher", "PO-1", 23174.80)
     text = print_settings.qr_text("po", "PO-1", 23174.80, datetime(2026, 10, 20), "شركة عنوان الفولاذ")
-    assert "PO-1" in text and "23,174.80" in text and "شركة عنوان الفولاذ" in text and c in text
-    assert print_settings.qr_svg(text).startswith("<svg")
+    assert "PO-1" in text and "23,174.80" in text and c in text and text.isascii()           # Latin only: a coarse code a phone reads from paper
+    svg = print_settings.qr_svg(text)
+    assert svg.startswith("<svg") and 'shape-rendering="crispEdges"' in svg
+
+
+def test_the_printed_qr_code_stays_coarse_enough_to_be_read_from_paper():
+    import segno
+    longest = print_settings.qr_text("supplier_statement", "ST-S12345-20261118", 98765432.10, datetime(2026, 11, 18))
+    q = segno.make(longest, error="m", micro=False)
+    assert q.version <= 7                                                    # at most 45 squares a side: about 0.6 mm each at 30 mm wide
+    svg = print_settings.qr_svg(longest)
+    n = q.symbol_size(border=4)[0]
+    assert 'viewBox="0 0 %d %d"' % (n, n) in svg                             # the white margin of 4 squares is part of the drawing
 
 
 def test_a_printed_order_carries_its_qr_and_the_code_verifies_it(client):
